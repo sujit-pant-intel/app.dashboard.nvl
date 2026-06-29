@@ -1,0 +1,106 @@
+{
+  "_comment": "Product Setup JSON for the PCM / ETest HTML Dashboard.",
+  "_comment2": "Edit 'groups' to define which parameters appear together in each variability chart.",
+  "_comment3": "Use fnmatch wildcards in 'patterns' (e.g. 'Con_*' matches Con_M0LA, Con_M1, ...).",
+
+  "title": "NVL816 PCM / ETest Dashboard",
+  "subtitle": "8PF6CV R-Step — edit this file to customise groups",
+
+  "groups": [
+    {
+      "name": "Conductance",
+      "_note": "All metal layer conductance measurements",
+      "patterns": ["Con_*"]
+    },
+    {
+      "name": "Capacitance",
+      "_note": "MIM capacitor and gate-oxide capacitance",
+      "patterns": ["Cmim_*", "Cmin_*"]
+    },
+    {
+      "name": "Vts — N-FET",
+      "_note": "Threshold voltage, N-type planar transistors",
+      "patterns": ["Vts_RN*", "Vtl_N*"]
+    },
+    {
+      "name": "Vts — P-FET",
+      "_note": "Threshold voltage, P-type planar transistors",
+      "patterns": ["Vts_RP*", "Vtl_P*"]
+    },
+    {
+      "name": "Vts — GAA / Stacked",
+      "_note": "Threshold voltage, GAA and stacked-nanosheet devices",
+      "patterns": ["Vts_GAA*", "Vts_GBA*", "Vts_DAA*", "Vts_DBA*", "Vts_UAA*", "Vts_UBA*"]
+    },
+    {
+      "name": "Isat — N-FET",
+      "_note": "Saturation current, N-type planar transistors",
+      "patterns": ["Isat_RN*", "Isat_N*"]
+    },
+    {
+      "name": "Isat — P-FET",
+      "_note": "Saturation current, P-type planar transistors",
+      "patterns": ["Isat_RP*", "Isat_P*"]
+    },
+    {
+      "name": "Isat — GAA / Stacked",
+      "_note": "Saturation current, GAA and stacked-nanosheet devices",
+      "patterns": ["Isat_GAA*", "Isat_GBA*", "Isat_DAA*", "Isat_DBA*", "Isat_UAA*", "Isat_UBA*"]
+    },
+    {
+      "name": "Ioff — N-FET",
+      "_note": "Off-state leakage, N-type planar transistors",
+      "patterns": ["Ioff_RN*"]
+    },
+    {
+      "name": "Ioff — P-FET",
+      "_note": "Off-state leakage, P-type planar transistors",
+      "patterns": ["Ioff_RP*"]
+    },
+    {
+      "name": "Contact Resistance",
+      "_note": "Via / contact chain resistance measurements",
+      "patterns": ["Rc_*"]
+    },
+    {
+      "name": "Sheet Resistance",
+      "_note": "Metal and poly sheet resistance",
+      "patterns": ["Rs_*", "RDL_*"]
+    },
+    {
+      "name": "SPA (Single-Point Alignment)",
+      "_note": "Metal SPA measurements per layer",
+      "patterns": ["SPA_*"]
+    },
+    {
+      "name": "Gate-Oxide Breakdown",
+      "_note": "Gate-oxide breakdown voltage, NW and PW devices",
+      "patterns": ["VbdGO_*"]
+    },
+    {
+      "name": "Capacitor Breakdown",
+      "_note": "MIM / oxide capacitor breakdown voltage",
+      "patterns": ["VBD_*"]
+    },
+    {
+      "name": "Power (On)",
+      "_note": "Active power measurements per device type",
+      "patterns": ["Pwr_*"]
+    },
+    {
+      "name": "Power (Off)",
+      "_note": "Off-state leakage power per device type",
+      "patterns": ["Poff_*"]
+    },
+    {
+      "name": "Propagation Delay",
+      "_note": "Ring-oscillator propagation delay and oscillator speed per device type",
+      "patterns": ["Td_*", "Os_*"]
+    },
+    {
+      "name": "Substrate Leakage",
+      "_note": "Substrate / body leakage currents",
+      "patterns": ["Isb_*"]
+    }
+  ]
+}

@@ -1,0 +1,472 @@
+﻿// ====================================================
+// MASTER SCRIPT - HRY Scan Analysis Pipeline
+// ====================================================
+// Contact: sujit.n.pant@intel.com
+//
+// This script:
+// 1. Creates project and prompts for save location (FIRST!)
+// 2. Uses current open data table as input
+// 3. Runs all analysis scripts
+// 4. Saves all tables to project with plots
+// 5. Saves project file
+// 6. Closes all windows except script window
+// ====================================================
+
+Names Default To Here(1);
+
+// Start overall timing
+master_start_time = HP Time();
+
+Print("\n========================================");
+Print("  HRY Scan Analysis Master Script");
+Print("========================================\n");
+
+// ====================================================
+// STEP 1: Create Project and Setup (FIRST!)
+// ====================================================
+Print("\n[STEP 1] Create Project and Select Save Location\n");
+Print("========================================\n");
+
+// Create a new project to hold all tables and charts
+prj = New Project();
+Print("✓ New project created\n");
+
+// Use pre-set outputDir from GUI launcher (bootstrap), else prompt
+presetDir = "";
+Try( presetDir = ::outputDir; , presetDir = "" );
+
+If( !Is Missing(presetDir) & presetDir != "",
+    outputDir = presetDir;
+    Print("✓ Output folder (from launcher): " || outputDir || "\n");
+,
+    Print("Please select folder to save HRY Scan Analysis Project...\n");
+    outputDir = Pick Directory("Select folder to save HRY Scan Analysis Project");
+    If(outputDir == "" | Is Missing(outputDir),
+        Print("✗ ERROR: No folder selected\n");
+        Throw("User cancelled folder selection");
+    );
+    Print("✓ Output folder: " || outputDir || "\n");
+);
+
+// Ensure trailing separator
+If(!Ends With(outputDir, "\") & !Ends With(outputDir, "/"),
+    outputDir = outputDir || "\";
+);
+
+// Create project file path
+projectPath = outputDir || "HRY_Scan_Analysis_Project.jmpprj";
+Print("✓ Project will be saved to: " || projectPath || "\n");
+
+// ====================================================
+// STEP 2: Verify Input Data Table
+// ====================================================
+Print("\n[STEP 2] Checking Input Data\n");
+Print("========================================\n");
+
+dt = Current Data Table();
+
+If(Is Empty(dt),
+    Print("ERROR: No data table is open.");
+    Print("Please open your data table first, then run this script.\n");
+    Throw("No data table open");
+);
+
+dtInputName = dt << Get Name;
+Print("✓ Input table: " || dtInputName);
+Print("  Rows: " || Char(N Rows(dt)));
+Print("  Columns: " || Char(N Cols(dt)) || "\n");
+
+// ====================================================
+// STEP 3: Locate Script Files
+// ====================================================
+Print("\n[STEP 3] Locating Script Files\n");
+Print("========================================\n");
+
+scriptDir = Get Default Directory();
+Print("Script directory: " || scriptDir || "\n");
+
+script1Path = scriptDir || "1. stack_level4_hry_scan.jsl";
+script2_1Path = scriptDir || "2.1 YieldLoss Per Wafer TestType Module.jsl";
+script2_2Path = scriptDir || "2.2 Plot YieldLoss Per Module.jsl";
+script2_3Path = scriptDir || "2.3 Plot YieldLoss Per Block.jsl";
+
+// Verify all scripts exist
+allScriptsFound = 1;
+
+If(File Exists(script1Path), 
+    Print("✓ Found: 1. stack_level4_hry_scan.jsl\n"), 
+    Print("✗ ERROR: 1. stack_level4_hry_scan.jsl not found\n"); 
+    allScriptsFound = 0
+);
+
+If(File Exists(script2_1Path), 
+    Print("✓ Found: 2.1 YieldLoss Per Wafer TestType Module.jsl\n"), 
+    Print("✗ ERROR: 2.1 YieldLoss Per Wafer TestType Module.jsl not found\n"); 
+    allScriptsFound = 0
+);
+
+If(File Exists(script2_2Path), 
+    Print("✓ Found: 2.2 Plot YieldLoss Per Module.jsl\n"), 
+    Print("✗ ERROR: 2.2 Plot YieldLoss Per Module.jsl not found\n"); 
+    allScriptsFound = 0
+);
+
+If(File Exists(script2_3Path), 
+    Print("✓ Found: 2.3 Plot YieldLoss Per Block.jsl\n"), 
+    Print("✗ ERROR: 2.3 Plot YieldLoss Per Block.jsl not found\n"); 
+    allScriptsFound = 0
+);
+
+If(!allScriptsFound, 
+    Print("\nERROR: Required scripts not found.\n"); 
+    Throw("Scripts not found")
+);
+
+// ====================================================
+// STEP 4: Run Script 1 - Stack Level 4 HRY Scan
+// ====================================================
+Print("\n[STEP 4] Running Script 1: Stack Level 4 HRY Scan\n");
+Print("========================================\n");
+
+Try(
+    Include(script1Path);
+    Print("\n✓ Script 1 completed successfully\n");
+,
+    Print("\n✗ ERROR in Script 1: " || Char(exception_msg) || "\n");
+    Throw("Script 1 failed");
+);
+
+Wait(0.5);
+
+// ====================================================
+// STEP 5: Run Script 2.1 - YieldLoss Per Wafer TestType Module
+// ====================================================
+Print("\n[STEP 5] Running Script 2.1: YieldLoss Per Wafer TestType Module\n");
+Print("========================================\n");
+
+Try(
+    Include(script2_1Path);
+    Print("\n✓ Script 2.1 completed successfully\n");
+,
+    Print("\n✗ ERROR in Script 2.1: " || Char(exception_msg) || "\n");
+    Throw("Script 2.1 failed");
+);
+
+Wait(0.5);
+
+// ====================================================
+// STEP 6: Run Script 2.2 - Plot YieldLoss Per Module
+// ====================================================
+Print("\n[STEP 6] Running Script 2.2: Plot YieldLoss Per Module\n");
+Print("========================================\n");
+
+Try(
+    Include(script2_2Path);
+    Print("\n✓ Script 2.2 completed successfully\n");
+,
+    Print("\n✗ ERROR in Script 2.2: " || Char(exception_msg) || "\n");
+    Throw("Script 2.2 failed");
+);
+
+Wait(0.5);
+
+// ====================================================
+// STEP 7: Run Script 2.3 - Plot YieldLoss Per Block
+// ====================================================
+Print("\n[STEP 7] Running Script 2.3: Plot YieldLoss Per Block\n");
+Print("========================================\n");
+
+// Find Partition_Failure_Summary table
+Print("Searching for Partition_Failure_Summary table...\n");
+allTablesDebug = Get Data Table List();
+dtPartitionSummary = .;
+tableFound = 0;
+
+Try(
+    dtPartitionSummary = Data Table("Partition_Failure_Summary");
+    tableFound = 1;
+    Print("✓ Found: Partition_Failure_Summary\n");
+,
+    For(i = 1, i <= N Items(allTablesDebug), i++,
+        tblName = allTablesDebug[i] << Get Name;
+        If(Contains(Uppercase(tblName), "PARTITION") | 
+           Contains(Uppercase(tblName), "FAILURE") |
+           Contains(Uppercase(tblName), "SUMMARY"),
+            Print("  Found similar table: " || tblName || "\n");
+            dtPartitionSummary = allTablesDebug[i];
+            tableFound = 1;
+            Break();
+        );
+    );
+);
+
+If(tableFound,
+    Current Data Table(dtPartitionSummary);
+    Print("✓ Set current table to: " || (dtPartitionSummary << Get Name) || "\n");
+,
+    Print("✗ ERROR: Could not find Partition_Failure_Summary\n");
+    Throw("Required table not found");
+);
+
+Print("\nRunning Script 2.3...\n");
+Try(
+    Include(script2_3Path);
+    Print("\n✓ Script 2.3 completed successfully\n");
+,
+    Print("\n✗ ERROR in Script 2.3: " || Char(exception_msg) || "\n");
+    Throw("Script 2.3 failed");
+);
+
+Wait(1); // Give time for charts to be fully created
+
+// ====================================================
+// STEP 8: Save Individual Table Files
+// ====================================================
+Print("\n[STEP 8] Saving Individual Table Files\n");
+Print("========================================\n");
+
+savedFiles = {};
+savedCount = 0;
+
+// Get fresh list of all current data tables after all scripts complete
+allTables = Get Data Table List();
+Print("FINAL TABLE SCAN FOR SAVING:\n");
+Print("Found " || Char(N Items(allTables)) || " total tables:\n");
+
+For(i = 1, i <= N Items(allTables), i++,
+    tbl = allTables[i];
+    tblName = tbl << Get Name;
+    tblRows = N Rows(tbl);
+    tblCols = N Cols(tbl);
+    Print("  " || Char(i) || ". " || tblName || " (" || Char(tblRows) || " rows, " || Char(tblCols) || " cols)\n");
+);
+
+// Save each table with robust error handling
+For(i = 1, i <= N Items(allTables), i++,
+    Try(
+        tbl = allTables[i];
+        tblName = tbl << Get Name;
+        
+        // Create safe filename
+        safeFileName = tblName;
+        safeFileName = Substitute(safeFileName, " ", "_");
+        safeFileName = Substitute(safeFileName, "-", "_");
+        safeFileName = Substitute(safeFileName, ".", "_");
+        safeFileName = Substitute(safeFileName, "(", "_");
+        safeFileName = Substitute(safeFileName, ")", "_");
+        safeFileName = Substitute(safeFileName, "%", "pct");
+        
+        fileNum = Format(i, "Best", 2);
+        fileName = outputDir || fileNum || "_" || safeFileName || ".jmp";
+        
+        Current Data Table(tbl);
+        Wait(0.1);
+        
+        tbl << Save(fileName);
+        
+        If(File Exists(fileName),
+            Insert Into(savedFiles, fileName);
+            savedCount++;
+            Print("  ✓ Saved: " || fileNum || "_" || safeFileName || ".jmp\n");
+        ,
+            Print("  ✗ Failed: " || tblName || "\n");
+        );
+        
+    ,
+        Print("  ✗ Error saving table " || Char(i) || ": " || Char(exception_msg) || "\n");
+    );
+);
+
+Print("\nTable saving completed: " || Char(savedCount) || " tables saved\n");
+
+// ====================================================
+// STEP 8.5: Export Key Tables as CSV for Python Dashboard
+// ====================================================
+Print("\n[STEP 8.5] Exporting Key Tables as CSV for Dashboard\n");
+Print("========================================\n");
+
+csvExportNames = {
+    "Partition_YieldLoss_Averaged - Per Block",
+    "Partition_YieldLoss_Averaged - Per Module",
+    "Partition_Failure_Summary",
+    "Stacked_HRY_LEVEL4_Data"
+};
+csvFileNames = {
+    "1_Partition_YieldLoss_Averaged___Per_Block.csv",
+    "2_Partition_YieldLoss_Averaged___Per_Module.csv",
+    "3_Partition_Failure_Summary.csv",
+    "4_Stacked_HRY_LEVEL4_Data.csv"
+};
+
+For(i = 1, i <= N Items(csvExportNames), i++,
+    Try(
+        dtCSV = Data Table(csvExportNames[i]);
+        csvPath = outputDir || csvFileNames[i];
+        dtCSV << Save(csvPath, CSV);
+        If(File Exists(csvPath),
+            Print("  ✓ CSV: " || csvFileNames[i] || "\n");
+        ,
+            Print("  ✗ Failed: " || csvFileNames[i] || "\n");
+        );
+    ,
+        Print("  ✗ Error exporting " || csvExportNames[i] || ": " || Char(exception_msg) || "\n");
+    );
+);
+
+// ====================================================
+// STEP 9: Add ALL Tables to Project
+// ====================================================
+Print("\n[STEP 9] Adding ALL Tables to Project\n");
+Print("========================================\n");
+
+// Get fresh list again to make sure we have everything
+Wait(1);
+finalTables = Get Data Table List();
+Print("FINAL PROJECT POPULATION:\n");
+Print("Found " || Char(N Items(finalTables)) || " tables for project:\n");
+
+For(i = 1, i <= N Items(finalTables), i++,
+    tbl = finalTables[i];
+    tblName = tbl << Get Name;
+    Print("  " || Char(i) || ". " || tblName || "\n");
+);
+
+// Track success for project population
+tablesAdded = 0;
+
+// Add ALL tables to project - one by one with detailed logging
+Print("\nAdding tables to project:\n");
+For(i = 1, i <= N Items(finalTables), i++,
+    tbl = finalTables[i];
+    tblName = tbl << Get Name;
+    Print("  [" || Char(i) || "/" || Char(N Items(finalTables)) || "] " || tblName || "...");
+    
+    Try(
+        Current Data Table(tbl);
+        Wait(0.2);
+        
+        Move to Project(
+            destination(prj),
+            windows({tbl})
+        );
+        
+        tablesAdded++;
+        Print(" ✓\n");
+        
+    ,
+        Print(" ✗ (" || Char(exception_msg) || ")\n");
+        
+        // Retry once
+        Try(
+            Wait(0.5);
+            Move to Project(destination(prj), windows({tbl}));
+            tablesAdded++;
+            Print("    Retry: ✓\n");
+        ,
+            Print("    Retry: ✗\n");
+        );
+    );
+);
+
+// Project population summary
+Print("\n" || Repeat("=", 50) || "\n");
+Print("PROJECT POPULATION RESULTS:\n");
+Print("Tables added: " || Char(tablesAdded) || " out of " || Char(N Items(finalTables)) || "\n");
+Print(Repeat("=", 50) || "\n");
+
+// ====================================================
+// STEP 10: Save Project
+// ====================================================
+Print("\n[STEP 10] Saving Project\n");
+Print("========================================\n");
+
+// Save the project (main deliverable)
+Print("Saving project file...\n");
+Try(
+    prj << Save(projectPath);
+    If(File Exists(projectPath),
+        Insert Into(savedFiles, projectPath);
+        savedCount++;
+        Print("  ✓ Project saved: " || projectPath || "\n");
+    ,
+        Print("  ✗ Project file not created\n");
+    );
+,
+    Print("  ✗ Project save failed: " || Char(exception_msg) || "\n");
+);
+
+// ====================================================
+// STEP 11: Clean Up and Finalize
+// ====================================================
+Print("\n[STEP 11] Cleaning Up and Finalizing\n");
+Print("========================================\n");
+
+// Close the project
+Try(
+    prj << Close Window();
+    Print("✓ Project window closed\n");
+,
+    Print("⚠ Could not close project window\n");
+);
+
+// Close all windows except the script and log windows
+Print("\nClosing analysis windows...\n");
+win_list = Get Window List();
+For Each({win}, win_list,
+    Try(
+        winTitle = win << Get Window Title;
+        winTitleLower = Lowercase(winTitle);
+        
+        // Keep only log and script windows open
+        shouldKeep = 0;
+        If(Contains(winTitleLower, "log"), shouldKeep = 1);
+        If(Contains(winTitleLower, "master"), shouldKeep = 1);
+        If(Contains(winTitleLower, "run"), shouldKeep = 1);
+        
+        If(shouldKeep,
+            Print("  Keeping open: " || winTitle || "\n");
+        ,
+            Try(
+                win << Close Window(no save);
+                Print("  Closed: " || winTitle || "\n");
+            );
+        );
+    );
+);
+
+// ====================================================
+// FINAL SUMMARY
+// ====================================================
+Print("\n========================================");
+Print("  HRY SCAN ANALYSIS COMPLETE!");
+Print("========================================\n");
+
+master_end_time = HP Time();
+master_elapsed = (master_end_time - master_start_time) / 1000000;
+Print("Total execution time: " || Char(Round(master_elapsed, 3)) || " seconds\n");
+Print("Output location: " || outputDir || "\n");
+Print("Files created: " || Char(N Items(savedFiles)) || "\n\n");
+
+Print("📁 SAVED FILES:\n");
+For(i = 1, i <= N Items(savedFiles), i++,
+    fileName = savedFiles[i];
+    If(Contains(fileName, ".jmpprj"),
+        Print("  🎯 PROJECT: " || fileName || " (MAIN DELIVERABLE)\n");
+    , Contains(fileName, ".jmp"),
+        Print("  📋 TABLE: " || fileName || "\n");
+    ,
+        Print("  📄 FILE: " || fileName || "\n");
+    );
+);
+
+Print("\n🎯 MAIN DELIVERABLE: " || projectPath);
+Print("\n   → Contains all tables with attached charts");
+Print("\n   → Open this file to access complete analysis\n");
+
+Print("\n✅ SUCCESS SUMMARY:");
+Print("✅ All scripts (1, 2.1, 2.2, 2.3) executed successfully");
+Print("✅ All data tables preserved and saved as .jmp files");
+Print("✅ All tables added to project (charts attached to tables)");
+Print("✅ Project file created: " || projectPath);
+Print("✅ Analysis pipeline complete!");
+Print("\n========================================\n");

@@ -1,0 +1,517 @@
+﻿//contact - sujit.n.pant@intel.com
+
+// ============================================================
+// Partition Failure Summary - Optimized
+// - Counts unique dies (X, Y) per partition
+// - Columns: TestType - CHAIN, ATPG, TATPG
+// - FailDiesPerWafer = unique dies across all TestTypes
+// - YieldLoss (%) with 2 decimals
+// ============================================================
+
+Names Default To Here(1);
+
+// ---------------- Configuration ----------------
+TOTAL_ITEMS_PER_WAFER = 619;
+DEC_PLACES = 2;
+
+// Optional SLOT filter (off by default)
+USE_SLOT_FILTER = 0;     // set to 1 to enable
+SLOT_FILTER     = 1;     // slot number to keep when enabled
+
+// ---------------- 1) Validate source table ----------------
+dtStacked = Current Data Table();
+If(dtStacked == Empty(),
+	Throw("Error: No data table open. Run the stacking script first.");
+);
+
+// Required columns
+requiredCols = {"LOT", "WAFER", "SESSION_TYPE", "Block", "Module", "Partition", "TestType", "X", "Y"};
+For(i = 1, i <= N Items(requiredCols), i++,
+	Try(
+		Column(dtStacked, requiredCols[i]);
+	,
+		Throw("Error: Required column '" || requiredCols[i] || "' missing.");
+	);
+);
+
+Print("Source table validated: " || (dtStacked << Get Name));
+
+// ---------------- 2) Load Partition order (optional) ----------------
+scriptPath = "";
+Try(
+	// Get the directory of the currently running script
+	scriptPath = Get Script Path();
+	If(!Is Missing(scriptPath) & scriptPath != "",
+		// Extract directory from full script path
+		For(i = Length(scriptPath), i >= 1, i--,
+			If(Substr(scriptPath, i, 1) == "/" | Substr(scriptPath, i, 1) == "\",
+				scriptPath = Substr(scriptPath, 1, i);
+				Break();
+			);
+		);
+	,
+		scriptPath = Get Default Directory();
+	);
+,
+	scriptPath = Get Default Directory();
+);
+
+csvPath = scriptPath || "..\collateral\Partition_Info.csv";
+partitionOrder = {};
+
+If(File Exists(csvPath),
+	dtPartInfoTemp = Open(csvPath, "Text", Invisible);
+	Try(
+		rawParts = Column(dtPartInfoTemp, "Partition") << Get Values;
+		For(i = 1, i <= N Items(rawParts), i++,
+			If(!Is Missing(rawParts[i]),
+				Insert Into(partitionOrder, Trim(Char(rawParts[i])));
+			);
+		);
+		Print("Loaded " || Char(N Items(partitionOrder)) || " partitions from CSV");
+		Print("CSV Path: " || csvPath);
+	);
+	Close(dtPartInfoTemp, No Save);
+,
+	Print("Partition_Info.csv not found at: " || csvPath);
+);
+
+// ---------------- 3) Create base summary grouping ----------------
+Print("Creating summary by LOT, WAFER, SESSION_TYPE, Block, Module, Partition...");
+
+dtSummary = dtStacked << Summary(
+	Group(:LOT, :WAFER, :SESSION_TYPE, :Block, :Module, :Partition),
+	Output Table Name("Partition_Failure_Summary")
+);
+
+// Remove auto "N Rows" if created
+Try(dtSummary << Delete Columns("N Rows"));
+
+Print("Base summary created with " || Char(N Rows(dtSummary)) || " rows");
+
+// ---------------- 3.1) Remove empty first row if exists ----------------
+If(N Rows(dtSummary) > 0,
+	// Check if first row has all empty/missing key fields
+	firstLOT = Column(dtSummary, "LOT")[1];
+	firstWAFER = Column(dtSummary, "WAFER")[1];
+	firstSESSION = Column(dtSummary, "SESSION_TYPE")[1];
+	firstBlock = Column(dtSummary, "Block")[1];
+	firstModule = Column(dtSummary, "Module")[1];
+	
+	If(
+		(Is Missing(firstLOT) | firstLOT == "") &
+		Is Missing(firstWAFER) &
+		(Is Missing(firstSESSION) | firstSESSION == "") &
+		(Is Missing(firstBlock) | firstBlock == "") &
+		(Is Missing(firstModule) | firstModule == ""),
+		
+		dtSummary << Select Rows(1);
+		dtSummary << Delete Rows;
+		dtSummary << Clear Select;
+		Print("Removed empty first row");
+	);
+);
+
+// Optional SLOT filter
+hasSlot = 0; 
+Try(Column(dtSummary, "SLOT"); hasSlot = 1);
+If(USE_SLOT_FILTER & hasSlot,
+	dtSummary << Select Where(:SLOT != SLOT_FILTER);
+	dtSummary << Delete Rows;
+	dtSummary << Clear Select;
+	Print("Applied SLOT filter: keeping only SLOT = " || Char(SLOT_FILTER));
+);
+
+
+
+// ---------------- 3.5) Expand summary to include all partitions (even with 0 failures) ----------------
+Print("Expanding summary to include all partitions from Partition_Info.csv...");
+
+If(File Exists(csvPath) & N Items(partitionOrder) > 0,
+	// Unlock grouping columns so we can add rows
+	Column(dtSummary, "LOT") << Lock(0);
+	Column(dtSummary, "WAFER") << Lock(0);
+	Column(dtSummary, "SESSION_TYPE") << Lock(0);
+	Column(dtSummary, "Block") << Lock(0);
+	Column(dtSummary, "Module") << Lock(0);
+	Column(dtSummary, "Partition") << Lock(0);
+	
+	// Get all unique combinations of LOT, WAFER, SESSION_TYPE, Block, Module from summary
+	uniqueCombos = Associative Array();
+	For(r = 1, r <= N Rows(dtSummary), r++,
+		v1 = Column(dtSummary, "LOT")[r];
+		v2 = Column(dtSummary, "WAFER")[r];
+		v3 = Column(dtSummary, "SESSION_TYPE")[r];
+		v4 = Column(dtSummary, "Block")[r];
+		v5 = Column(dtSummary, "Module")[r];
+		
+		// Skip if any key field is missing
+		If(!Is Missing(v1) & !Is Missing(v2) & !Is Missing(v3) & !Is Missing(v4) & !Is Missing(v5),
+			s1 = Char(v1);
+			s2 = Char(v2);
+			s3 = Char(v3);
+			s4 = Char(v4);
+			s5 = Char(v5);
+			
+			comboKey = s1 || "|" || s2 || "|" || s3 || "|" || s4 || "|" || s5;
+			uniqueCombos[comboKey] = {v1, v2, v3, v4, v5};
+		);
+	);
+	
+	comboKeys = uniqueCombos << Get Keys;
+	Print("Found " || Char(N Items(comboKeys)) || " unique LOT/WAFER/SESSION_TYPE/Block/Module combinations");
+	
+	// For each combo, ensure all partitions exist
+	rowsToAdd = {};
+	For(i = 1, i <= N Items(comboKeys), i++,
+		comboVals = uniqueCombos[comboKeys[i]];
+		
+		// Check which partitions exist for this combo
+		For(p = 1, p <= N Items(partitionOrder), p++,
+			pname = partitionOrder[p];
+			
+			// Check if this partition already exists in summary
+			foundMatch = 0;
+			For(rcheck = 1, rcheck <= N Rows(dtSummary), rcheck++,
+				rv1 = Column(dtSummary, "LOT")[rcheck];
+				rv2 = Column(dtSummary, "WAFER")[rcheck];
+				rv3 = Column(dtSummary, "SESSION_TYPE")[rcheck];
+				rv4 = Column(dtSummary, "Block")[rcheck];
+				rv5 = Column(dtSummary, "Module")[rcheck];
+				rv6 = Column(dtSummary, "Partition")[rcheck];
+				
+				// Compare values
+				If(!Is Missing(rv1) & !Is Missing(rv2) & !Is Missing(rv3) & !Is Missing(rv4) & !Is Missing(rv5) & !Is Missing(rv6),
+					If(rv1 == comboVals[1] & rv2 == comboVals[2] & rv3 == comboVals[3] & rv4 == comboVals[4] & rv5 == comboVals[5] & Char(rv6) == pname,
+						foundMatch = 1;
+						Break();
+					);
+				);
+			);
+			
+			// If not found, add to list of rows to create
+			If(foundMatch == 0,
+				Insert Into(rowsToAdd, {comboVals[1], comboVals[2], comboVals[3], comboVals[4], comboVals[5], pname});
+			);
+		);
+	);
+	
+	// Add missing rows one at a time
+	If(N Items(rowsToAdd) > 0,
+		Print("Adding " || Char(N Items(rowsToAdd)) || " missing partition rows with 0 failures");
+		
+		For(addIdx = 1, addIdx <= N Items(rowsToAdd), addIdx++,
+			If(Mod(addIdx, 500) == 0, Print("  Added " || Char(addIdx) || " rows..."));
+			
+			rowData = rowsToAdd[addIdx];
+			
+			// Add one row at a time
+			dtSummary << Add Rows(1);
+			rowIdx = N Rows(dtSummary);
+			
+			// Assign values (convert missing to empty string for character columns)
+			Column(dtSummary, "LOT")[rowIdx] = If(Is Missing(rowData[1]), "", rowData[1]);
+			Column(dtSummary, "WAFER")[rowIdx] = rowData[2];
+			Column(dtSummary, "SESSION_TYPE")[rowIdx] = If(Is Missing(rowData[3]), "", rowData[3]);
+			Column(dtSummary, "Block")[rowIdx] = If(Is Missing(rowData[4]), "", rowData[4]);
+			Column(dtSummary, "Module")[rowIdx] = If(Is Missing(rowData[5]), "", rowData[5]);
+			Column(dtSummary, "Partition")[rowIdx] = If(Is Missing(rowData[6]), "", rowData[6]);
+		);
+		
+		Print("Added " || Char(N Items(rowsToAdd)) || " rows for partitions with 0 failures");
+	);
+,
+	Print("Skipping partition expansion - Partition_Info.csv not loaded");
+);
+
+// ---------------- 3.6) Remove rows with all empty/missing key fields ----------------
+Print("Removing rows with empty key fields...");
+
+dtSummary << Select Where(
+	(Is Missing(:LOT) | :LOT == "") &
+	Is Missing(:WAFER) &
+	(Is Missing(:SESSION_TYPE) | :SESSION_TYPE == "") &
+	(Is Missing(:Block) | :Block == "") &
+	(Is Missing(:Module) | :Module == "") &
+	(Is Missing(:Partition) | :Partition == "")
+);
+
+selectedRows = dtSummary << Get Selected Rows;
+If(N Items(selectedRows) > 0,
+	dtSummary << Delete Rows;
+	Print("Removed " || Char(N Items(selectedRows)) || " rows with empty key fields");
+,
+	Print("No empty rows found");
+);
+dtSummary << Clear Select;
+
+Print("Row count after cleanup: " || Char(N Rows(dtSummary)));
+
+// ---------------- 4) Add TestType columns and count unique dies ----------------
+Print("Counting unique dies (X, Y) per TestType...");
+
+dtSummary << New Column("TestType - CHAIN", Numeric, Continuous, Format("Best", 12));
+dtSummary << New Column("TestType - ATPG",  Numeric, Continuous, Format("Best", 12));
+dtSummary << New Column("TestType - TATPG", Numeric, Continuous, Format("Best", 12));
+
+// Count unique dies per group and TestType
+For(r = 1, r <= N Rows(dtSummary), r++,
+	If(Mod(r, 100) == 0, Print("  Processing row " || Char(r) || " of " || Char(N Rows(dtSummary))));
+	
+	lotVal       = Column(dtSummary, "LOT")[r];
+	waferVal     = Column(dtSummary, "WAFER")[r];
+	sessionTypeVal = Column(dtSummary, "SESSION_TYPE")[r];
+	partitionVal = Column(dtSummary, "Partition")[r];
+	moduleVal    = Column(dtSummary, "Module")[r];
+	blockVal     = Column(dtSummary, "Block")[r];
+
+	// Select matching rows in dtStacked
+	dtStacked << Clear Select;
+	dtStacked << Select Where(
+		:LOT == lotVal &
+		:WAFER == waferVal &
+		:SESSION_TYPE == sessionTypeVal &
+		:Partition == partitionVal &
+		:Module == moduleVal &
+		:Block == blockVal
+	);
+	idxs = dtStacked << Get Selected Rows;
+
+	// Track unique X,Y coordinates per TestType
+	uniqueCHAIN = Associative Array();
+	uniqueATPG  = Associative Array();
+	uniqueTATPG = Associative Array();
+
+	For(k = 1, k <= N Items(idxs), k++,
+		idx = idxs[k];
+		xVal = Column(dtStacked, "X")[idx];
+		yVal = Column(dtStacked, "Y")[idx];
+		
+		If(!Is Missing(xVal) & !Is Missing(yVal),
+			dieKey = Char(xVal) || "_" || Char(yVal);
+			tval = Char(Column(dtStacked, "TestType")[idx]);
+			tt = Uppercase(Trim(tval));
+			
+			// Categorize by TestType (check TATPG first)
+			If(Contains(tt, "TATPG") > 0,
+				uniqueTATPG[dieKey] = 1;
+			,
+				If(Contains(tt, "CHAIN") > 0,
+					uniqueCHAIN[dieKey] = 1;
+				,
+					If(Contains(tt, "ATPG") > 0,
+						uniqueATPG[dieKey] = 1;
+					);
+				);
+			);
+		);
+	);
+
+	Column(dtSummary, "TestType - CHAIN")[r] = N Items(uniqueCHAIN << Get Keys);
+	Column(dtSummary, "TestType - ATPG")[r]  = N Items(uniqueATPG << Get Keys);
+	Column(dtSummary, "TestType - TATPG")[r] = N Items(uniqueTATPG << Get Keys);
+);
+
+dtStacked << Clear Select;
+Print("Unique die counting complete");
+
+// ---------------- 5) TotalTestTypeFailPerWafer and FailDiesPerWafer ----------------
+dtSummary << New Column("TotalTestTypeFailPerWafer", Numeric, Continuous, Format("Best", 12),
+	Formula(:Name("TestType - CHAIN") + :Name("TestType - ATPG") + :Name("TestType - TATPG"))
+);
+Column(dtSummary, "TotalTestTypeFailPerWafer") << Eval Formula;
+
+dtSummary << New Column("FailDiesPerWafer", Numeric, Continuous, Format("Best", 12));
+
+Print("Calculating FailDiesPerWafer (unique dies across all TestTypes)...");
+For(r = 1, r <= N Rows(dtSummary), r++,
+	If(Mod(r, 100) == 0, Print("  Processing row " || Char(r) || " of " || Char(N Rows(dtSummary))));
+	
+	lotVal       = Column(dtSummary, "LOT")[r];
+	waferVal     = Column(dtSummary, "WAFER")[r];
+	sessionTypeVal = Column(dtSummary, "SESSION_TYPE")[r];
+	partitionVal = Column(dtSummary, "Partition")[r];
+	moduleVal    = Column(dtSummary, "Module")[r];
+	blockVal     = Column(dtSummary, "Block")[r];
+
+	dtStacked << Clear Select;
+	dtStacked << Select Where(
+		:LOT == lotVal &
+		:WAFER == waferVal &
+		:SESSION_TYPE == sessionTypeVal &
+		:Partition == partitionVal &
+		:Module == moduleVal &
+		:Block == blockVal
+	);
+	idxs = dtStacked << Get Selected Rows;
+
+	allUniqueDies = Associative Array();
+	For(k = 1, k <= N Items(idxs), k++,
+		idx = idxs[k];
+		xVal = Column(dtStacked, "X")[idx];
+		yVal = Column(dtStacked, "Y")[idx];
+		
+		If(!Is Missing(xVal) & !Is Missing(yVal),
+			dieKey = Char(xVal) || "_" || Char(yVal);
+			allUniqueDies[dieKey] = 1;
+		);
+	);
+	
+	Column(dtSummary, "FailDiesPerWafer")[r] = N Items(allUniqueDies << Get Keys);
+);
+
+dtStacked << Clear Select;
+Print("FailDiesPerWafer calculated");
+
+// ---------------- 6) YieldLoss (%) ----------------
+dtSummary << New Column("YieldLoss (%)", Numeric, Continuous,
+	Format("Fixed Dec", 12, DEC_PLACES),
+	Formula(:FailDiesPerWafer / TOTAL_ITEMS_PER_WAFER * 100)
+);
+Column(dtSummary, "YieldLoss (%)") << Eval Formula;
+
+// ---------------- 7) Merge Partition_Info.csv ----------------
+If(File Exists(csvPath),
+	Print("Merging Partition_Info.csv data...");
+	dtPartInfo = Open(csvPath, "Text", Invisible);
+	partInfoCols = dtPartInfo << Get Column Names("String");
+
+	colsToMerge = {};
+	For(i = 1, i <= N Items(partInfoCols), i++,
+		If(partInfoCols[i] != "Partition" & partInfoCols[i] != "Block",
+			Insert Into(colsToMerge, partInfoCols[i]);
+		);
+	);
+	
+	If(N Items(colsToMerge) > 0,
+		dtSummary << Update(
+			With(dtPartInfo),
+			Match Columns(:Partition = :Partition),
+			Add Columns from Update table(Eval(colsToMerge))
+		);
+		Print("Merged columns: " || Char(colsToMerge));
+	);
+	Close(dtPartInfo, No Save);
+);
+
+// ---------------- 8) Build sort indices ----------------
+Print("Building sort indices...");
+
+dtSummary << New Column("__Partition_Sort__", Numeric, Continuous);
+dtSummary << New Column("__Module_Sort__", Numeric, Continuous);
+dtSummary << New Column("__Wafer_Sort__", Numeric, Continuous);
+
+orderMap = Associative Array();
+If(N Items(partitionOrder) > 0,
+	For(i = 1, i <= N Items(partitionOrder), i++,
+		orderMap[Uppercase(Trim(Char(partitionOrder[i])))] = i;
+	);
+);
+
+hasSlot = 0; 
+Try(Column(dtSummary, "SLOT"); hasSlot = 1);
+
+For(r = 1, r <= N Rows(dtSummary), r++,
+	// Partition order
+	pval = Column(dtSummary, "Partition")[r];
+	If(Is Missing(pval) | pval == "",
+		Column(dtSummary, "__Partition_Sort__")[r] = 999999;
+	,
+		pkey = Uppercase(Trim(Char(pval)));
+		If(Contains(orderMap, pkey),
+			Column(dtSummary, "__Partition_Sort__")[r] = orderMap[pkey];
+		,
+			Column(dtSummary, "__Partition_Sort__")[r] = 999999;
+		);
+	);
+
+	// Module numeric index
+	mval = Column(dtSummary, "Module")[r];
+	mix = 999999;
+	If(!Is Missing(mval) & mval != "",
+		numStr = "";
+		For(k = Length(mval), k >= 1, k--,
+			ch = Substr(mval, k, 1);
+			If(Contains("0123456789", ch) > 0,
+				numStr = ch || numStr,
+				If(numStr != "", Break())
+			);
+		);
+		If(numStr != "", mix = Num(numStr));
+	);
+	Column(dtSummary, "__Module_Sort__")[r] = mix;
+
+	// Wafer index
+	wix = 999999;
+	If(hasSlot,
+		Try(wix = Num(Column(dtSummary, "SLOT")[r]));
+	,
+		wval = Column(dtSummary, "WAFER")[r];
+		If(!Is Missing(wval),
+			wvalStr = Char(wval);
+			If(wvalStr != "",
+				wNum = "";
+				For(k = 1, k <= Length(wvalStr), k++,
+					If(Contains("0123456789", Substr(wvalStr, k, 1)) > 0, 
+						wNum = wNum || Substr(wvalStr, k, 1)
+					);
+				);
+				If(wNum != "", wix = Num(wNum));
+			);
+		);
+	);
+	Column(dtSummary, "__Wafer_Sort__")[r] = wix;
+);
+
+// ---------------- 9) Sort table ----------------
+Print("Sorting table...");
+dtSummary << Sort(
+	By(:LOT, :__Wafer_Sort__, :Block, :__Module_Sort__, :Module, :__Partition_Sort__),
+	Order(Ascending, Ascending, Ascending, Ascending, Ascending, Ascending),
+	Replace Table
+);
+dtSummary << Delete Columns({"__Partition_Sort__", "__Module_Sort__", "__Wafer_Sort__"});
+
+// ---------------- 10) Reorder columns ----------------
+Print("Reordering columns...");
+currentCols = dtSummary << Get Column Names("String");
+desiredOrder = {"LOT", "WAFER", "SESSION_TYPE", "Block", "Module", "Partition", 
+                "TestType - CHAIN", "TestType - ATPG", "TestType - TATPG", 
+                "TotalTestTypeFailPerWafer", "FailDiesPerWafer", "YieldLoss (%)"};
+
+For(i = 1, i <= N Items(currentCols), i++,
+	If(!Contains(desiredOrder, currentCols[i]),
+		Insert Into(desiredOrder, currentCols[i]);
+	);
+);
+dtSummary << Move Selected Columns(desiredOrder, To First);
+
+// ---------------- 11) Format Target YieldLoss (%) ----------------
+Try(
+	If(Column(dtSummary, "Target YieldLoss (%)") != Empty(),
+		// Multiply by 100 to convert to percentage display
+		Column(dtSummary, "Target YieldLoss (%)") << Set Each Value(
+			Column(dtSummary, "Target YieldLoss (%)")[] * 100
+		);
+		// Format as Fixed Decimal instead of Percent
+		Column(dtSummary, "Target YieldLoss (%)") << Format("Fixed Dec", 12, DEC_PLACES);
+		Print("Applied Fixed Decimal format to Target YieldLoss (%)");
+	);
+);
+
+// ---------------- 12) Final report ----------------
+Print("=================================================");
+Print("Partition_Failure_Summary created successfully!");
+Print("Table: " || (dtSummary << Get Name));
+Print("Rows: " || Char(N Rows(dtSummary)));
+Print("Columns: " || Char(dtSummary << Get Column Names("String")));
+Print("=================================================");
+Print("Notes:");
+Print("  • Includes ALL partitions from Partition_Info.csv (even with 0 failures)");
+Print("  • Counts UNIQUE dies (X, Y) per partition and TestType");
+Print("  • TestType columns show unique die counts per TestType");
+Print("  • TotalTestTypeFailPerWafer = sum of three TestType columns");
+Print("  • FailDiesPerWafer = unique dies that failed ANY TestType (no double-counting)");
+Print("  • YieldLoss (%) based on FailDiesPerWafer / " || Char(TOTAL_ITEMS_PER_WAFER));
+Print("  • Target YieldLoss (%) uses Percent format with " || Char(DEC_PLACES) || " decimals");
+Print("=================================================");

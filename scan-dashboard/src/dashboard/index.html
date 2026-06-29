@@ -1,0 +1,2188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>SCAN HRY Dashboard</title>
+<script src="plotly-2.32.0.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:9.75px;
+     display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.page-hdr{background:#1f3a50;color:#fff;padding:4px 14px;flex-shrink:0;display:flex;align-items:center;gap:12px}
+.page-hdr h1{font-size:9px;font-weight:bold;white-space:nowrap}
+.page-hdr .sub{font-size:7.5px;color:#aed6f1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.info-bar{display:flex;flex-wrap:wrap;gap:6px;padding:3px 14px;background:#2c3e50;color:#ecf0f1;font-size:8.25px;border-bottom:2px solid #1a252f;flex-shrink:0}
+.info-bar b{color:#f1c40f}
+.ib-sep{color:#4a6a8a;margin:0 2px}
+.tabs{display:flex;align-items:center;background:#2c3e50;padding:0 14px;border-bottom:2px solid #1a252f;flex-shrink:0}
+.tab-btn{padding:6px 16px;border:none;background:transparent;color:#95a5a6;cursor:pointer;font-size:9px;font-weight:bold;border-bottom:3px solid transparent;transition:color .15s;margin-bottom:-2px}
+.tab-btn:hover{color:#bdc3c7;background:rgba(255,255,255,.05)}
+.tab-btn.active{color:#3498db;border-bottom-color:#3498db}
+/* ---- Left sidebar ---- */
+.wfr-panel{width:280px;min-width:160px;max-width:600px;flex-shrink:0;display:flex;flex-direction:column;border-right:none;background:#f4f7fa;overflow:hidden}
+#resize-handle{width:5px;background:#b3c6de;cursor:col-resize;flex-shrink:0;transition:background .1s;z-index:10}
+#resize-handle:hover,#resize-handle.dragging{background:#0071C5}
+.wfr-panel.collapsed>.wfr-box>#xf-bar,.wfr-panel.collapsed>.wfr-box>#grp-bar,.wfr-panel.collapsed>.wfr-box>.wfr-tbl-wrap{display:none}
+.wfr-box{margin:4px 6px;border-radius:6px;flex:1;box-shadow:0 1px 4px rgba(0,0,0,.12);background:#fff;overflow:hidden;display:flex;flex-direction:column}
+.wfr-h-handle{height:5px;cursor:ns-resize;background:#b3c6de;flex-shrink:0;transition:background .1s;user-select:none}
+.wfr-h-handle:hover,.wfr-h-handle.dragging{background:#0071C5}
+.wfr-hdr{display:flex;justify-content:space-between;align-items:center;padding:3px 10px;background:#1f3a50;color:#fff;font-size:8.25px;font-weight:bold;gap:4px}
+.wfr-hdr .cb{background:none;border:1px solid #aed6f1;color:#aed6f1;font-size:8.25px;padding:2px 6px;cursor:pointer;border-radius:3px;margin-left:3px}
+.wfr-hdr .cb:hover{background:#2e86c1;color:#fff;border-color:#2e86c1}
+.wfr-hdr .collapse-btn{background:none;border:1px solid #aed6f1;color:#aed6f1;font-size:8.25px;padding:1px 5px;cursor:pointer;border-radius:3px;margin-left:4px}
+.wfr-hdr .collapse-btn:hover{background:#2e86c1;color:#fff;border-color:#2e86c1}
+.row-info{color:#5dade2;margin-left:8px;font-weight:normal}
+/* ---- Filter chips / hierarchy tree ---- */
+#xf-bar{background:#f5f7fa;border-bottom:1px solid #dde;padding:4px 6px 4px 6px;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;height:220px;min-height:60px}
+#grp-bar{background:#e8edf5;border-bottom:1px solid #b3c6de;padding:2px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:3px 0;flex-shrink:0}
+.grp-lbl{font-size:8.25px;font-weight:bold;color:#1a5276;margin-right:6px}
+.grp-opt{font-size:8.25px;cursor:pointer;color:#1a252f;display:flex;align-items:center;gap:2px;padding:1px 6px;border-radius:10px;margin-right:2px;transition:background .1s}
+.grp-opt:hover{background:#d0e4f5}
+.grp-opt input[type=checkbox]{accent-color:#0071C5;cursor:pointer;width:10px;height:10px}
+/* ---- Hierarchical filter tree ---- */
+.xf-tree{font-size:8.25px;user-select:none;flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.xf-tree-hdr{display:flex;align-items:center;gap:4px;padding:1px 0;justify-content:space-between;flex-shrink:0}
+.xf-tree-acts{display:flex;gap:3px}
+.xf-tree-acts button{font-size:7.5px;padding:0px 5px;border:1px solid #aed6f1;border-radius:3px;background:none;color:#1a5276;cursor:pointer;line-height:1.5}
+.xf-tree-acts button:hover{background:#0071C5;color:#fff;border-color:#0071C5}
+/* 3-column layout */
+.xft-cols-wrap{display:flex;flex-direction:row;align-items:stretch;gap:0;overflow:hidden;flex:1;min-height:0}
+.xft-col{flex:1;min-width:80px;display:flex;flex-direction:column;overflow:hidden}
+.xft-col-body{flex:1;overflow-y:auto;min-height:0}
+.xft-col-handle{width:5px;cursor:ew-resize;background:#c5d8ec;flex-shrink:0;transition:background .12s;align-self:stretch;border-left:1px solid #aed6f1}
+.xft-col-handle:hover,.xft-col-handle.dragging{background:#2e86c1}
+/* Module panel */
+.xft-mod{border:1px solid #4a8acc;border-radius:4px;overflow:hidden;flex:1;display:flex;flex-direction:column}
+.xft-mod>summary{display:flex;align-items:center;gap:4px;padding:3px 5px;background:#1f3a50;cursor:pointer;font-weight:bold;color:#e8f4ff;font-size:8.5px;list-style:none;user-select:none}
+.xft-mod>summary::-webkit-details-marker{display:none}
+.xft-mod>summary::before{content:'\25B6';font-size:7px;color:#5dade2;transition:transform .15s;flex-shrink:0}
+.xft-mod[open]>summary::before{transform:rotate(90deg)}
+.xft-mod-acts{margin-left:auto;display:flex;gap:2px;flex-shrink:0}
+.xft-mod-acts button{font-size:7.5px;padding:0px 5px;border:1px solid #5dade2;border-radius:3px;background:none;color:#aed6f1;cursor:pointer;line-height:1.6}
+.xft-mod-acts button:hover{background:#2e86c1;color:#fff;border-color:#2e86c1}
+.xft-mod-popup-btn{font-size:10px;padding:0 3px;background:none;border:none;color:#5dade2;cursor:pointer;line-height:1;flex-shrink:0;opacity:.8}
+.xft-mod-popup-btn:hover{color:#fff;opacity:1}
+.xft-mod-body{padding:4px 5px;background:#fafcff;display:flex;flex-direction:column;gap:1px;overflow-y:auto}
+/* Modal popup */
+#xft-modal{display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);align-items:center;justify-content:center}
+#xft-modal.open{display:flex}
+#xft-modal-inner{background:#fff;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.4);display:flex;flex-direction:column;min-width:340px;max-width:680px;width:50vw;max-height:85vh;overflow:hidden}
+#xft-modal-hdr{background:#1f3a50;padding:6px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+#xft-modal-title{color:#e8f4ff;font-weight:bold;font-size:10px;flex:1}
+#xft-modal-close{background:none;border:1px solid #5dade2;color:#aed6f1;font-size:10px;padding:2px 8px;border-radius:4px;cursor:pointer}
+#xft-modal-close:hover{background:#c0392b;border-color:#c0392b;color:#fff}
+#xft-modal-body{overflow-y:auto;flex:1;padding:8px 10px}
+#xft-modal-body .xft-mod{max-height:none;border:none;border-radius:0}
+#xft-modal-body .xft-col-body{max-height:none;overflow:visible}
+#xft-modal-footer{padding:6px 12px;background:#f0f4f8;border-top:1px solid #dde;display:flex;gap:6px;flex-shrink:0;justify-content:flex-end}
+#xft-modal-footer button{font-size:8.5px;padding:2px 10px;border:1px solid #aed6f1;border-radius:4px;background:none;color:#1a5276;cursor:pointer}
+#xft-modal-footer button:hover{background:#0071C5;color:#fff;border-color:#0071C5}
+/* Block level */
+.xft-blk>summary{display:flex;align-items:center;gap:4px;padding:1px 4px;background:#e8f4fb;border-radius:3px;cursor:pointer;color:#154360;font-size:8px;list-style:none;border:1px solid #cce0f0;margin-bottom:1px}
+.xft-blk>summary::-webkit-details-marker{display:none}
+.xft-blk>summary::before{content:'\25B6';font-size:6px;color:#5dade2;transition:transform .15s;flex-shrink:0}
+.xft-blk[open]>summary::before{transform:rotate(90deg)}
+.xft-blk-body{padding:1px 2px 2px 12px;display:flex;flex-direction:column;gap:1px}
+/* Region level — details with IP children */
+.xft-reg-dd{overflow:hidden;margin:1px 0}
+.xft-reg-sum{display:flex;align-items:center;gap:3px;padding:1px 3px;background:#f0f6ff;border-radius:3px;cursor:pointer;color:#1a3a52;font-size:7.75px;list-style:none;border:1px solid #cce0f0;margin-bottom:1px;user-select:none}
+.xft-reg-sum::-webkit-details-marker{display:none}
+.xft-reg-sum::before{content:'\25B6';font-size:5px;color:#5dade2;transition:transform .15s;flex-shrink:0}
+.xft-reg-dd[open]>.xft-reg-sum::before{transform:rotate(90deg)}
+.xft-reg-sum:hover{background:#e2eeff;border-color:#85c1e9}
+/* Region level - inline checkbox labels */
+.xft-reg-lbl{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border:1px solid #d5b8e0;border-radius:10px;background:#f8f2ff;font-size:7.75px;cursor:pointer;color:#4a235a;user-select:none;margin:1px 2px 1px 0}
+.xft-reg-lbl:hover{background:#ead6f5;border-color:#8e44ad}
+.xft-reg-lbl input{accent-color:#8e44ad;cursor:pointer;width:10px;height:10px;flex-shrink:0}
+/* IP dropdown per module */
+.xft-ip-dd{border:1px solid #b3c6de;border-radius:3px;margin-bottom:3px;overflow:hidden}
+.xft-ip-inline{border:1px solid #b3c6de;border-radius:3px;margin-bottom:3px;overflow:hidden}
+.xft-ip-inline-hdr{display:flex;align-items:center;gap:4px;padding:2px 5px;background:#e8f0fa;font-size:8px;color:#1a3a52;border-bottom:1px solid #b3c6de}
+.xft-ip-dd>summary{display:flex;align-items:center;gap:4px;padding:2px 5px;background:#e8f0fa;cursor:pointer;font-size:8px;list-style:none;color:#1a3a52;border-bottom:1px solid #b3c6de}.xft-ip-dd>summary::-webkit-details-marker{display:none}
+.xft-ip-dd>summary::before{content:'\25B6';font-size:6px;color:#0071C5;transition:transform .15s;flex-shrink:0}
+.xft-ip-dd[open]>summary::before{transform:rotate(90deg)}
+.xft-mip-list{padding:3px 5px;display:flex;flex-direction:row;flex-wrap:wrap;gap:2px 4px;background:#f5f8ff}
+.xft-mip-item{display:inline-flex;align-items:center;gap:3px;padding:1px 5px;border:1px solid #85c1e9;border-radius:10px;background:#fff;font-size:7.75px;cursor:pointer;color:#1a3a52;user-select:none;transition:background .1s}
+.xft-mip-item:hover{background:#d0e8ff;border-color:#0071C5}
+.xft-mip-item input{accent-color:#0071C5;cursor:pointer;width:9px;height:9px;flex-shrink:0}
+/* Wafer map extra filter bar */
+.wm-fbar{display:flex;align-items:center;gap:6px;padding:3px 12px;background:#0c1520;border-bottom:1px solid #1e3050;flex-shrink:0;flex-wrap:wrap}
+.wm-fi{font-size:8px;padding:2px 5px;border:1px solid #2a4060;border-radius:3px;background:#0d1a2a;color:#8ab4d4;width:65px;outline:none}.wm-fi:focus{border-color:#0071C5}
+.wm-fdd-wrap{position:relative;display:inline-block}
+.wm-fdd-btn{font-size:8px;padding:1px 8px;border:1px solid #2a4060;border-radius:3px;background:#0d1a2a;color:#8ab4d4;cursor:pointer;white-space:nowrap}.wm-fdd-btn:hover,.wm-fdd-btn.act{border-color:#0071C5;color:#5dade2}
+.wm-fdd-panel{display:none;position:absolute;left:0;top:calc(100% + 3px);z-index:300;background:#111b2a;border:1px solid #2a4060;border-radius:4px;padding:4px;min-width:110px;max-height:170px;overflow-y:auto}.wm-fdd-panel.open{display:block}
+.wm-fdd-item{display:flex;align-items:center;gap:4px;padding:2px 3px;font-size:8px;color:#8ab4d4;cursor:pointer;white-space:nowrap}
+.wm-fdd-item:hover{background:#1a2e42}.wm-fdd-item input{accent-color:#0071C5;width:10px;height:10px;cursor:pointer;flex-shrink:0}
+.wm-fdd-reg-hdr{display:flex;align-items:center;gap:3px;padding:2px 3px;font-size:7.5px;color:#8ab4d4;font-weight:bold;border-top:1px solid #1a2a40;margin-top:2px}
+.wm-fdd-reg-hdr:hover{background:#162230}
+.wm-fdd-reg-hdr input{accent-color:#5dade2;cursor:pointer;width:10px;height:10px;flex-shrink:0}
+/* Wafer map color mode bar */
+.wm-cbar{display:flex;align-items:center;gap:6px;padding:3px 12px;background:#0a1018;border-top:1px solid #1e3050;flex-shrink:0;flex-wrap:wrap}
+.wm-cmode-lbl{display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;border:1.5px solid #2a4060;cursor:pointer;color:#8ab4d4;font-size:9px;font-weight:600;user-select:none}
+.wm-cmode-lbl:hover,.wm-cmode-lbl.active{border-color:#5dade2;color:#e8f4ff;background:#0d2840}
+.wm-cmode-lbl input{accent-color:#5dade2;cursor:pointer;width:11px;height:11px;margin:0}
+/* Parent checkboxes (tri-state visual) */
+.xft-chk{accent-color:#0071C5;cursor:pointer;width:10px;height:10px;flex-shrink:0}
+.xf-row{display:flex;flex-wrap:wrap;align-items:center;gap:3px;margin:1px 0}
+.xf-lbl{font-size:8.25px;font-weight:bold;color:#1a5276;min-width:50px;flex-shrink:0}
+.xf-chip{padding:1px 6px;border:1px solid #85c1e9;border-radius:12px;background:#fff;font-size:8.25px;cursor:pointer;color:#1a3a52;transition:background .1s;user-select:none}
+.xf-chip:hover{background:#d0e8ff;border-color:#0071C5}
+.xf-chip.sel{background:#0071C5;color:#fff;border-color:#0071C5}
+/* ---- Partition / IP dropdown (legacy, unused but kept for safety) ---- */
+.part-dd-wrap{position:relative;display:inline-block}
+.part-dd-btn{font-size:8.25px;padding:2px 8px;border:1px solid #85c1e9;border-radius:12px;background:#fff;color:#1a3a52;cursor:pointer;white-space:nowrap;line-height:1.4}
+.part-dd-btn:hover,.part-dd-btn.open{background:#0071C5;color:#fff;border-color:#0071C5}
+.part-dd-panel{display:none;position:absolute;left:0;top:calc(100% + 3px);z-index:200;background:#fff;border:1px solid #85c1e9;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);padding:6px;min-width:170px;max-height:260px;flex-direction:column;gap:3px}
+.part-dd-panel.open{display:flex}
+.part-dd-search{font-size:8.25px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;width:100%;box-sizing:border-box;outline:none}
+.part-dd-acts{display:flex;gap:4px;flex-shrink:0}
+.part-dd-acts button{font-size:7.5px;padding:1px 6px;border:1px solid #aed6f1;border-radius:3px;background:none;color:#1a5276;cursor:pointer}
+.part-dd-acts button:hover{background:#0071C5;color:#fff;border-color:#0071C5}
+.part-dd-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:1px}
+.part-dd-item{display:flex;align-items:center;gap:5px;padding:2px 3px;border-radius:3px;cursor:pointer;font-size:8.25px;color:#1a252f;user-select:none}
+.part-dd-item:hover{background:#d0e8ff}
+.part-dd-item input{accent-color:#0071C5;cursor:pointer;flex-shrink:0;width:11px;height:11px}
+/* ---- Lot/wafer table ---- */
+.wfr-tbl-wrap{flex:1;overflow-y:auto;overflow-x:auto;min-height:60px}
+.wfr-tbl{border-collapse:collapse;width:auto;font-size:9.1px;white-space:nowrap}
+.wfr-tbl th{background:#1f3a50;color:#fff;padding:3px 10px;text-align:left;position:sticky;top:0;z-index:2;white-space:nowrap}
+.wfr-tbl td{padding:2px 10px;border-bottom:1px solid #d0dce8;cursor:pointer;white-space:nowrap;color:#111}
+.wfr-tbl .num{text-align:right}
+.wfr-tbl tbody tr.fr:nth-child(even) td{background:#f0f6ff}
+.wfr-tbl .fr:hover td{background:#d0e8ff!important}
+.wfr-tbl .frs td{background:#b3d7f5!important;font-weight:bold;color:#0c2d48!important}
+.wfr-tbl .frs:hover td{background:#85bfe8!important}
+.lot-hdr-row td{background:#daeaf8!important;font-weight:bold;cursor:pointer;border-bottom:1px solid #a8c4db}
+.lot-hdr-row:hover td{background:#c8def4!important}
+.wfr-filter-row th{background:#16304a;padding:2px 4px}
+.lwtf-inp{font-size:8px;padding:1px 4px;border:1px solid #b3c6de;border-radius:10px;width:100%;box-sizing:border-box;outline:none;background:#fff;color:#1a252f}
+.lwtf-inp:focus{border-color:#0071C5;box-shadow:0 0 0 1px #0071C5}
+.wfr-tbl .fr.lw-hidden{display:none}
+.col-rsz{position:absolute;right:0;top:0;width:5px;height:100%;cursor:col-resize;user-select:none;z-index:3;background:transparent}
+.col-rsz:hover,.col-rsz.dragging{background:rgba(255,255,255,0.35)}
+.col-rsz{position:absolute;right:0;top:0;width:5px;height:100%;cursor:col-resize;user-select:none;z-index:3;background:transparent}
+.col-rsz:hover,.col-rsz.dragging{background:rgba(255,255,255,0.35)}
+/* ---- Tab content ---- */
+.tab-content{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.tab-panel{display:none;flex-direction:column;overflow-y:auto;padding:10px 14px;gap:10px;flex:1;min-height:0}
+.tab-panel.active{display:flex}
+.card-panel{background:#fff;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.10);overflow:hidden;flex-shrink:0}
+.tbl-card{display:block}
+.tbl-card.hidden{display:none}
+.plot-card .card-body{min-height:340px;height:560px;resize:vertical;overflow:hidden;padding:4px 6px;box-sizing:border-box;display:flex;flex-direction:column}
+.plot-card .pldiv{flex:1;min-height:0;width:100%}
+.card-hdr{background:#2c3e50;color:#ecf0f1;padding:4px 10px;font-size:9px;font-weight:bold;display:flex;align-items:center;gap:8px}
+.card-hdr .rcnt{color:#95a5a6;font-weight:normal;font-size:8.25px}
+.card-hdr .chk-tgt{display:flex;align-items:center;gap:5px;font-size:8.25px;color:#aed6f1;margin-left:auto;cursor:pointer}
+.card-hdr .chk-tgt input{accent-color:#3498db;cursor:pointer}
+.card-body{padding:6px 10px;overflow-x:auto}
+.tscroll{overflow:auto;height:230px;min-height:80px;resize:vertical;display:block;max-width:100%}
+table.dt{border-collapse:collapse;font-size:9px;white-space:nowrap;width:auto}
+table.dt thead th{background:#34495e;color:#ecf0f1;padding:3px 8px;text-align:left;position:sticky;top:0;z-index:1;cursor:pointer;font-size:8.25px;font-weight:600;white-space:nowrap}
+table.dt thead th:hover{background:#2c3e50}
+table.dt tbody tr:nth-child(even){background:#f4f8ff}
+table.dt tbody tr:hover{background:#eaf4ff}
+table.dt tbody td{padding:2px 8px;color:#333;text-align:left;font-size:8.25px}
+table.dt td.n{text-align:right;font-variant-numeric:tabular-nums}
+.nodata{padding:28px;text-align:center;color:#aaa;font-style:italic}
+.sarr.asc::after{content:" \25B2";opacity:.5;font-size:.9em}
+.sarr.desc::after{content:" \25BC";opacity:.5;font-size:.9em}
+/* ---- SVG Wafer Map panes ---- */
+.rv-vhandle{width:5px;cursor:ew-resize;background:#1e3050;flex-shrink:0;transition:background .12s;align-self:stretch}
+.rv-vhandle:hover,.rv-vhandle.dragging{background:#3a6090}
+.rv-hhandle{height:5px;cursor:ns-resize;background:#1a2a40;flex-shrink:0;transition:background .12s}
+.rv-hhandle:hover,.rv-hhandle.dragging{background:#3a6090}
+.svg-wm-tile{background:#0d1b24;border:1px solid #2c4a60;border-radius:5px;padding:5px 8px}
+.svg-wm-title{font-size:9.5px;color:#aed6f1;text-align:center;margin-bottom:3px;white-space:nowrap}
+.rv-fpill{font-size:8px;padding:1px 5px;border-radius:3px;background:#1a2538;border:1px solid #2a4060;color:#8ab4d4;cursor:pointer;user-select:none;transition:background .1s;white-space:nowrap}
+.rv-fpill:hover{background:#2a3a50}
+.rv-fpill.active{background:#1e4070;color:#aed6f1;border-color:#4a8acc}
+.tf-row:hover{background:#1a2d40}
+.tf-tt-hdr:hover{background:#1a2d40}
+footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#2c3e50;flex-shrink:0;border-top:1px solid #1a252f}
+</style>
+</head>
+<body>
+<div class="page-hdr">
+  <h1>SCAN HRY Dashboard</h1>
+  <div class="sub" id="hdr-path"></div>
+</div>
+<div class="info-bar" id="info-bar"></div>
+<div style="flex:1;min-height:0;display:flex;flex-direction:row;overflow:hidden">
+  <!-- Left: Lot/Wafer sidebar -->
+  <div class="wfr-panel" id="wfr-panel">
+    <div class="wfr-box">
+      <div class="wfr-hdr">
+        <span>&#128269; Filter by Lot / Wafer</span>
+        <span style="display:flex;align-items:center;gap:4px">
+          <span class="row-info" id="row-info"></span>
+          <button class="collapse-btn" id="wfr-collapse-btn" onclick="togglePanel()">&#9650;</button>
+        </span>
+      </div>
+      <div id="xf-bar"></div>
+      <!-- Test Filter -->
+      <div id="tf-section" style="background:#0c1520;border-bottom:1px solid #1e3050;flex-shrink:0">
+        <div class="tf-tt-hdr" style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:#162230;cursor:pointer;user-select:none;border-bottom:1px solid #1e3050" onclick="toggleTFBar()">
+          <span style="font-size:8.5px;color:#5dade2;font-weight:bold">&#9881; Test Filter</span>
+          <span id="tf-status" style="font-size:8px;color:#95a5a6;margin-left:4px"></span>
+          <span style="margin-left:auto;display:flex;gap:3px;align-items:center">
+            <button onclick="event.stopPropagation();_tfAll(true)" style="font-size:7px;padding:0 5px;border:1px solid #2a4060;border-radius:2px;background:none;color:#5dade2;cursor:pointer;line-height:1.6">All</button>
+            <button onclick="event.stopPropagation();_tfAll(false)" style="font-size:7px;padding:0 5px;border:1px solid #2a4060;border-radius:2px;background:none;color:#5dade2;cursor:pointer;line-height:1.6">None</button>
+          </span>
+          <span id="tf-arr" style="color:#5dade2;font-size:9px;margin-left:4px">&#9660;</span>
+        </div>
+        <div id="tf-body" style="overflow-y:auto;max-height:150px;padding:2px 4px;display:none"></div>
+      </div>
+      <div class="wfr-h-handle" id="wfr-h-handle" title="drag to resize panels"></div>
+      <div id="grp-bar">
+        <span class="grp-lbl">Group by:</span>
+        <label class="grp-opt"><input type="checkbox" value="LOT" onchange="toggleGrpBy('LOT')"> Lot</label>
+        <label class="grp-opt"><input type="checkbox" value="WAFER" onchange="toggleGrpBy('WAFER')"> Wafer</label>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;padding:2px 7px 3px;background:#1a2e42;border-bottom:1px solid #1e3050">
+        <span style="font-size:8px;color:#6a8a9a">Select:</span>
+        <button class="cb" onclick="selAll()" style="font-size:8px;padding:1px 6px">All</button>
+        <button class="cb" onclick="clrAll()" style="font-size:8px;padding:1px 4px">None</button>
+      </div>
+      <div class="wfr-tbl-wrap">
+        <table class="wfr-tbl"><thead id="wfr-thead"></thead><tbody id="wfr-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+  <div id="resize-handle"></div>
+  <!-- Right: tabs + content -->
+  <div style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(0)">Wafer Map</button>
+    <button class="tab-btn" onclick="switchTab(1)">FailPerFault</button>
+    <button class="tab-btn" onclick="switchTab(2)">FailPerTestType</button>
+    <button class="tab-btn" onclick="switchTab(3)">Die Table</button>
+  </div>
+  <div class="tab-content">
+    <!-- FailPerTestType -->
+    <div class="tab-panel" id="p-testtype">
+      <div class="card-panel plot-card">
+        <div class="card-hdr">FailPerTestType
+          <small style="font-weight:400;color:#aed6f1">&nbsp;unique fail dies by TestType per IP</small>
+          <label class="chk-tgt" style="margin-left:auto;color:#f9e04b;border:1px solid #f9e04b;border-radius:3px;padding:1px 7px;cursor:pointer">
+            <input type="checkbox" id="chk-tt-reg" onchange="setTTGrp(this.checked)" style="accent-color:#f9e04b;cursor:pointer"> Block + Region
+          </label>
+          <label class="chk-tgt"><input type="checkbox" checked onchange="toggleTable('tbl-pnl-1')"> Table</label>
+        </div>
+        <div class="card-body"><div id="plot-testtype" class="pldiv"></div></div>
+      </div>
+      <div class="card-panel tbl-card" id="tbl-pnl-1">
+        <div class="card-hdr">Data &mdash; FailPerTestType <span class="rcnt" id="cnt-testtype"></span>
+          <button class="cb" style="margin-left:auto" onclick="exportCsv('tbl-testtype','fail-per-testtype')">&#8595; CSV</button>
+        </div>
+        <div style="background:#1e2e3e;padding:3px 10px;display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span style="font-size:8px;font-weight:bold;color:#aed6f1">Show:</span>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#0d3050;border:1px solid #0071C5;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="CHAIN" checked onchange="toggleTTShow('CHAIN',this.checked)" style="accent-color:#0071C5;cursor:pointer;width:11px;height:11px"> <span style="color:#5dade2">CHAIN</span></label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#3d0d0d;border:1px solid #E8421C;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="STUCKAT" checked onchange="toggleTTShow('STUCKAT',this.checked)" style="accent-color:#E8421C;cursor:pointer;width:11px;height:11px"> <span style="color:#f0857a">STUCKAT</span></label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#0d3018;border:1px solid #1CA44A;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="ATSPEED" checked onchange="toggleTTShow('ATSPEED',this.checked)" style="accent-color:#1CA44A;cursor:pointer;width:11px;height:11px"> <span style="color:#58d68d">ATSPEED</span></label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#2d1a3a;border:1px solid #8B5CF6;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="DIAG" checked onchange="toggleTTShow('DIAG',this.checked)" style="accent-color:#8B5CF6;cursor:pointer;width:11px;height:11px"> <span style="color:#a78bfa">DIAG</span></label>
+        </div>
+        <div class="card-body"><div class="tscroll"><div id="tbl-testtype"></div></div></div>
+      </div>
+    </div>
+    <!-- Wafer Map -->
+    <div class="tab-panel active" id="p-wafermap" style="padding:0;overflow:hidden">
+      <div id="rv-layout" style="display:flex;flex-direction:column;flex:1;min-height:0;background:#0a1018">
+        <!-- top bar -->
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 12px;background:#0a1018;border-bottom:2px solid #1e3050;flex-shrink:0;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700;color:#8ab4d4">Reticle View</span>
+          <span id="wm-nav-lbl" style="font-size:9px;color:#aed6f1;white-space:nowrap">&mdash;</span>
+          <span style="color:#2a4060;margin:0 2px">|</span>
+          <label style="font-size:11px;font-weight:700;color:#5dade2;background:#0d3050;padding:2px 7px;border-radius:4px;border:1.5px solid #0071C5;cursor:pointer;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="chk-wm-chain" checked onchange="toggleWMShow('CHAIN',this.checked)" style="width:13px;height:13px;accent-color:#0071C5;cursor:pointer"> CHAIN</label>
+          <label style="font-size:11px;font-weight:700;color:#f0857a;background:#3d0d0d;padding:2px 7px;border-radius:4px;border:1.5px solid #E8421C;cursor:pointer;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="chk-wm-stuckat" checked onchange="toggleWMShow('STUCKAT',this.checked)" style="width:13px;height:13px;accent-color:#E8421C;cursor:pointer"> STUCKAT</label>
+          <label style="font-size:11px;font-weight:700;color:#58d68d;background:#0d3018;padding:2px 7px;border-radius:4px;border:1.5px solid #1CA44A;cursor:pointer;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="chk-wm-atspeed" checked onchange="toggleWMShow('ATSPEED',this.checked)" style="width:13px;height:13px;accent-color:#1CA44A;cursor:pointer"> ATSPEED</label>
+          <label style="font-size:11px;font-weight:700;color:#a78bfa;background:#2d1a3a;padding:2px 7px;border-radius:4px;border:1.5px solid #8B5CF6;cursor:pointer;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="chk-wm-diag" checked onchange="toggleWMShow('DIAG',this.checked)" style="width:13px;height:13px;accent-color:#8B5CF6;cursor:pointer"> DIAG</label>
+          <span style="color:#2a4060;margin:0 2px">|</span>
+          <!-- IB dropdown -->
+          <div style="position:relative;display:inline-flex;align-items:center" id="rv-ib-dd-wrap">
+            <button onclick="_rvOpenIBDD(event)" style="font-size:9px;padding:2px 8px;border-radius:3px;border:1px solid #2a4060;background:#0d1a2a;color:#8ab4d4;cursor:pointer;white-space:nowrap">IB: <span id="rv-ib-dd-lbl">All</span> &#9660;</button>
+            <div id="rv-ib-dd" style="display:none;position:absolute;top:calc(100% + 3px);left:0;z-index:400;background:#111b2a;border:1px solid #2a4060;border-radius:4px;padding:4px;min-width:120px;max-height:160px;overflow-y:auto">
+              <div style="display:flex;justify-content:space-between;font-size:8px;color:#667788;padding:2px 3px 4px;border-bottom:1px solid #1a2a40;margin-bottom:3px">Interface Bin <span><span onclick="_rvIBSelectAll()" style="cursor:pointer;color:#5dade2">All</span><span style="color:#334455"> | </span><span onclick="_rvIBAll()" style="cursor:pointer;color:#5dade2">None</span></span></div>
+              <div id="rv-ib-filters"></div>
+            </div>
+          </div>
+          <!-- FB dropdown -->
+          <div style="position:relative;display:inline-flex;align-items:center" id="rv-fb-dd-wrap">
+            <button onclick="_rvOpenFBDD(event)" style="font-size:9px;padding:2px 8px;border-radius:3px;border:1px solid #2a4060;background:#0d1a2a;color:#8ab4d4;cursor:pointer;white-space:nowrap">FB: <span id="rv-fb-dd-lbl">All</span> &#9660;</button>
+            <div id="rv-fb-dd" style="display:none;position:absolute;top:calc(100% + 3px);left:0;z-index:400;background:#111b2a;border:1px solid #2a4060;border-radius:4px;padding:4px;min-width:120px;max-height:160px;overflow-y:auto">
+              <div style="display:flex;justify-content:space-between;font-size:8px;color:#667788;padding:2px 3px 4px;border-bottom:1px solid #1a2a40;margin-bottom:3px">Functional Bin <span><span onclick="_rvFBSelectAll()" style="cursor:pointer;color:#5dade2">All</span><span style="color:#334455"> | </span><span onclick="_rvFBAll()" style="cursor:pointer;color:#5dade2">None</span></span></div>
+              <div id="rv-fb-filters"></div>
+            </div>
+          </div>
+          <span style="color:#2a4060;margin:0 2px">|</span>
+          <span style="font-size:8px;color:#6a8a9a;flex-shrink:0">Die Loc:</span>
+          <div id="rv-ret-filters" style="display:flex;align-items:center;gap:3px;flex-wrap:wrap"></div>
+          <span style="color:#2a4060;margin:0 2px">|</span>
+          <label style="font-size:10px;color:#c77dff;background:#1a1a2a;padding:2px 7px;border-radius:4px;border:1px solid #6a3aaa;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
+            <input type="checkbox" id="rv-site-chk" checked onchange="rvToggleSection('rv-site-section',this.checked)" style="accent-color:#c77dff;cursor:pointer"> Sites</label>
+          <label style="font-size:10px;color:#f39c12;background:#1a160a;padding:2px 7px;border-radius:4px;border:1px solid #7a5a00;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
+            <input type="checkbox" id="rv-pat-chk" checked onchange="rvToggleSection('rv-pattern-section',this.checked)" style="accent-color:#f39c12;cursor:pointer"> Pattern</label>
+          <span style="color:#2a4060;margin:0 2px">|</span>
+          <span style="font-size:9px;color:#aed6f1;margin-left:auto;opacity:0.5">drag handles to resize</span>
+          <button style="font-size:8.5px;padding:2px 8px;background:none;border:1px solid #aed6f1;color:#aed6f1;border-radius:3px;cursor:pointer" onclick="exportCsv('tbl-wmap','wafer-map')">&#8595; CSV</button>
+          <button style="font-size:8.5px;padding:2px 8px;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:3px;cursor:pointer" onclick="_downloadDieCsv()">&#8595; AP/CR CSV</button>
+        </div>
+        <!-- Extra wafer-map filter bar (populated by JS) -->
+        <div class="wm-fbar" id="wm-fbar"></div>
+        <!-- 3-pane row -->
+        <div style="display:flex;flex:1;min-height:0;overflow:hidden">
+          <!-- Pane 1: Composite -->
+          <div id="rv-pane-1" style="width:500px;min-width:180px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:#0d1520;border-right:1px solid #1e3050">
+            <div style="padding:4px 10px;font-size:11px;font-weight:700;color:#8ab4d4;border-bottom:1px solid #1e3050;flex-shrink:0">
+              Composite <span id="rv-composite-legend" style="font-weight:400;font-size:9px;color:#5dade2;margin-left:6px"></span>
+            </div>
+            <div id="rv-composite-wrap" style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:8px"></div>
+          </div>
+          <div class="rv-vhandle" onmousedown="rvStartResizeH(event,'rv-pane-1',1)"></div>
+          <!-- Pane 2: Per-wafer tiles -->
+          <div id="rv-pane-2" style="flex:1;min-width:160px;display:flex;flex-direction:column;overflow:hidden;background:#0a1018">
+            <div style="font-size:10px;font-weight:700;color:#8ab4d4;padding:4px 10px;border-bottom:1px solid #1e3050;flex-shrink:0" id="rv-tiles-hdr">Per-Wafer</div>
+            <div id="rv-tiles-wrap" style="flex:1;overflow:auto;padding:6px 10px;display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start"></div>
+          </div>
+          <div class="rv-vhandle" onmousedown="rvStartResizeH(event,'rv-pane-3',-1)"></div>
+          <!-- Pane 3: Site analysis + Fail Pattern Score -->
+          <div id="rv-pane-3" style="width:260px;min-width:140px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:#0d1520;border-left:1px solid #1e3050">
+            <div id="rv-site-section" style="flex:1;min-height:60px;overflow:auto;padding:6px 10px">
+              <div style="font-size:10px;font-weight:700;color:#c77dff;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #1e3050">Reticle Site Analysis</div>
+              <div id="rv-site-body" style="font-size:9px;color:#c0ccd8"></div>
+            </div>
+            <div class="rv-hhandle" id="rv-pane3-hhandle" onmousedown="rvStartResizeV(event,'rv-site-section','rv-pattern-section')" style="height:5px;cursor:ns-resize;background:#1a2a40;flex-shrink:0"></div>
+            <div id="rv-pattern-section" style="height:210px;min-height:60px;overflow:auto;padding:6px 10px;flex-shrink:0">
+              <div style="font-size:10px;font-weight:700;color:#f39c12;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #1e3050">Fail Pattern Score</div>
+              <div id="rv-pattern-body" style="font-size:9px;color:#c0ccd8"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Color mode + legend bar -->
+        <div class="wm-cbar" id="wm-cbar" style="flex-direction:column;align-items:flex-start;gap:2px">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%">
+            <span style="font-size:8.5px;color:#8ab4d4;font-weight:bold;flex-shrink:0">Color:</span>
+            <label class="wm-cmode-lbl active" id="wm-cm-fail" onmouseenter="_wmColorDesc('fail')" onmouseleave="_wmColorDescReset()"><input type="radio" name="wm-cm" value="fail" checked onchange="WM_COLOR_MODE='fail';drawWaferMap()"> Fail</label>
+            <label class="wm-cmode-lbl" id="wm-cm-freq" onmouseenter="_wmColorDesc('freq')" onmouseleave="_wmColorDescReset()"><input type="radio" name="wm-cm" value="freq" onchange="WM_COLOR_MODE='freq';drawWaferMap()"> Freq%</label>
+            <label class="wm-cmode-lbl" id="wm-cm-site" onmouseenter="_wmColorDesc('site')" onmouseleave="_wmColorDescReset()"><input type="radio" name="wm-cm" value="site" onchange="WM_COLOR_MODE='site';drawWaferMap()"> Site#</label>
+            <label class="wm-cmode-lbl" id="wm-cm-tt" onmouseenter="_wmColorDesc('tt')" onmouseleave="_wmColorDescReset()"><input type="radio" name="wm-cm" value="tt" onchange="WM_COLOR_MODE='tt';drawWaferMap()"> TT</label>
+            <label class="wm-cmode-lbl" id="wm-cm-ip" onmouseenter="_wmColorDesc('ip')" onmouseleave="_wmColorDescReset()"><input type="radio" name="wm-cm" value="ip" onchange="WM_COLOR_MODE='ip';drawWaferMap()"> IP</label>
+            <label class="wm-cmode-lbl" id="wm-cm-ib" onmouseenter="_wmColorDesc('ib')" onmouseleave="_wmColorDescReset()"><input type="radio" name="wm-cm" value="ib" onchange="WM_COLOR_MODE='ib';drawWaferMap()"> IB</label>
+            <label class="wm-cmode-lbl" id="wm-cm-fb" onmouseenter="_wmColorDesc('fb')" onmouseleave="_wmColorDescReset()"><input type="radio" name="wm-cm" value="fb" onchange="WM_COLOR_MODE='fb';drawWaferMap()"> FB</label>
+            <span style="color:#2a4060;margin:0 4px;flex-shrink:0">|</span>
+            <span id="svg-wm-legend" style="display:flex;align-items:center;gap:6px;flex:1;font-size:8.5px;color:#8faec0;flex-wrap:wrap"></span>
+          </div>
+          <div id="wm-color-desc" style="font-size:8px;color:#8ab4d4;font-style:italic;min-height:12px;padding-left:4px;opacity:0.8"></div>
+        </div>
+      </div>
+      <!-- Data table below wafer map -->
+      <div class="card-panel tbl-card" id="tbl-pnl-2" style="flex-shrink:0">
+        <div class="card-hdr">Data &mdash; Wafer Map <span class="rcnt" id="cnt-wmap"></span>
+          <button class="cb" style="margin-left:auto" onclick="exportCsv('tbl-wmap','wafer-map')">&#8595; CSV</button>
+          <label class="chk-tgt"><input type="checkbox" checked onchange="toggleTable('tbl-pnl-2')"> Show</label>
+        </div>
+        <div class="card-body" style="height:140px;resize:vertical;overflow:hidden">
+          <div class="tscroll"><div id="tbl-wmap"></div></div>
+        </div>
+      </div>
+    </div>
+    <!-- Die Table -->
+    <div class="tab-panel" id="p-dietable">
+      <div class="card-panel" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+        <div class="card-hdr">Die Table <span class="rcnt" id="cnt-die"></span>
+          <input id="tbl-search" placeholder="Search VISUAL_ID / Lot..." oninput="tblSearch=this.value.toLowerCase();drawDieTable()"
+                 style="font-size:8.5px;padding:2px 6px;border:1px solid #85c1e9;border-radius:3px;margin-left:auto;width:180px;background:#fff"/>
+          <button class="cb" style="margin-left:4px" onclick="exportCsv('tbl-die','die-table')">&#8595; CSV</button>
+        </div>
+        <div class="card-body" style="flex:1;overflow:auto;padding:0">
+          <div class="tscroll" style="height:100%;max-height:none"><div id="tbl-die"></div></div>
+        </div>
+      </div>
+    </div>
+    <!-- FailPerFault -->
+    <div class="tab-panel" id="p-fpf">
+      <div class="card-panel plot-card">
+        <div class="card-hdr">FailPerFault
+          <small style="font-weight:400;color:#aed6f1">&nbsp;YieldLoss% vs Fault Count per IP</small>
+          <label class="chk-tgt" style="margin-left:auto;color:#f9e04b;border:1px solid #f9e04b;border-radius:3px;padding:1px 7px;cursor:pointer">
+            <input type="checkbox" id="chk-fpf-reg" onchange="setFPFGrp(this.checked)" style="accent-color:#f9e04b;cursor:pointer"> Block + Region
+          </label>
+          <label class="chk-tgt"><input type="checkbox" checked onchange="toggleTable('tbl-pnl-4')"> Table</label>
+        </div>
+        <div class="card-body"><div id="plot-fpf" class="pldiv"></div></div>
+      </div>
+      <div class="card-panel tbl-card" id="tbl-pnl-4">
+        <div class="card-hdr">Data &mdash; FailPerFault <span class="rcnt" id="cnt-fpf"></span>
+          <button class="cb" style="margin-left:auto" onclick="exportCsv('tbl-fpf','fail-per-fault')">&#8595; CSV</button>
+        </div>
+        <div style="background:#1e2e3e;padding:3px 10px;display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span style="font-size:8px;font-weight:bold;color:#aed6f1">Show:</span>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#0d3050;border:1px solid #0071C5;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="CHAIN" checked onchange="toggleTTShow('CHAIN',this.checked)" style="accent-color:#0071C5;cursor:pointer;width:11px;height:11px"> <span style="color:#5dade2">CHAIN</span></label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#3d0d0d;border:1px solid #E8421C;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="STUCKAT" checked onchange="toggleTTShow('STUCKAT',this.checked)" style="accent-color:#E8421C;cursor:pointer;width:11px;height:11px"> <span style="color:#f0857a">STUCKAT</span></label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#0d3018;border:1px solid #1CA44A;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="ATSPEED" checked onchange="toggleTTShow('ATSPEED',this.checked)" style="accent-color:#1CA44A;cursor:pointer;width:11px;height:11px"> <span style="color:#58d68d">ATSPEED</span></label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#2d1a3a;border:1px solid #8B5CF6;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="DIAG" checked onchange="toggleTTShow('DIAG',this.checked)" style="accent-color:#8B5CF6;cursor:pointer;width:11px;height:11px"> <span style="color:#a78bfa">DIAG</span></label>
+        </div>
+        <div class="card-body"><div class="tscroll"><div id="tbl-fpf"></div></div></div>
+      </div>
+    </div>
+  </div><!-- /tab-content -->
+  </div><!-- /right col -->
+</div>
+<footer>SCAN HRY Dashboard &nbsp;|&nbsp; Intel Internal &nbsp;|&nbsp; Pant, Sujit N &mdash; GEMS FTE &nbsp;|&nbsp; Generated: <span id="gen-time"></span></footer>
+<script src="data.js"></script>
+<script>
+"use strict";
+const D=(typeof SCAN_DATA!=="undefined")?SCAN_DATA:{meta:{},per_ip:[],die_map:[],reticle_layout:{}};
+const M=D.meta||{};
+const MPLT=["#0071C5","#E8421C","#1CA44A","#8B5CF6","#F59E0B","#06B6D4","#EC4899","#10B981","#64748B","#F97316","#A78BFA","#34D399"];
+const HRY_CFG={"CORE0|ICORE0|EXE":17081660,"CORE0|ICORE0|FE":16595622,"CORE0|ICORE0|FMAV0":17336748,"CORE0|ICORE0|FMAV1":17370612,"CORE0|ICORE0|MEU":37701105,"CORE0|ICORE0|MSID":25618672,"CORE0|ICORE0|OOO_INT":32574553,"CORE0|ICORE0|OOO_VEC":24084834,"CORE0|ICORE0|PMH":2947652,"CORE0|ICORE1|EXE":17081660,"CORE0|ICORE1|FE":16595622,"CORE0|ICORE1|FMAV0":17336748,"CORE0|ICORE1|FMAV1":17370612,"CORE0|ICORE1|MEU":37701105,"CORE0|ICORE1|MSID":25618672,"CORE0|ICORE1|OOO_INT":32574553,"CORE0|ICORE1|OOO_VEC":24084834,"CORE0|ICORE1|PMH":2947652,"CORE0|MLC|MLC":28244301,"CORE0|PM|PM":11318028,"CORE0|FLATCORE|FLATCORE":422185245,"CORE1|ICORE0|EXE":17081660,"CORE1|ICORE0|FE":16595622,"CORE1|ICORE0|FMAV0":17336748,"CORE1|ICORE0|FMAV1":17370612,"CORE1|ICORE0|MEU":37701105,"CORE1|ICORE0|MSID":25618672,"CORE1|ICORE0|OOO_INT":32574553,"CORE1|ICORE0|OOO_VEC":24084834,"CORE1|ICORE0|PMH":2947652,"CORE1|ICORE1|EXE":17081660,"CORE1|ICORE1|FE":16595622,"CORE1|ICORE1|FMAV0":17336748,"CORE1|ICORE1|FMAV1":17370612,"CORE1|ICORE1|MEU":37701105,"CORE1|ICORE1|MSID":25618672,"CORE1|ICORE1|OOO_INT":32574553,"CORE1|ICORE1|OOO_VEC":24084834,"CORE1|ICORE1|PMH":2947652,"CORE1|MLC|MLC":28244301,"CORE1|PM|PM":11318028,"CORE1|FLATCORE|FLATCORE":422185245,"CORE2|ICORE0|EXE":17081660,"CORE2|ICORE0|FE":16595622,"CORE2|ICORE0|FMAV0":17336748,"CORE2|ICORE0|FMAV1":17370612,"CORE2|ICORE0|MEU":37701105,"CORE2|ICORE0|MSID":25618672,"CORE2|ICORE0|OOO_INT":32574553,"CORE2|ICORE0|OOO_VEC":24084834,"CORE2|ICORE0|PMH":2947652,"CORE2|ICORE1|EXE":17081660,"CORE2|ICORE1|FE":16595622,"CORE2|ICORE1|FMAV0":17336748,"CORE2|ICORE1|FMAV1":17370612,"CORE2|ICORE1|MEU":37701105,"CORE2|ICORE1|MSID":25618672,"CORE2|ICORE1|OOO_INT":32574553,"CORE2|ICORE1|OOO_VEC":24084834,"CORE2|ICORE1|PMH":2947652,"CORE2|MLC|MLC":28244301,"CORE2|PM|PM":11318028,"CORE2|FLATCORE|FLATCORE":422185245,"CORE3|ICORE0|EXE":17081660,"CORE3|ICORE0|FE":16595622,"CORE3|ICORE0|FMAV0":17336748,"CORE3|ICORE0|FMAV1":17370612,"CORE3|ICORE0|MEU":37701105,"CORE3|ICORE0|MSID":25618672,"CORE3|ICORE0|OOO_INT":32574553,"CORE3|ICORE0|OOO_VEC":24084834,"CORE3|ICORE0|PMH":2947652,"CORE3|ICORE1|EXE":17081660,"CORE3|ICORE1|FE":16595622,"CORE3|ICORE1|FMAV0":17336748,"CORE3|ICORE1|FMAV1":17370612,"CORE3|ICORE1|MEU":37701105,"CORE3|ICORE1|MSID":25618672,"CORE3|ICORE1|OOO_INT":32574553,"CORE3|ICORE1|OOO_VEC":24084834,"CORE3|ICORE1|PMH":2947652,"CORE3|MLC|MLC":28244301,"CORE3|PM|PM":11318028,"CORE3|FLATCORE|FLATCORE":422185245,"UNCORE|ATOM0|ASL":693036,"UNCORE|ATOM2|ASL":693036,"UNCORE|ATOM1|ASR":1548910,"UNCORE|ATOM3|ASR":1548910,"UNCORE|ATOM01|CBOPAIRAS":21663455,"UNCORE|ATOM23|CBOPAIRAS":21663455,"UNCORE|ATOM01|CHANAS":1465285,"UNCORE|ATOM23|CHANAS":1465285,"UNCORE|CORE0|BSL":1279655,"UNCORE|CORE2|BSL":1279655,"UNCORE|CORE1|BSR":2081593,"UNCORE|CORE3|BSR":2081593,"UNCORE|CORE0|CBOPAIRBS0":21005672,"UNCORE|CORE1|CBOPAIRBS1":21005672,"UNCORE|CORE2|CBOPAIRBS0":21005672,"UNCORE|CORE3|CBOPAIRBS1":21005672,"UNCORE|CORE01|CHANBS":2144050,"UNCORE|CORE23|CHANBS":2144050,"UNCORE|D2D|CCU":3075280,"UNCORE|D2D|DMU":12383395,"UNCORE|D2D|FOV0":7103002,"UNCORE|D2D|FOV1":6545974,"UNCORE|D2D|FUSE":1879420,"UNCORE|D2D|MISC":4934241,"UNCORE|D2D|SANTA":14537266,"UNCORE|ATOM0|BLLC_CB0AS":704601,"UNCORE|ATOM0|BLLC_CB1AS":701336,"UNCORE|ATOM1|BLLC_CB0AS":704601,"UNCORE|ATOM1|BLLC_CB1AS":701336,"UNCORE|ATOM2|BLLC_CB0AS":704601,"UNCORE|ATOM2|BLLC_CB1AS":701336,"UNCORE|ATOM3|BLLC_CB0AS":704601,"UNCORE|ATOM3|BLLC_CB1AS":701336,"UNCORE|ATOM0|BLLC_TAGAS":2580087,"UNCORE|ATOM1|BLLC_TAGAS":2580087,"UNCORE|ATOM2|BLLC_TAGAS":2580087,"UNCORE|ATOM3|BLLC_TAGAS":2580087,"UNCORE|CORE0|BLLC_CB0BS0":805264,"UNCORE|CORE0|BLLC_CB1BS0":758827,"UNCORE|CORE0|BLLC_CB0BS1":805264,"UNCORE|CORE0|BLLC_CB1BS1":758827,"UNCORE|CORE1|BLLC_CB0BS0":805264,"UNCORE|CORE1|BLLC_CB1BS0":758827,"UNCORE|CORE1|BLLC_CB0BS1":805264,"UNCORE|CORE1|BLLC_CB1BS1":758827,"UNCORE|CORE2|BLLC_CB0BS0":805264,"UNCORE|CORE2|BLLC_CB1BS0":758827,"UNCORE|CORE2|BLLC_CB0BS1":805264,"UNCORE|CORE2|BLLC_CB1BS1":758827,"UNCORE|CORE3|BLLC_CB0BS0":805264,"UNCORE|CORE3|BLLC_CB1BS0":758827,"UNCORE|CORE3|BLLC_CB0BS1":805264,"UNCORE|CORE3|BLLC_CB1BS1":758827,"UNCORE|CORE0|BLLC_TAGBS0":2548929,"UNCORE|CORE0|BLLC_TAGBS1":2548929,"UNCORE|CORE1|BLLC_TAGBS0":2548929,"UNCORE|CORE1|BLLC_TAGBS1":2548929,"UNCORE|CORE2|BLLC_TAGBS0":2548929,"UNCORE|CORE2|BLLC_TAGBS1":2548929,"UNCORE|CORE3|BLLC_TAGBS0":2548929,"UNCORE|CORE3|BLLC_TAGBS1":2548929,"UNCORE|CORE0|DLVR_RING":876423,"UNCORE|CORE2|DLVR_RING":876423,"UNCORE|CORE1|DLVR_RING":876423,"UNCORE|CORE3|DLVR_RING":876423,"UNCORE|CORE0|DLVR_ICORE1":871542,"UNCORE|CORE0|DLVR_ICORE0":871542,"UNCORE|CORE2|DLVR_ICORE1":871542,"UNCORE|CORE2|DLVR_ICORE0":871542,"UNCORE|CORE1|DLVR_ICORE1":871542,"UNCORE|CORE1|DLVR_ICORE0":871542,"UNCORE|CORE3|DLVR_ICORE1":871542,"UNCORE|CORE3|DLVR_ICORE0":871542,"UNCORE|ATOM0|DLVR_ATOM":1010275,"UNCORE|ATOM2|DLVR_ATOM":1010275,"UNCORE|ATOM1|DLVR_ATOM":1010275,"UNCORE|ATOM3|DLVR_ATOM":1010275,"ATOM0|CORE0|ARR":8455436,"ATOM0|CORE0|IEC":12683156,"ATOM0|CORE0|FEC":10531928,"ATOM0|CORE0|FPC":43273340,"ATOM0|CORE0|MEC":15170654,"ATOM0|CORE1|ARR":8455436,"ATOM0|CORE1|IEC":12683156,"ATOM0|CORE1|FEC":10531928,"ATOM0|CORE1|FPC":43273340,"ATOM0|CORE1|MEC":15170654,"ATOM0|CORE2|ARR":8455436,"ATOM0|CORE2|IEC":12683156,"ATOM0|CORE2|FEC":10531928,"ATOM0|CORE2|FPC":43273340,"ATOM0|CORE2|MEC":15170654,"ATOM0|CORE3|ARR":8455436,"ATOM0|CORE3|IEC":12683156,"ATOM0|CORE3|FEC":10531928,"ATOM0|CORE3|FPC":43273340,"ATOM0|CORE3|MEC":15170654,"ATOM0|BUS|BUS_UTC":14273278,"ATOM0|BUS|BUS_SSC":9355432,"ATOM1|CORE0|ARR":8455436,"ATOM1|CORE0|IEC":12683156,"ATOM1|CORE0|FEC":10531928,"ATOM1|CORE0|FPC":43273340,"ATOM1|CORE0|MEC":15170654,"ATOM1|CORE1|ARR":8455436,"ATOM1|CORE1|IEC":12683156,"ATOM1|CORE1|FEC":10531928,"ATOM1|CORE1|FPC":43273340,"ATOM1|CORE1|MEC":15170654,"ATOM1|CORE2|ARR":8455436,"ATOM1|CORE2|IEC":12683156,"ATOM1|CORE2|FEC":10531928,"ATOM1|CORE2|FPC":43273340,"ATOM1|CORE2|MEC":15170654,"ATOM1|CORE3|ARR":8455436,"ATOM1|CORE3|IEC":12683156,"ATOM1|CORE3|FEC":10531928,"ATOM1|CORE3|FPC":43273340,"ATOM1|CORE3|MEC":15170654,"ATOM1|BUS|BUS_UTC":14273278,"ATOM1|BUS|BUS_SSC":9355432,"ATOM2|CORE0|ARR":8455436,"ATOM2|CORE0|IEC":12683156,"ATOM2|CORE0|FEC":10531928,"ATOM2|CORE0|FPC":43273340,"ATOM2|CORE0|MEC":15170654,"ATOM2|CORE1|ARR":8455436,"ATOM2|CORE1|IEC":12683156,"ATOM2|CORE1|FEC":10531928,"ATOM2|CORE1|FPC":43273340,"ATOM2|CORE1|MEC":15170654,"ATOM2|CORE2|ARR":8455436,"ATOM2|CORE2|IEC":12683156,"ATOM2|CORE2|FEC":10531928,"ATOM2|CORE2|FPC":43273340,"ATOM2|CORE2|MEC":15170654,"ATOM2|CORE3|ARR":8455436,"ATOM2|CORE3|IEC":12683156,"ATOM2|CORE3|FEC":10531928,"ATOM2|CORE3|FPC":43273340,"ATOM2|CORE3|MEC":15170654,"ATOM2|BUS|BUS_UTC":14273278,"ATOM2|BUS|BUS_SSC":9355432,"ATOM3|CORE0|ARR":8455436,"ATOM3|CORE0|IEC":12683156,"ATOM3|CORE0|FEC":10531928,"ATOM3|CORE0|FPC":43273340,"ATOM3|CORE0|MEC":15170654,"ATOM3|CORE1|ARR":8455436,"ATOM3|CORE1|IEC":12683156,"ATOM3|CORE1|FEC":10531928,"ATOM3|CORE1|FPC":43273340,"ATOM3|CORE1|MEC":15170654,"ATOM3|CORE2|ARR":8455436,"ATOM3|CORE2|IEC":12683156,"ATOM3|CORE2|FEC":10531928,"ATOM3|CORE2|FPC":43273340,"ATOM3|CORE2|MEC":15170654,"ATOM3|CORE3|ARR":8455436,"ATOM3|CORE3|IEC":12683156,"ATOM3|CORE3|FEC":10531928,"ATOM3|CORE3|FPC":43273340,"ATOM3|CORE3|MEC":15170654,"ATOM3|BUS|BUS_UTC":14273278,"ATOM3|BUS|BUS_SSC":9355432};
+const YIELD_TARGET=(D.yield_target&&D.yield_target.length)?D.yield_target:[];
+const _mc={};let _mci=0;
+function mc(n){if(!_mc[n])_mc[n]=MPLT[_mci++%MPLT.length];return _mc[n];}
+function _dimColor(hex){/* blend hex 25% towards dark bg #0d1118 */
+  var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  var nr=Math.round(0x0d+(r-0x0d)*0.28),ng=Math.round(0x11+(g-0x11)*0.28),nb=Math.round(0x18+(b-0x18)*0.28);
+  return'#'+nr.toString(16).padStart(2,'0')+ng.toString(16).padStart(2,'0')+nb.toString(16).padStart(2,'0');}
+/* Build SVG <pattern> defs for checkered fill (IB/FB no-scan-fail dies) */
+function _wmBuildPatterns(colors){
+  return colors.map(function(hex){
+    var h=hex.slice(1);
+    return'<pattern id="wmck-'+h+'" patternUnits="userSpaceOnUse" width="6" height="6">'
+      +'<rect width="6" height="6" fill="#0d1520"/>'
+      +'<rect width="3" height="3" fill="'+hex+'"/>'
+      +'<rect x="3" y="3" width="3" height="3" fill="'+hex+'"/>'
+      +'</pattern>';
+  }).join('');
+}
+const TT_COLORS={"CHAIN":"#0071C5","STUCKAT":"#E8421C","ATSPEED":"#1CA44A","DIAG":"#8B5CF6"};
+const TT_ALL=["CHAIN","STUCKAT","ATSPEED","DIAG"];
+var GRP_BY=[],BLK_BY_MOD=false,TT_GRP_REGION=false,SHOW_PCT=false;
+var TT_SHOW=new Set(M.testtypes||TT_ALL);
+var WM_TT_SHOW=new Set(TT_ALL);
+var WM_COLOR_MODE='fail';
+var WM_F_DLOC='';var WM_F_SHOTS=null;var WM_F_BLOCKS=null;var WM_F_SITES=null;var WM_IP_SEARCH='';var WM_OPEN_DD=null;
+var _xftIpRegMap={}; /* mod → ip → Set('blk|reg') for IP visibility */
+/* IB/FB + pattern score filter state */
+var _rvFiltersInited=false;
+var _rvIBFBMap={};  /* ib → Set(fb) */
+var _rvIBFilter=new Set();
+var _rvFBFilter=new Set();
+var _rvRetFilter=new Set();
+var SEL_TESTS=new Set(); var _allTestKeys=[];
+var UNIQ_WFR=[];var SEL_WFR=new Set();var _FSRCH={lot:'',wafer:'',program:''};var _lastWfr=-1;
+var _WFR_SORT={col:'lot',dir:1};
+var _blkIpToReg={};  /* 'blk|ip' → region (built from D.per_ip) */
+/* Color mode descriptions */
+var _wmColorTips={fail:'Fail — intensity = number of distinct failing partition-IP pairs at this die, summed across all wafers.',freq:'Freq % — fraction of selected wafers on which this die position fails at least once.',site:'Site # — colored by reticle site index. Useful for spotting reticle-systematic failures.',tt:'TT (Test Type) — Blue = CHAIN · Red = STUCKAT · Green = ATSPEED · Purple = DIAG · Mixed = multiple types.',ip:'IP — each die colored by its most-frequently failing IP across selected wafers.',ib:'IB (Interface Bin) — each failing die colored by its interface bin value.',fb:'FB (Functional Bin) — each failing die colored by its functional bin value.'};
+function _wmColorDesc(m){var d=document.getElementById('wm-color-desc');if(d)d.textContent=_wmColorTips[m]||'';}
+function _wmColorDescReset(){var d=document.getElementById('wm-color-desc');if(d)d.textContent='';}
+var tblSearch='',_sortCol='total',_sortAsc=false;
+var _fcSortState=null,_wmSortState=null,_wmFailDiesCache=null,_wmCompCache=null,_wmResizeReady=false;
+var _fpfSortState=null,_fpfGrpRegion=false;
+
+function uniq(arr,key){return[...new Set(arr.map(r=>key?r[key]:r).filter(v=>v!=null&&String(v)!=='nan'&&String(v)!==''))].sort();}
+function _ph(id){const el=document.getElementById(id);if(!el)return 500;const h=el.parentElement.clientHeight;return h>20?h-8:500;}
+
+/* ── Info bar ──────────────────────────────────────────────────────── */
+function buildInfoBar(){
+  const lots=M.lots||[],wafers=M.wafers||[],blks=M.blocks||[],mods=M.modules||[];
+  document.getElementById("info-bar").innerHTML=
+    "<b>Lots ("+lots.length+"):</b> "+lots.slice(0,4).join(", ")+(lots.length>4?" +"+(lots.length-4)+" more":"")+
+    '<span class="ib-sep">|</span><b>Wafers ('+wafers.length+'):</b> '+wafers.slice(0,6).join(", ")+(wafers.length>6?" +"+(wafers.length-6)+" more":"")+
+    '<span class="ib-sep">|</span><b>Modules:</b> '+mods.join(", ")+
+    '<span class="ib-sep">|</span><b>Blocks:</b> '+blks.join(", ")+
+    '<span class="ib-sep">|</span><b>Records:</b> '+D.per_ip.length;
+  document.getElementById("gen-time").textContent=new Date().toLocaleString();
+  document.getElementById("hdr-path").textContent="Generated: "+new Date().toLocaleString();
+}
+
+/* ── Test Filter (applies to all tabs) ─────────────────────────────── */
+function buildTestFilter(){
+  var TF_COLORS={CHAIN:'#5dade2',STUCKAT:'#f0857a',ATSPEED:'#58d68d',DIAG:'#a78bfa'};
+  var TT_ORDER=['CHAIN','STUCKAT','ATSPEED','DIAG'];
+  var keyMap={};
+  D.per_ip.forEach(function(r){
+    var tk=(r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'');
+    if(!keyMap[tk])keyMap[tk]={module:r.MODULE||'',testtype:(r.TESTTYPE||'').toUpperCase(),block:r.BLOCK||'',subflow:r.SUBFLOW||''};
+  });
+  _allTestKeys=Object.keys(keyMap).sort();
+  SEL_TESTS=new Set(_allTestKeys);
+  var ttMap={};
+  _allTestKeys.forEach(function(k){var tt=keyMap[k].testtype;if(!ttMap[tt])ttMap[tt]=[];ttMap[tt].push({key:k,t:keyMap[k]});});
+  var html='';
+  TT_ORDER.forEach(function(tt){
+    if(!ttMap[tt]||!ttMap[tt].length)return;
+    var color=TF_COLORS[tt]||'#aed6f1';
+    html+='<div class="tf-tt-hdr" style="display:flex;align-items:center;gap:3px;padding:2px 2px 1px 2px;border-bottom:1px solid #1a2a38;margin-top:2px">';
+    html+='<span style="font-size:8px;font-weight:bold;color:'+color+';min-width:62px">'+tt+' ('+ttMap[tt].length+')</span>';
+    html+='<button onclick="event.stopPropagation();_tfTT(true,\''+tt+'\')" style="font-size:7px;padding:0 4px;border:1px solid #2a4060;border-radius:2px;background:none;color:#5dade2;cursor:pointer;line-height:1.5">all</button>';
+    html+='<button onclick="event.stopPropagation();_tfTT(false,\''+tt+'\')" style="font-size:7px;padding:0 4px;border:1px solid #2a4060;border-radius:2px;background:none;color:#5dade2;cursor:pointer;line-height:1.5">none</button>';
+    html+='</div>';
+    ttMap[tt].forEach(function(e){
+      var t=e.t;
+      var label=t.testtype+' \xb7 '+t.module+' \xb7 '+t.block+(t.subflow?' \xb7 '+t.subflow:'');
+      html+='<label class="tf-row" style="display:flex;align-items:center;gap:4px;padding:1px 2px 1px 8px;cursor:pointer;border-radius:2px">';
+      html+='<input type="checkbox" class="tf-cb" data-key="'+e.key+'" data-tt="'+tt+'" checked onchange="_tfChange(this)" style="accent-color:'+color+';cursor:pointer;width:9px;height:9px;flex-shrink:0">';
+      var _cols=(D.meta.col_names&&D.meta.col_names[e.key])||[];
+      var _colStr=_cols.length?'\n\nCSV columns:\n  '+_cols.join('\n  '):'';
+      var ttip='MODULE:   '+t.module+'\nTESTTYPE: '+t.testtype+'\nBLOCK:    '+t.block+(t.subflow?'\nSUBFLOW:  '+t.subflow:'')+_colStr;
+      html+='<span style="font-size:8px;color:#c0ccd8;font-family:Consolas,monospace;white-space:nowrap" title="'+ttip+'">'+label+'</span>';
+      html+='</label>';
+    });
+  });
+  var body=document.getElementById('tf-body');
+  if(body)body.innerHTML=html||'<span style="font-size:8px;color:#556;padding:4px">No tests found</span>';
+  _tfUpdateStatus();
+}
+function _tfChange(cb){
+  if(cb.checked)SEL_TESTS.add(cb.dataset.key);else SEL_TESTS.delete(cb.dataset.key);
+  _tfUpdateStatus();applyFilters();
+}
+function _tfAll(on){
+  _allTestKeys.forEach(function(k){if(on)SEL_TESTS.add(k);else SEL_TESTS.delete(k);});
+  document.querySelectorAll('.tf-cb').forEach(function(cb){cb.checked=on;});
+  _tfUpdateStatus();applyFilters();
+}
+function _tfTT(on,tt){
+  document.querySelectorAll('.tf-cb[data-tt="'+tt+'"]').forEach(function(cb){
+    cb.checked=on;if(on)SEL_TESTS.add(cb.dataset.key);else SEL_TESTS.delete(cb.dataset.key);
+  });
+  _tfUpdateStatus();applyFilters();
+}
+function _tfUpdateStatus(){
+  var el=document.getElementById('tf-status');if(!el)return;
+  var n=SEL_TESTS.size,t=_allTestKeys.length;
+  el.textContent=n===t?t+' tests':n+'/'+t+' selected';
+  el.style.color=n<t?'#f1c40f':'#95a5a6';
+}
+function toggleTFBar(){
+  var body=document.getElementById('tf-body'),arr=document.getElementById('tf-arr');
+  if(!body)return;
+  var hidden=body.style.display==='none';
+  body.style.display=hidden?'':'none';
+  if(arr)arr.innerHTML=hidden?'&#9650;':'&#9660;';
+}
+
+/* ── Lot/Wafer table ───────────────────────────────────────────────── */
+function buildWfrTable(){
+  /* Build UNIQ_WFR once */
+  if(!UNIQ_WFR.length){
+    var tdpw=M.total_dies_per_wafer||{};var mat=M.lot_material||{};
+    function _normLot(v){
+      return String(v==null?'':v).replace(/\s+/g,' ').trim().toUpperCase();
+    }
+    function _normWfr(v){
+      var s=String(v==null?'':v).trim().replace(/^W/i,'');
+      if(/^\d+$/.test(s))return String(parseInt(s,10));
+      return s.toUpperCase();
+    }
+    function _normLWKey(lot,wafer){
+      return _normLot(lot)+'|'+_normWfr(wafer);
+    }
+    var tdpwNorm={};
+    Object.keys(tdpw).forEach(function(k){
+      var p=k.split('|');if(p.length<2)return;
+      tdpwNorm[_normLWKey(p[0],p.slice(1).join('|'))]=tdpw[k];
+    });
+    var matNorm={};
+    Object.keys(mat).forEach(function(k){
+      var p=k.split('|');if(p.length<2)return;
+      matNorm[_normLWKey(p[0],p.slice(1).join('|'))]=mat[k];
+    });
+    var seen={},tmp=[];
+    D.per_ip.forEach(function(r){
+      var k=_normLWKey(r.LOT,r.WAFER);
+      if(seen[k]===undefined){
+        var mi=matNorm[k]||{};
+        seen[k]=tmp.length;
+        tmp.push({lot:_normLot(r.LOT),wafer:_normWfr(r.WAFER),total:tdpwNorm[k]||0,dies:new Set(),key:k,
+          program:mi.program||'',material:mi.material||'',
+          stepping:mi.stepping||'',aio_bb:mi.aio_bb||'',lot_num:mi.lot_num||''});
+      }
+      tmp[seen[k]].dies.add(r.VISUAL_ID);
+    });
+    UNIQ_WFR=tmp.map(function(w){
+      return{lot:w.lot,wafer:w.wafer,total:w.total,fail:w.dies.size,key:w.key,
+             program:w.program,material:w.material,stepping:w.stepping,
+             aio_bb:w.aio_bb,lot_num:w.lot_num};
+    });
+    UNIQ_WFR.forEach(function(_,i){SEL_WFR.add(i);});
+  }
+  var _hasMat=(M.has_material_files||false)||UNIQ_WFR.some(function(w){return w.material;});
+  var _si=function(c){return _WFR_SORT.col===c?(_WFR_SORT.dir>0?'\u25b2':'\u25bc'):'\u25b3';};
+  document.getElementById("wfr-thead").innerHTML=
+    "<tr>"
+    +(_hasMat?"<th class='sort-hdr' onclick='sortWfr(\"program\")'>Program<span class='sort-ind'>"+_si('program')+"</span></th>":"")
+    +"<th class='sort-hdr' onclick='sortWfr(\"lot\")'>Lot<span class='sort-ind'>"+_si('lot')+"</span></th>"
+    +"<th class='sort-hdr' onclick='sortWfr(\"wafer\")'>Wafer<span class='sort-ind'>"+_si('wafer')+"</span></th>"
+    +(_hasMat?"<th class='sort-hdr' onclick='sortWfr(\"material\")'>Material<span class='sort-ind'>"+_si('material')+"</span></th>"
+             +"<th class='sort-hdr' onclick='sortWfr(\"stepping\")'>Step<span class='sort-ind'>"+_si('stepping')+"</span></th>"
+             +"<th class='sort-hdr' onclick='sortWfr(\"aio_bb\")'>Var<span class='sort-ind'>"+_si('aio_bb')+"</span></th>":"")
+    +"<th class='sort-hdr num' onclick='sortWfr(\"total\")'>Total<span class='sort-ind'>"+_si('total')+"</span></th>"
+    +"<th class='sort-hdr num' onclick='sortWfr(\"fail\")'>Fail<span class='sort-ind'>"+_si('fail')+"</span></th>"
+    +"<th class='sort-hdr num' onclick='sortWfr(\"pct\")'>% Fail<span class='sort-ind'>"+_si('pct')+"</span></th></tr>"
+    +"<tr class='wfr-filter-row'>"
+    +(_hasMat?"<th><input class='lwtf-inp' id='lwtf-prog' placeholder='prog\u2026' oninput='onSearch(\"program\",this.value)'></th>":"")
+    +"<th><input class='lwtf-inp' id='lwtf-lot' placeholder='lot\u2026' oninput='onSearch(\"lot\",this.value)'></th>"
+    +"<th><input class='lwtf-inp' id='lwtf-wafer' placeholder='wfr\u2026' oninput='onSearch(\"wafer\",this.value)'></th>"
+    +(_hasMat?"<th></th><th></th><th></th>":"")
+    +"<th class='num'></th><th class='num'></th>"
+    +"<th class='num' style='white-space:nowrap;padding:2px 6px'><button class='cb' onclick='selAll()' style='font-size:8px;padding:1px 6px'>All</button>&nbsp;<button class='cb' onclick='clrAll()' style='font-size:8px;padding:1px 4px'>None</button></th></tr>";
+  buildWfrList();
+  setTimeout(colResizeInit,0);
+}
+var _COL_WIDTHS=[];
+function colResizeInit(){
+  var tbl=document.querySelector('.wfr-tbl');if(!tbl)return;
+  var ths=Array.from(tbl.querySelectorAll('thead tr:first-child th'));
+  if(!ths.length)return;
+  ths.forEach(function(th,i){
+    var w=_COL_WIDTHS[i]||th.offsetWidth||60;
+    th.style.minWidth=w+'px';
+    if(th.querySelector('.col-rsz'))return;
+    var hdl=document.createElement('div');hdl.className='col-rsz';
+    (function(idx,cell){
+      hdl.addEventListener('mousedown',function(e){
+        e.stopPropagation();e.preventDefault();
+        hdl.classList.add('dragging');
+        var startX=e.clientX,startW=cell.offsetWidth;
+        function onMove(ev){var nw=Math.max(30,startW+(ev.clientX-startX));cell.style.minWidth=nw+'px';_COL_WIDTHS[idx]=nw;}
+        function onUp(){hdl.classList.remove('dragging');document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
+        document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+      });
+    })(i,th);
+    th.appendChild(hdl);
+  });
+}
+function _visIndices(){
+  var out=[];
+  UNIQ_WFR.forEach(function(w,i){
+    if(_FSRCH.lot&&w.lot.toLowerCase().indexOf(_FSRCH.lot.toLowerCase())<0)return;
+    if(_FSRCH.wafer&&String(w.wafer).toLowerCase().indexOf(_FSRCH.wafer.toLowerCase())<0)return;
+    if(_FSRCH.program&&w.program.toLowerCase().indexOf(_FSRCH.program.toLowerCase())<0)return;
+    out.push(i);
+  });
+  var col=_WFR_SORT.col,dir=_WFR_SORT.dir;
+  out.sort(function(a,b){
+    var wa=UNIQ_WFR[a],wb=UNIQ_WFR[b];
+    var primary;
+    if(col==='total'||col==='fail')primary=dir*((wa[col]||0)-(wb[col]||0));
+    else if(col==='pct'){var pa=wa.total?wa.fail/wa.total:0,pb=wb.total?wb.fail/wb.total:0;primary=dir*(pa-pb);}
+    else if(col==='wafer')primary=dir*(parseInt(wa.wafer,10)-parseInt(wb.wafer,10));
+    else{var va=String(wa[col]||'').toLowerCase(),vb=String(wb[col]||'').toLowerCase();primary=dir*(va<vb?-1:va>vb?1:0);}
+    if(primary!==0)return primary;
+    // secondary: lot asc, then wafer asc
+    var la=wa.lot.toLowerCase(),lb=wb.lot.toLowerCase();
+    var lotCmp=la<lb?-1:la>lb?1:0;
+    if(lotCmp!==0)return lotCmp;
+    return parseInt(wa.wafer,10)-parseInt(wb.wafer,10);
+  });
+  return out;
+}
+function buildWfrList(){
+  var _hasMat=(M.has_material_files||false)||UNIQ_WFR.some(function(w){return w.material;});
+  var vis=_visIndices();
+  var html='';
+  vis.forEach(function(wi){
+    var w=UNIQ_WFR[wi],isSel=SEL_WFR.has(wi);
+    var tot=w.total||'\u2014',pct=w.total?(w.fail/w.total*100).toFixed(2)+'%':'\u2014';
+    var matTip=w.lot_num?(w.lot_num+(w.material?' \u2014 '+w.material:'')):(w.material||'');
+    html+='<tr class="fr'+(isSel?' frs':'')+'" onclick="toggleWfr('+wi+',event)">'
+      +(_hasMat?'<td style="font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+w.program+'">'+w.program+'</td>':'')
+      +'<td>'+w.lot+'</td><td>'+w.wafer+'</td>'
+      +(_hasMat?'<td style="font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+matTip+'">'+w.material+'</td>'
+               +'<td style="font-size:8px">'+w.stepping+'</td>'
+               +'<td style="font-size:8px">'+w.aio_bb+'</td>':'')
+      +'<td class="num">'+tot+'</td><td class="num">'+w.fail+'</td><td class="num">'+pct+'</td></tr>';
+  });
+  var tbody=document.getElementById('wfr-tbody');if(tbody)tbody.innerHTML=html;
+  updateRowInfo();
+}
+function toggleWfr(wi,ev){
+  var vis=_visIndices();
+  if(ev&&ev.shiftKey&&_lastWfr>=0){
+    var lo=Math.min(wi,_lastWfr),hi=Math.max(wi,_lastWfr);
+    for(var i=lo;i<=hi;i++){if(vis.indexOf(i)>=0)SEL_WFR.add(i);}
+  }else{if(SEL_WFR.has(wi))SEL_WFR.delete(wi);else SEL_WFR.add(wi);}
+  _lastWfr=wi;buildWfrList();applyFilters();
+}
+function onSearch(field,val){_FSRCH[field]=val||'';buildWfrList();applyFilters();}
+function sortWfr(col){if(_WFR_SORT.col===col){_WFR_SORT.dir*=-1;}else{_WFR_SORT.col=col;_WFR_SORT.dir=1;}buildWfrTable();}
+function updateRowInfo(){var s=SEL_WFR.size,t=UNIQ_WFR.length;document.getElementById('row-info').textContent=s+' / '+t+' selected';}
+function selAll(){_visIndices().forEach(function(i){SEL_WFR.add(i);});buildWfrList();applyFilters();}
+function clrAll(){_visIndices().forEach(function(i){SEL_WFR.delete(i);});buildWfrList();applyFilters();}
+function togglePanel(){const p=document.getElementById("wfr-panel");const btn=document.getElementById("wfr-collapse-btn");p.classList.toggle("collapsed");btn.innerHTML=p.classList.contains("collapsed")?"&#9660;":"&#9650;";}
+
+/* ── Hierarchical filter: Module → Block → Region → IP ──────────────── */
+function buildXfChips(){
+  /* Build hierarchy from D.per_ip: mod → blk → reg → Set(ips) */
+  const hier={};
+  D.per_ip.forEach(r=>{
+    const mod=r.MODULE||'?',blk=r.BLOCK||'?',reg=r.REGION||'?',ip=r.IP||'?';
+    if(!hier[mod])hier[mod]={};
+    if(!hier[mod][blk])hier[mod][blk]={};
+    if(!hier[mod][blk][reg])hier[mod][blk][reg]=new Set();
+    hier[mod][blk][reg].add(ip);
+  });
+  const mods=Object.keys(hier).sort();
+  /* Global All / None header */
+  let html='<div class="xf-tree"><div class="xf-tree-hdr"><span style="font-size:7.5px;color:#6a8a9a">Select:</span>';
+  html+='<div class="xft-tree-acts"><button onclick="_xftAll(true)">All</button><button onclick="_xftAll(false)">None</button></div></div>';
+  /* 3-column row */
+  html+='<div class="xft-cols-wrap" id="xft-cols-wrap">';
+  mods.forEach((mod,mi)=>{
+    const modId='xft-m-'+_xfId(mod);
+    if(mi>0)html+='<div class="xft-col-handle" data-ci="'+(mi-1)+'" onmousedown="_xftColDrag(event,this)"></div>';
+    html+='<div class="xft-col" id="xft-col-'+_xfId(mod)+'" data-mod="'+mod+'">';
+    html+='<details class="xft-mod" open><summary>';
+    html+='<input type="checkbox" class="xft-chk" id="'+modId+'" data-level="mod" data-mod="'+mod+'" checked onchange="_xftParentChange(this)">';
+    html+='<span onclick="_xftLblClick(\''+modId+'\')" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+mod+'</span>';
+    html+='<button class="xft-mod-popup-btn" onclick="event.stopPropagation();_xftPopup(\''+mod+'\')" title="Expand in popup">&#8663;</button>';
+    html+='<span class="xft-mod-acts"><button onclick="event.stopPropagation();_xftMod(true,\''+mod+'\')">All</button><button onclick="event.stopPropagation();_xftMod(false,\''+mod+'\')">None</button></span>';
+    html+='</summary><div class="xft-col-body"><div class="xft-mod-body">';
+    /* Block → Region (details+checkbox) → IP (checkboxes) tree */
+    const blks=Object.keys(hier[mod]).sort();
+    blks.forEach(blk=>{
+      const blkId='xft-b-'+_xfId(mod)+'-'+_xfId(blk);
+      html+='<details class="xft-blk"><summary>';
+      html+='<input type="checkbox" class="xft-chk xft-blk-cb" id="'+blkId+'" data-level="blk" data-mod="'+mod+'" data-blk="'+blk+'" checked onchange="_xftParentChange(this)"> <span onclick="_xftLblClick(\''+blkId+'\')">'+blk+'</span>';
+      html+='</summary><div class="xft-blk-body">';
+      const regs=Object.keys(hier[mod][blk]).sort();
+      regs.forEach(reg=>{
+        const regId='xft-r-'+_xfId(mod)+'-'+_xfId(blk)+'-'+_xfId(reg);
+        html+='<details class="xft-reg-dd"><summary class="xft-reg-sum">';
+        html+='<input type="checkbox" class="xft-chk xft-reg-cb" id="'+regId+'" data-level="reg" data-mod="'+mod+'" data-blk="'+blk+'" data-reg="'+reg+'" checked onchange="_xftParentChange(this)">';
+        html+='<span onclick="event.stopPropagation();_xftLblClick(\''+regId+'\')">'+reg+'</span>';
+        html+='</summary><div class="xft-mip-list" style="padding-left:12px">';
+        const ips=[...hier[mod][blk][reg]].sort();
+        ips.forEach(ip=>{
+          const mipId='xft-mip-'+_xfId(mod)+'-'+_xfId(blk)+'-'+_xfId(reg)+'-'+_xfId(ip);
+          html+='<label class="xft-mip-item"><input type="checkbox" class="xft-mip" id="'+mipId+'" data-mod="'+mod+'" data-blk="'+blk+'" data-reg="'+reg+'" data-ip="'+ip+'" checked onchange="_xftMipChange(this)">'+ip+'</label>';
+        });
+        html+='</div></details>';
+      });
+      html+='</div></details>';
+    });
+    html+='</div></div></details></div>'; /* close mod-body, col-body, details, col */
+  });
+  html+='</div></div>'; /* close cols-wrap, tree */
+  document.getElementById("xf-bar").innerHTML=html;
+  _xftEnsureModal();
+}
+/* Safe CSS id fragment from a string */
+function _xfId(s){return s.replace(/[^a-zA-Z0-9_-]/g,'_');}
+/* Click on label text toggles the parent checkbox */
+function _xftLblClick(cbId){const cb=document.getElementById(cbId);if(!cb)return;cb.indeterminate=false;cb.checked=!cb.checked;_xftParentChange(cb);}
+/* When a parent-level checkbox changes: cascade to region checkboxes */
+function _xftParentChange(cb){
+  const lv=cb.dataset.level,mod=cb.dataset.mod,blk=cb.dataset.blk,reg=cb.dataset.reg;
+  const state=cb.indeterminate?true:cb.checked;
+  if(lv==='reg'){
+    /* Cascade checked state to all IP children in this region */
+    document.querySelectorAll('.xft-mip[data-mod="'+mod+'"][data-blk="'+blk+'"][data-reg="'+reg+'"]')
+      .forEach(m=>{m.checked=state;m.indeterminate=false;});
+  }else if(lv==='blk'){
+    /* Cascade to all regions and IPs in this block */
+    document.querySelectorAll('.xft-reg-cb[data-mod="'+mod+'"][data-blk="'+blk+'"]')
+      .forEach(r=>{r.checked=state;r.indeterminate=false;});
+    document.querySelectorAll('.xft-mip[data-mod="'+mod+'"][data-blk="'+blk+'"]')
+      .forEach(m=>{m.checked=state;m.indeterminate=false;});
+  }else if(lv==='mod'){
+    /* Cascade to all blocks, regions and IPs in this module */
+    document.querySelectorAll('.xft-blk-cb[data-mod="'+mod+'"]').forEach(c=>{c.checked=state;c.indeterminate=false;});
+    document.querySelectorAll('.xft-reg-cb[data-mod="'+mod+'"]')
+      .forEach(r=>{r.checked=state;r.indeterminate=false;});
+    document.querySelectorAll('.xft-mip[data-mod="'+mod+'"]')
+      .forEach(m=>{m.checked=state;m.indeterminate=false;});
+  }
+  _xftUpdateAncestors();applyFilters();
+}
+/* Module-level IP helpers */
+function _xftMipChange(cb){_xftUpdateAncestors();applyFilters();}
+function _xftUpdateIpVisibility(){/* no-op: IPs are now direct children of region details */}
+function _xftUpdateAncestors(){
+  /* Step 1: reg-cb state derived from its .xft-mip children */
+  document.querySelectorAll('.xft-reg-cb').forEach(function(cb){
+    var mod=cb.dataset.mod,blk=cb.dataset.blk,reg=cb.dataset.reg;
+    var mips=[...document.querySelectorAll('.xft-mip[data-mod="'+mod+'"][data-blk="'+blk+'"][data-reg="'+reg+'"]')];
+    var n=mips.length,s=mips.filter(m=>m.checked).length;
+    if(n===0){cb.checked=true;cb.indeterminate=false;}
+    else{cb.indeterminate=(s>0&&s<n);cb.checked=(s===n);}
+  });
+  /* Step 2: blk-cb state derived from its .xft-reg-cb children */
+  document.querySelectorAll('.xft-chk[data-level="blk"]').forEach(function(cb){
+    var regs=[...document.querySelectorAll('.xft-reg-cb[data-mod="'+cb.dataset.mod+'"][data-blk="'+cb.dataset.blk+'"]')];
+    var n=regs.length,s=regs.filter(r=>r.checked&&!r.indeterminate).length,p=regs.filter(r=>r.indeterminate).length;
+    if(n===0){cb.checked=true;cb.indeterminate=false;}
+    else if(s===n){cb.checked=true;cb.indeterminate=false;}
+    else if(s===0&&p===0){cb.checked=false;cb.indeterminate=false;}
+    else{cb.indeterminate=true;cb.checked=true;}
+  });
+  /* Step 3: mod-cb state derived from its .xft-blk-cb children */
+  document.querySelectorAll('.xft-chk[data-level="mod"]').forEach(function(cb){
+    var blks=[...document.querySelectorAll('.xft-blk-cb[data-mod="'+cb.dataset.mod+'"]')];
+    var n=blks.length,s=blks.filter(b=>b.checked&&!b.indeterminate).length,p=blks.filter(b=>b.indeterminate).length;
+    if(n===0){cb.checked=true;cb.indeterminate=false;}
+    else if(s===n){cb.checked=true;cb.indeterminate=false;}
+    else if(s===0&&p===0){cb.checked=false;cb.indeterminate=false;}
+    else{cb.indeterminate=true;cb.checked=true;}
+  });
+}
+/* ── Column drag-resize ────────────────────────────────────────────── */
+function _xftColDrag(e,handle){
+  e.preventDefault();
+  const wrap=document.getElementById('xft-cols-wrap');if(!wrap)return;
+  const cols=[...wrap.querySelectorAll('.xft-col')];
+  const ci=parseInt(handle.dataset.ci);
+  const colA=cols[ci],colB=cols[ci+1];if(!colA||!colB)return;
+  const x0=e.clientX,wA0=colA.offsetWidth,wB0=colB.offsetWidth;
+  handle.classList.add('dragging');
+  const move=ev=>{const dx=ev.clientX-x0;const nA=Math.max(60,wA0+dx),nB=Math.max(60,wB0-dx);colA.style.flex='none';colB.style.flex='none';colA.style.width=nA+'px';colB.style.width=nB+'px';};
+  const up=()=>{handle.classList.remove('dragging');document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);document.body.style.userSelect='';};
+  document.body.style.userSelect='none';
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+/* ── Module popup ───────────────────────────────────────────────────── */
+function _xftEnsureModal(){
+  if(document.getElementById('xft-modal'))return;
+  const m=document.createElement('div');m.id='xft-modal';
+  m.innerHTML='<div id="xft-modal-inner"><div id="xft-modal-hdr"><span id="xft-modal-title"></span><button id="xft-modal-close" onclick="_xftPopupClose()">&#10005; Close</button></div><div id="xft-modal-body"></div><div id="xft-modal-footer"><button onclick="_xftPopupClose()">&#10003; Done</button><button onclick="_xftMod(true,document.getElementById(\'xft-modal\').dataset.mod)">All</button><button onclick="_xftMod(false,document.getElementById(\'xft-modal\').dataset.mod)">None</button></div></div>';
+  m.addEventListener('click',function(e){if(e.target===m)_xftPopupClose();});
+  document.body.appendChild(m);
+}
+function _xftPopup(mod){
+  _xftEnsureModal();
+  const col=document.getElementById('xft-col-'+_xfId(mod));if(!col)return;
+  const modEl=col.querySelector('.xft-mod');if(!modEl)return;
+  const modal=document.getElementById('xft-modal');
+  const body=document.getElementById('xft-modal-body');
+  const title=document.getElementById('xft-modal-title');
+  title.textContent=mod;
+  modal.dataset.mod=mod;
+  modal.dataset.colId='xft-col-'+_xfId(mod);
+  /* Detach from column, attach to modal */
+  body.innerHTML='';
+  body.appendChild(modEl);
+  /* Remove height cap so full tree is visible in modal */
+  const cb=modEl.querySelector('.xft-col-body');if(cb){cb.style.maxHeight='none';cb.style.overflowY='visible';}
+  modal.classList.add('open');
+}
+function _xftPopupClose(){
+  const modal=document.getElementById('xft-modal');if(!modal)return;
+  modal.classList.remove('open');
+  const body=document.getElementById('xft-modal-body');
+  const modEl=body.querySelector('.xft-mod');if(!modEl)return;
+  const colId=modal.dataset.colId;
+  const col=document.getElementById(colId);if(!col)return;
+  /* Restore height cap and move back */
+  const cb=modEl.querySelector('.xft-col-body');if(cb){cb.style.maxHeight='';cb.style.overflowY='';}
+  col.appendChild(modEl);
+  body.innerHTML='';
+  applyFilters();
+}
+/* Select or deselect all globally */
+function _xftAll(state){
+  document.querySelectorAll('.xft-blk-cb,.xft-reg-cb,.xft-mip').forEach(cb=>{cb.checked=state;cb.indeterminate=false;});
+  _xftUpdateAncestors();applyFilters();
+}
+/* Select or deselect all within a single module */
+function _xftMod(state,mod){
+  document.querySelectorAll('.xft-blk-cb[data-mod="'+mod+'"],.xft-reg-cb[data-mod="'+mod+'"],.xft-mip[data-mod="'+mod+'"]').forEach(cb=>{cb.checked=state;cb.indeterminate=false;});
+  _xftUpdateAncestors();applyFilters();
+}
+/* Close dropdown panels when clicking outside */
+document.addEventListener('click',function(e){
+  ['part-dd-panel','ip-dd-panel'].forEach(id=>{const p=document.getElementById(id);const b=document.getElementById(id.replace('panel','btn'));if(p&&b&&!p.contains(e.target)&&e.target!==b){p.classList.remove('open');b.classList.remove('open');}});
+});
+function toggleGrpBy(val){const i=GRP_BY.indexOf(val);if(i>=0)GRP_BY.splice(i,1);else GRP_BY.push(val);applyFilters();}
+function _grpKey(r){if(!GRP_BY.length)return'All';return GRP_BY.map(f=>f+"="+String(r[f]||'\u2014')).join(' | ');}
+function _selLW(){return new Set(Array.from(SEL_WFR).map(function(wi){return UNIQ_WFR[wi]?UNIQ_WFR[wi].key:null;}).filter(Boolean));}
+
+/* ── Core filter ────────────────────────────────────────────────────── */
+function getFiltered(){
+  const selLW=_selLW();if(!selLW.size)return[];
+  /* Region filter: mod|blk|reg */
+  const selRegKeys=new Set([...document.querySelectorAll('.xft-reg-cb:checked')].map(c=>c.dataset.mod+'|'+c.dataset.blk+'|'+c.dataset.reg));
+  const totalRegN=document.querySelectorAll('.xft-reg-cb').length;
+  /* Module-level IP filter: mod|ip */
+  const selMipKeys=new Set([...document.querySelectorAll('.xft-mip:checked')].map(c=>c.dataset.mod+'|'+c.dataset.ip));
+  const totalMipN=document.querySelectorAll('.xft-mip').length;
+  return D.per_ip.filter(r=>{
+    if(!selLW.has(r.LOT+'|'+r.WAFER))return false;
+    if(SEL_TESTS.size>0&&SEL_TESTS.size<_allTestKeys.length&&!SEL_TESTS.has((r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'')))return false;
+    if(totalRegN>0&&selRegKeys.size<totalRegN&&!selRegKeys.has((r.MODULE||'?')+'|'+(r.BLOCK||'?')+'|'+(r.REGION||'?')))return false;
+    if(totalMipN>0&&selMipKeys.size<totalMipN&&!selMipKeys.has((r.MODULE||'?')+'|'+(r.IP||'?')))return false;
+    return true;
+  });
+}
+
+/* ── Tab switching ─────────────────────────────────────────────────── */
+function switchTab(n){const _tord=['p-wafermap','p-fpf','p-testtype','p-dietable'];document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===n));document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));const tp=document.getElementById(_tord[n]);if(tp)tp.classList.add('active');requestAnimationFrame(applyFilters);}
+function applyFilters(){const aid=(document.querySelector('.tab-panel.active')||{}).id||'';if(aid==='p-wafermap')drawWaferMap();else if(aid==='p-fpf')drawFaultPerFault();else if(aid==='p-testtype')drawTestType();else if(aid==='p-dietable')drawDieTable();}
+
+/* ── Resize handle (sidebar) ───────────────────────────────────────── */
+(function(){const rh=document.getElementById('resize-handle');let drag=false,x0=0,w0=0;
+  rh.addEventListener('mousedown',e=>{drag=true;x0=e.clientX;w0=document.getElementById('wfr-panel').offsetWidth;document.body.style.userSelect='none';rh.classList.add('dragging');});
+  document.addEventListener('mousemove',e=>{if(!drag)return;document.getElementById('wfr-panel').style.width=Math.max(160,Math.min(600,w0+(e.clientX-x0)))+'px';});
+  document.addEventListener('mouseup',()=>{drag=false;document.body.style.userSelect='';rh.classList.remove('dragging');});})();
+
+/* ── Resize handle (filter tree ↕ lot/wafer table) ────────────────── */
+(function(){const hh=document.getElementById('wfr-h-handle');if(!hh)return;let drag=false,y0=0,h0=0;
+  hh.addEventListener('mousedown',e=>{drag=true;y0=e.clientY;h0=document.getElementById('xf-bar').offsetHeight;document.body.style.userSelect='none';hh.classList.add('dragging');});
+  document.addEventListener('mousemove',e=>{if(!drag)return;const dy=e.clientY-y0;document.getElementById('xf-bar').style.height=Math.max(40,Math.min(520,h0+dy))+'px';});
+  document.addEventListener('mouseup',()=>{if(!drag)return;drag=false;document.body.style.userSelect='';hh.classList.remove('dragging');});})();
+
+/* ── rv pane resize handles ────────────────────────────────────────── */
+function rvStartResizeH(e, paneId, dir){
+  e.preventDefault();
+  const pane=document.getElementById(paneId);
+  const x0=e.clientX,w0=pane.offsetWidth;
+  const onMove=ev=>{const dw=(ev.clientX-x0)*dir;pane.style.width=Math.max(140,w0+dw)+'px';};
+  const onUp=()=>{document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);e.target.classList.remove('dragging');};
+  e.target.classList.add('dragging');
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
+
+/* ── Plotly helpers ────────────────────────────────────────────────── */
+const CFG={responsive:true,displayModeBar:true,scrollZoom:true,modeBarButtonsToRemove:["select2d","lasso2d"]};
+const HL={bgcolor:"#2c3e50",font:{color:"#ecf0f1",size:11}};
+function noPlot(id,msg){try{Plotly.purge(id);}catch(e){}const el=document.getElementById(id);if(el)el.innerHTML='<div class="nodata">'+(msg||"No data for selected filters")+'</div>';}
+function toggleTable(id){document.getElementById(id).classList.toggle('hidden');}
+
+/* ── Fail Chart ────────────────────────────────────────────────────── */
+function drawFailChart(){
+  const recs=getFiltered();if(!recs.length){noPlot("plot-fail");document.getElementById('tbl-fail').innerHTML='';return;}
+  const showMod=BLK_BY_MOD,tdpw=M.total_dies_per_wafer||{};
+  const agg={};
+  recs.forEach(r=>{const mod=showMod?r.MODULE:'ALL';const gk=_grpKey(r);const wk=r.LOT+"|"+r.WAFER;const k=mod+"|"+r.BLOCK+"|"+r.PARTITION+"|"+gk+"|"+wk;if(!agg[k])agg[k]={mod,block:r.BLOCK,part:r.PARTITION,grp:gk,wk,dies:new Set()};agg[k].dies.add(r.VISUAL_ID);});
+  const byPart={};
+  Object.values(agg).forEach(a=>{const k2=a.mod+"|"+a.block+"|"+a.part+"|"+a.grp;if(!byPart[k2])byPart[k2]={mod:a.mod,block:a.block,part:a.part,grp:a.grp,wfrCnt:0,sumFail:0,sumTotal:0};byPart[k2].wfrCnt++;byPart[k2].sumFail+=a.dies.size;byPart[k2].sumTotal+=(tdpw[a.wk]||0);});
+  const plotRows=Object.values(byPart).map(g=>{const avgFail=g.sumFail/g.wfrCnt;const pct=g.sumTotal>0?(g.sumFail/g.sumTotal*100):0;return{mod:g.mod,block:g.block,part:g.part,grp:g.grp,avgFail,pct,sumFail:g.sumFail,wfrCnt:g.wfrCnt};}).sort((a,b)=>a.block.localeCompare(b.block)||a.part.localeCompare(b.part)||(a.mod||'').localeCompare(b.mod||''));
+  const grpKeys=[...new Set(plotRows.map(r=>r.grp))].sort();const cmap={};grpKeys.forEach((g,i)=>{cmap[g]=MPLT[i%MPLT.length];});
+  const useGrp=GRP_BY.length>0,yField=SHOW_PCT?'pct':'avgFail',yTitle=SHOW_PCT?'YieldLoss (%)':'Avg Fail Dies / Wafer';
+  const traces=[];
+  grpKeys.forEach(gk=>{const sub=plotRows.filter(r=>r.grp===gk);if(!sub.length)return;
+    const xs=showMod?[sub.map(r=>r.block),sub.map(r=>r.part),sub.map(r=>r.mod)]:[sub.map(r=>r.block),sub.map(r=>r.part)];
+    traces.push({type:"scatter",mode:"markers",name:useGrp?gk:'Partitions',legendgroup:gk,x:xs,y:sub.map(r=>r[yField]),
+      text:sub.map(r=>"<b>"+r.part+"</b>"+(showMod?" / "+r.mod:"")+"<br>Block: "+r.block+"<br>Avg Fail: "+r.avgFail.toFixed(2)+"<br>%: "+r.pct.toFixed(4)+(useGrp?"<br>Group: "+r.grp:"")),
+      hovertemplate:"%{text}<extra></extra>",marker:{size:8,color:useGrp?cmap[gk]:sub.map(r=>mc(r.part)),opacity:.9,line:{color:"#fff",width:.5}}});});
+  const nCols=showMod?[...new Set(plotRows.map(r=>r.part+"|"+r.mod))].length:[...new Set(plotRows.map(r=>r.part))].length;
+  document.getElementById("plot-fail").style.minWidth=Math.max(750,nCols*38+160)+"px";
+  Plotly.react("plot-fail",traces,{height:_ph("plot-fail"),margin:{t:30,l:65,r:20,b:150},
+    xaxis:{tickfont:{size:9},automargin:true,showgrid:true,gridcolor:"#e8ecf0"},
+    yaxis:{title:yTitle,gridcolor:"#e8ecf0",tickfont:{size:10},titlefont:{size:11},showgrid:true,zeroline:true,zerolinecolor:"#ccc"},
+    legend:{font:{size:10},orientation:"h",y:-0.25,x:0.5,xanchor:"center",yanchor:"top"},plot_bgcolor:"#fff",paper_bgcolor:"#fff",hoverlabel:HL},{...CFG,responsive:true});
+  // Sort by _fcSortState
+  const _fcs=_fcSortState||{col:'avgFail',asc:false};
+  const _fpr=[...plotRows].sort((a,b)=>{const av=a[_fcs.col],bv=b[_fcs.col];const c=typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||''));return _fcs.asc?c:-c;});
+  const _fth=(c,l)=>'<th onclick="fcSort(\''+c+'\')"'+(c===_fcs.col?' class="sarr '+(_fcs.asc?'asc':'desc')+'"':'')+'>'+l+'</th>';
+  let thtml='<table class="dt"><thead><tr>'+_fth('block','Block')+_fth('part','Partition')+(showMod?_fth('mod','Module'):'')+_fth('avgFail','Avg Fail Dies')+_fth('pct','%')+_fth('wfrCnt','# Wafers')+(useGrp?_fth('grp','Group'):'')+' </tr></thead><tbody>';
+  _fpr.forEach(r=>{thtml+='<tr><td>'+r.block+'</td><td>'+r.part+'</td>'+(showMod?'<td>'+r.mod+'</td>':'')+'<td class="n">'+r.avgFail.toFixed(2)+'</td><td class="n">'+r.pct.toFixed(4)+'</td><td class="n">'+r.wfrCnt+'</td>'+(useGrp?'<td>'+r.grp+'</td>':'')+'</tr>';});
+  thtml+='</tbody></table>';document.getElementById('tbl-fail').innerHTML=thtml;document.getElementById('cnt-fail').textContent=_fpr.length+' rows';
+}
+function fcSort(col){_fcSortState={col,asc:_fcSortState&&_fcSortState.col===col?!_fcSortState.asc:false};drawFailChart();}
+
+/* ── FailPerTestType ───────────────────────────────────────────────── */
+var _ttSortState=null;
+function toggleTTShow(tt,on){if(on)TT_SHOW.add(tt);else TT_SHOW.delete(tt);document.querySelectorAll('[data-tt="'+tt+'"]').forEach(function(cb){cb.checked=on;});applyFilters();}
+function setTTGrp(byReg){TT_GRP_REGION=byReg;applyFilters();}
+function drawTestType(){
+  const allRecs=getFiltered();
+  const _tdpw=M.total_dies_per_wafer||{};
+  const totalUniqDies=[..._selLW()].reduce((s,wk)=>s+(_tdpw[wk]||0),0)||(new Set(allRecs.map(r=>r.VISUAL_ID)).size||1);
+  const recs=allRecs.filter(r=>TT_SHOW.has(r.TESTTYPE));
+  if(!recs.length){noPlot('plot-testtype');document.getElementById('tbl-testtype').innerHTML='';document.getElementById('cnt-testtype').textContent='';return;}
+  const byReg=TT_GRP_REGION;
+  // Aggregate unique VISUAL_IDs per (MODULE, [BLOCK, REGION,] IP, TESTTYPE)
+  const agg={};
+  recs.forEach(r=>{
+    const gk=r.MODULE+'|'+(byReg?r.BLOCK+'|'+r.REGION+'|':'')+r.IP;
+    if(!agg[gk])agg[gk]={module:r.MODULE,block:byReg?r.BLOCK:null,region:byReg?r.REGION:null,ip:r.IP};
+    const sk='_s'+r.TESTTYPE;
+    if(!agg[gk][sk])agg[gk][sk]=new Set();
+    agg[gk][sk].add(r.VISUAL_ID);
+    if(!agg[gk]._sALL)agg[gk]._sALL=new Set();
+    agg[gk]._sALL.add(r.VISUAL_ID);
+  });
+  const allTT=[...TT_SHOW].sort();
+  const rows=Object.values(agg).map(g=>{
+    const o={module:g.module,block:g.block,region:g.region,ip:g.ip};
+    allTT.forEach(tt=>{o[tt]=g['_s'+tt]?g['_s'+tt].size:0;});
+    o._total=allTT.reduce((s,tt)=>s+(o[tt]||0),0);
+    o._failDies=g._sALL?g._sALL.size:0;
+    o._pct=o._failDies/totalUniqDies*100;
+    return o;
+  }).sort((a,b)=>{
+    let d=a.module.localeCompare(b.module);if(d)return d;
+    if(byReg){d=(a.block||'').localeCompare(b.block||'');if(d)return d;d=(a.region||'').localeCompare(b.region||'');if(d)return d;}
+    return a.ip.localeCompare(b.ip);
+  });
+  const TT_BASE={CHAIN:'#0071C5',STUCKAT:'#E8421C',ATSPEED:'#1CA44A',DIAG:'#8B5CF6'};
+  const TT_OPA={CHAIN:0.75,STUCKAT:0.85,ATSPEED:1.0,DIAG:0.9};
+  // byReg=true  → one trace per Block/Region (color-coded), 2-level x-axis, legend at bottom
+  // byReg=false → one trace per TestType (color-coded), 2-level x-axis, legend at top
+  const nMI=[...new Set(rows.map(r=>r.module+'|'+r.ip))].length;
+  let traces, botMargin;
+  if(byReg){
+    const brKeys=[...new Set(rows.map(r=>r.block+'||'+r.region))].sort();
+    botMargin=240;
+    traces=brKeys.map((brk,i)=>{
+      const [blk,reg]=brk.split('||');
+      const sub=rows.filter(r=>r.block===blk&&r.region===reg);
+      return{
+        type:'bar',name:blk+'/'+reg,
+        x:[sub.map(r=>r.module),sub.map(r=>r.ip)],
+        y:sub.map(r=>r._failDies),
+        text:sub.map(r=>'<b>'+r.ip+'</b>'
+          +'<br>Block: '+r.block+'  Region: '+r.region
+          +'<br>Module: '+r.module
+          +'<br>Fail Dies: '+r._failDies+' ('+r._pct.toFixed(1)+'%)'
+          +(allTT.filter(tt=>r[tt]).length
+            ?'<br>'+allTT.filter(tt=>r[tt]).map(tt=>tt+': '+r[tt]).join(' | ')
+            :'')),
+        hovertemplate:'%{text}<extra></extra>',
+        marker:{color:MPLT[i%MPLT.length],opacity:0.85}
+      };
+    });
+  }else{
+    botMargin=200;
+    traces=allTT.map(tt=>({
+      type:'bar',name:tt,
+      x:[rows.map(r=>r.module),rows.map(r=>r.ip)],
+      y:rows.map(r=>r[tt]||0),
+      text:rows.map(r=>'<b>'+tt+'</b><br>Module: '+r.module+'<br>IP: '+r.ip+'<br>Fail dies ('+tt+'): '+(r[tt]||0)+'<br>Fail dies (any): '+r._failDies+' ('+r._pct.toFixed(1)+'%)'),
+      hovertemplate:'%{text}<extra></extra>',
+      marker:{color:TT_BASE[tt]||mc(tt),opacity:TT_OPA[tt]||0.9}
+    }));
+  }
+  document.getElementById('plot-testtype').style.minWidth=Math.max(750,nMI*55+220)+'px';
+  Plotly.react('plot-testtype',traces,{
+    barmode:'group',height:_ph('plot-testtype'),margin:{t:30,l:65,r:20,b:botMargin},
+    xaxis:{tickfont:{size:7.5},tickangle:-45,automargin:true,showgrid:true,gridcolor:'#e8ecf0'},
+    yaxis:{title:'Fail Dies (unique)',gridcolor:'#e8ecf0',tickfont:{size:10},titlefont:{size:11},
+           showgrid:true,zeroline:true,zerolinecolor:'#ccc'},
+    legend:{font:{size:10},orientation:'h',y:byReg?-0.22:1.06,x:0.5,xanchor:'center',yanchor:byReg?'top':'bottom'},
+    plot_bgcolor:'#fff',paper_bgcolor:'#fff',hoverlabel:HL
+  },{...CFG,responsive:true});
+  // Table — sortable; Module | [Block | Region] | IP | TT cols | Fail Dies | % Fail | TT Sum
+  const _ss=_ttSortState||{col:null,asc:true};
+  let trows=[...rows];
+  if(_ss.col){
+    trows.sort((a,b)=>{
+      const av=a[_ss.col],bv=b[_ss.col];
+      const cmp=typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||''));
+      return _ss.asc?cmp:-cmp;
+    });
+  }
+  const _tth=(c,l,xtra)=>'<th onclick="ttSort(\''+c+'\')" class="'+(c===_ss.col?'sarr '+(_ss.asc?'asc':'desc'):'')+'"'+(xtra?' '+xtra:'')+'>'+l+'</th>';
+  let thtml='<table class="dt"><thead><tr>'
+    +_tth('module','Module')
+    +(byReg?_tth('block','Block')+_tth('region','Region'):'')
+    +_tth('ip','IP')
+    +allTT.map(tt=>_tth(tt,tt,'style="color:'+(TT_BASE[tt]||'#333')+'"')).join('')
+    +_tth('_failDies','Fail Dies','style="color:#b45309;font-weight:700"')
+    +_tth('_pct','% Fail','style="color:#b45309;font-weight:700"')
+    +_tth('_total','TT Sum')
+    +'</tr></thead><tbody>';
+  trows.forEach(r=>{
+    const ttVals=allTT.map(tt=>r[tt]||0);
+    thtml+='<tr>'
+      +'<td>'+r.module+'</td>'+(byReg?'<td>'+(r.block||'')+'</td><td>'+(r.region||'')+'</td>':'')
+      +'<td>'+r.ip+'</td>'
+      +ttVals.map(v=>'<td class="n">'+v+'</td>').join('')
+      +'<td class="n" style="color:#b45309;font-weight:700">'+r._failDies+'</td>'
+      +'<td class="n" style="color:#b45309;font-weight:700">'+r._pct.toFixed(1)+'%</td>'
+      +'<td class="n">'+r._total+'</td></tr>';
+  });
+  thtml+='</tbody></table>';
+  document.getElementById('tbl-testtype').innerHTML=thtml;
+  document.getElementById('cnt-testtype').textContent=trows.length+' rows';
+}
+function ttSort(col){_ttSortState={col,asc:_ttSortState&&_ttSortState.col===col?!_ttSortState.asc:false};drawTestType();}
+
+/* ── FailPerFault ──────────────────────────────────────────────────── */
+function _polyFit(xs,ys,deg){
+  // Least-squares polynomial fit in log10(x) space; returns evaluator x→y
+  const n=xs.length;if(n<=deg)return null;
+  const lx=xs.map(v=>Math.log10(Math.max(1,v)));
+  const d=deg+1;
+  const A=Array.from({length:d},()=>new Array(d).fill(0));
+  const b=new Array(d).fill(0);
+  for(let i=0;i<n;i++){
+    const p=[1];for(let j=1;j<d;j++)p.push(p[j-1]*lx[i]);
+    for(let j=0;j<d;j++){b[j]+=p[j]*ys[i];for(let k=0;k<d;k++)A[j][k]+=p[j]*p[k];}
+  }
+  for(let col=0;col<d;col++){
+    let mr=col;for(let r=col+1;r<d;r++)if(Math.abs(A[r][col])>Math.abs(A[mr][col]))mr=r;
+    [A[col],A[mr]]=[A[mr],A[col]];[b[col],b[mr]]=[b[mr],b[col]];
+    if(Math.abs(A[col][col])<1e-12)return null;
+    const sc=A[col][col];for(let k=col;k<d;k++)A[col][k]/=sc;b[col]/=sc;
+    for(let r=0;r<d;r++){if(r===col)continue;const f=A[r][col];for(let k=col;k<d;k++)A[r][k]-=f*A[col][k];b[r]-=f*b[col];}
+  }
+  return function(x){const lv=Math.log10(Math.max(1,x));let v=0,pw=1;for(let j=0;j<d;j++){v+=b[j]*pw;pw*=lv;}return Math.max(0,v);};
+}
+function setFPFGrp(byReg){_fpfGrpRegion=byReg;applyFilters();}
+function drawFaultPerFault(){
+  const allRecs=getFiltered();
+  const _tdpw=M.total_dies_per_wafer||{};
+  const totalUniqDies=[..._selLW()].reduce((s,wk)=>s+(_tdpw[wk]||0),0)||(new Set(allRecs.map(r=>r.VISUAL_ID)).size||1);
+  if(!allRecs.length){noPlot('plot-fpf');document.getElementById('tbl-fpf').innerHTML='';document.getElementById('cnt-fpf').textContent='';return;}
+  const byReg=_fpfGrpRegion;
+  // Build block→module map from per_ip data
+  const blkMod={};
+  allRecs.forEach(r=>{if(!blkMod[r.BLOCK])blkMod[r.BLOCK]=r.MODULE;});
+  // Build module+ip fault count lookup (sum across all blocks/regions in module)
+  const _fcMI={};
+  Object.entries(HRY_CFG).forEach(([k,v])=>{
+    const p=k.split('|');const mod=blkMod[p[0]];if(!mod)return;
+    const mk=mod+'|'+p[2];_fcMI[mk]=(_fcMI[mk]||0)+v;
+  });
+  // Aggregate unique fails per (MODULE, [BLOCK, REGION,] IP)
+  const agg={};
+  allRecs.forEach(r=>{
+    if(!TT_SHOW.has(r.TESTTYPE))return;
+    const gk=r.MODULE+'|'+(byReg?r.BLOCK+'|'+r.REGION+'|':'')+r.IP;
+    if(!agg[gk])agg[gk]={module:r.MODULE,block:byReg?r.BLOCK:null,region:byReg?r.REGION:null,ip:r.IP};
+    if(!agg[gk]._sALL)agg[gk]._sALL=new Set();
+    agg[gk]._sALL.add(r.VISUAL_ID);
+    const sk='_s'+r.TESTTYPE;
+    if(!agg[gk][sk])agg[gk][sk]=new Set();
+    agg[gk][sk].add(r.VISUAL_ID);
+  });
+  const rows=Object.values(agg).map(g=>{
+    const faultCount=byReg?(HRY_CFG[g.block+'|'+g.region+'|'+g.ip]||0):(_fcMI[g.module+'|'+g.ip]||0);
+    const failDies=g._sALL?g._sALL.size:0;
+    const pct=failDies/totalUniqDies*100;
+    const o={module:g.module,block:g.block,region:g.region,ip:g.ip,faultCount,failDies,pct};
+    TT_ALL.forEach(tt=>{o[tt]=g['_s'+tt]?g['_s'+tt].size:0;});
+    return o;
+  }).sort((a,b)=>{
+    let d=a.module.localeCompare(b.module);if(d)return d;
+    if(byReg){d=(a.block||'').localeCompare(b.block||'');if(d)return d;d=(a.region||'').localeCompare(b.region||'');if(d)return d;}
+    return a.ip.localeCompare(b.ip);
+  });
+  if(!rows.length){noPlot('plot-fpf','No data for selected filters');document.getElementById('tbl-fpf').innerHTML='';document.getElementById('cnt-fpf').textContent='';return;}
+  // Marker symbols per module / block
+  // Scatter traces — one per IP; symbol cycles per IP, color by module
+  const IP_SYMS=['circle','square','diamond','cross','x','triangle-up','triangle-down',
+    'triangle-left','triangle-right','pentagon','hexagon','star','hexagram',
+    'star-triangle-up','star-square','hourglass','bowtie','circle-cross','circle-x','square-cross'];
+  const allIPs=[...new Set(rows.map(r=>r.ip))].sort();
+  const IP_SYM={}; allIPs.forEach((ip,i)=>{IP_SYM[ip]=IP_SYMS[i%IP_SYMS.length];});
+  const _seenLeg=new Set();
+  const actTraces=rows.map(r=>{
+    const showLeg=!_seenLeg.has(r.ip); _seenLeg.add(r.ip);
+    return{
+      type:'scatter',mode:'markers',
+      name:r.ip,legendgroup:r.ip,showlegend:showLeg,
+      x:[r.faultCount],
+      y:[r.pct],
+      text:['<b>'+r.ip+'</b>'+(byReg?'<br>Block: '+r.block+'<br>Region: '+r.region:'')+'<br>Module: '+r.module+'<br>Fault Count: '+r.faultCount.toLocaleString()+'<br>Fail Dies: '+r.failDies+'<br>YieldLoss: '+r.pct.toFixed(2)+'%'],
+      hovertemplate:'%{text}<extra></extra>',
+      marker:{size:9,color:mc(r.module),symbol:IP_SYM[r.ip],opacity:.85,line:{color:'#fff',width:.5}}
+    };
+  });
+  // Target: degree-3 polynomial fit in log10(x) space
+  const tgtSorted=[...YIELD_TARGET].sort((a,b)=>a.fc-b.fc);
+  const txs=tgtSorted.map(r=>r.fc),tys=tgtSorted.map(r=>r.pct);
+  const polyFn=_polyFit(txs,tys,3);
+  let polyTrace;
+  if(polyFn){
+    const lmin=Math.log10(Math.max(1,txs[0])),lmax=Math.log10(txs[txs.length-1]);
+    const cx=[],cy=[];
+    for(let i=0;i<=120;i++){const lv=lmin+(lmax-lmin)*i/120;const xv=Math.pow(10,lv);cx.push(xv);cy.push(polyFn(xv));}
+    polyTrace={type:'scatter',mode:'lines',name:'Target (poly)',x:cx,y:cy,
+      line:{color:'#666',width:2,dash:'dash'},opacity:.8};
+  }else{
+    polyTrace={type:'scatter',mode:'lines',name:'Target',x:txs,y:tys,
+      line:{color:'#666',width:2,dash:'dash'},opacity:.8};
+  }
+  const tgtPts={type:'scatter',mode:'markers',name:'Target pts',visible:'legendonly',
+    x:txs,y:tys,
+    text:tgtSorted.map(r=>'<b>Target</b><br>FC: '+r.fc.toLocaleString()+'<br>YL: '+r.pct+'%'),
+    hovertemplate:'%{text}<extra></extra>',
+    marker:{size:7,color:'#888',symbol:'x',opacity:.8}};
+  Plotly.react('plot-fpf',[...actTraces,polyTrace,tgtPts],{
+    height:_ph('plot-fpf'),margin:{t:30,l:65,r:20,b:160},
+    xaxis:{type:'log',title:'Fault Count (log)',gridcolor:'#e8ecf0',tickfont:{size:10},titlefont:{size:11},showgrid:true},
+    yaxis:{title:'YieldLoss (%)',gridcolor:'#e8ecf0',tickfont:{size:10},titlefont:{size:11},showgrid:true,zeroline:true,zerolinecolor:'#ccc'},
+    legend:{font:{size:9},orientation:'h',y:-0.18,x:0.5,xanchor:'center',yanchor:'top'},
+    plot_bgcolor:'#fff',paper_bgcolor:'#fff',hoverlabel:HL
+  },{...CFG,responsive:true});
+  // Sortable table: Module | [Block | Region] | IP | Fault Count | TT cols | Fail Dies | % Fail
+  const TT_BASE={CHAIN:'#0071C5',STUCKAT:'#E8421C',ATSPEED:'#1CA44A',DIAG:'#8B5CF6'};
+  const _ss=_fpfSortState||{col:null,asc:true};
+  let trows=[...rows];
+  if(_ss.col){trows.sort((a,b)=>{const av=a[_ss.col],bv=b[_ss.col];const cmp=typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||''));return _ss.asc?cmp:-cmp;});}
+  const _fth=(c,l,xtra)=>'<th onclick="fpfSort(\''+c+'\')" class="'+(c===_ss.col?'sarr '+(_ss.asc?'asc':'desc'):'')+'"'+(xtra?' '+xtra:'')+'>'+l+'</th>';
+  let thtml='<table class="dt"><thead><tr>'
+    +_fth('module','Module')
+    +(byReg?_fth('block','Block')+_fth('region','Region'):'')
+    +_fth('ip','IP')
+    +_fth('faultCount','Fault Count','style="color:#2980b9"')
+    +TT_ALL.map(tt=>_fth(tt,tt,'style="color:'+(TT_BASE[tt]||'#333')+'"')).join('')
+    +_fth('failDies','Fail Dies','style="color:#b45309;font-weight:700"')
+    +_fth('pct','% Fail','style="color:#b45309;font-weight:700"')
+    +'</tr></thead><tbody>';
+  trows.forEach(r=>{
+    thtml+='<tr>'
+      +'<td>'+r.module+'</td>'+(byReg?'<td>'+(r.block||'')+'</td><td>'+(r.region||'')+'</td>':'')
+      +'<td>'+r.ip+'</td>'
+      +'<td class="n">'+r.faultCount.toLocaleString()+'</td>'
+      +TT_ALL.map(tt=>'<td class="n">'+(r[tt]||0)+'</td>').join('')
+      +'<td class="n" style="color:#b45309;font-weight:700">'+r.failDies+'</td>'
+      +'<td class="n" style="color:#b45309;font-weight:700">'+r.pct.toFixed(1)+'%</td>'
+      +'</tr>';
+  });
+  thtml+='</tbody></table>';
+  document.getElementById('tbl-fpf').innerHTML=thtml;
+  document.getElementById('cnt-fpf').textContent=trows.length+' rows';
+}
+function fpfSort(col){_fpfSortState={col,asc:_fpfSortState&&_fpfSortState.col===col?!_fpfSortState.asc:false};drawFaultPerFault();}
+
+/* ── Wafer Map (SVG / wmRender) ────────────────────────────────────── */
+function toggleWMShow(tt,on){if(on)WM_TT_SHOW.add(tt);else WM_TT_SHOW.delete(tt);drawWaferMap();}
+
+/* ── Wafer-map helper: get site/shot info for a die XY ─────────────── */
+function _wmGetSite(x,y,bg){
+  if(!bg||!bg.ret_map||!bg.ret_site_num)return null;
+  const rm=bg.ret_map[x+','+y];if(!rm)return null;
+  const site=bg.ret_site_num[rm[0]+','+rm[1]];
+  return{rdx:rm[0],rdy:rm[1],si:rm[2],site:site!=null?site:null};
+}
+/* ── Color function for all wafer-map color modes ───────────────────── */
+function _wmColor(d,mode,maxFc,totalWfrs,bg,selMips){
+  /* IB/FB modes color ALL dies (including non-failing) — must run before _fc guard */
+  if(mode==='ib'){
+    var ibVal=(d._ibSet&&d._ibSet.size)?[...d._ibSet].sort()[0]:(d._ib||null);
+    if(!ibVal)return'#1a2a3a';
+    if(_rvIBFilter.size>0&&!_rvIBFilter.has(ibVal))return'#1a2a3a';
+    var ibBase=mc('IB:'+ibVal);
+    return d._fc>0?ibBase:'url(#wmck-'+ibBase.slice(1)+')';
+  }
+  if(mode==='fb'){
+    var fbVal=(d._fbSet&&d._fbSet.size)?[...d._fbSet].sort()[0]:(d._fb||null);
+    if(!fbVal)return'#1a2a3a';
+    if(_rvFBFilter.size>0&&!_rvFBFilter.has(fbVal))return'#1a2a3a';
+    var fbBase=mc('FB:'+fbVal);
+    return d._fc>0?fbBase:'url(#wmck-'+fbBase.slice(1)+')';
+  }
+  if(!d._fc)return'#1e3a50';
+  if(mode==='freq'){
+    const t=(d._wfrs?d._wfrs.length:0)/Math.max(1,totalWfrs);
+    return _heatColor(t);
+  }
+  if(mode==='site'){
+    const si=_wmGetSite(d.x,d.y,bg);
+    if(!si||si.site==null)return'#3a4060';
+    const SITE_COLS=['#0071C5','#E8421C','#1CA44A','#8B5CF6','#F59E0B','#06B6D4','#EC4899','#10B981','#A78BFA','#F97316'];
+    return SITE_COLS[(+si.site-1)%SITE_COLS.length]||'#3a4060';
+  }
+  if(mode==='tt'){
+    const counts=TT_ALL.map(tt=>({tt,n:d[tt]||0})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n);
+    if(!counts.length)return'#1e3a50';
+    return TT_COLORS[counts[0].tt]||'#3498db';
+  }
+  if(mode==='ip'&&d._failPairs){
+    /* Color by most-frequently failing IP filtered to currently-selected IPs */
+    const ipCount={};
+    d._failPairs.forEach(function(p){var pts=p.split(':');var ip=pts[2];if(!ip)return;var key=pts[0]+'|'+pts[1]+'|'+ip;if(selMips&&!selMips.has(key))return;ipCount[ip]=(ipCount[ip]||0)+1;});
+    var topIp=Object.entries(ipCount).sort(function(a,b){return b[1]-a[1];})[0];
+    if(!topIp)return _heatColor(d._fc/maxFc);  /* no selected IP matches — fall back to heat color */
+    return mc(topIp[0]);
+  }
+  return _heatColor(d._fc/maxFc);
+}
+/* \u2500\u2500 Build wafer-map filter dropdowns \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+function _buildWmFilterDDs(aggDies,bg){
+  var bar=document.getElementById('wm-fbar');if(!bar)return;
+  var shots=new Set(),sites=new Set();
+  aggDies.forEach(function(d){
+    if(d._fc){
+      if(bg&&bg.ret_map){var rm=bg.ret_map[d.x+','+d.y];if(rm&&rm[2]!=null)shots.add(rm[2]);}
+      if(bg&&bg.ret_map&&bg.ret_site_num){var rm2=bg.ret_map[d.x+','+d.y];if(rm2){var sn=bg.ret_site_num[rm2[0]+','+rm2[1]];if(sn!=null)sites.add(+sn);}}
+    }
+  });
+  var sShots=[...shots].sort(function(a,b){return a-b;});
+  var sSites=[...sites].sort(function(a,b){return a-b;});
+  var _dd=function(label,id,items,current,type){
+    if(!items.length)return'';
+    var all=!current||current.size===items.length;
+    var h='<span style="font-size:8px;color:#6a8a9a">'+label+':</span>';
+    h+='<div class="wm-fdd-wrap"><button class="wm-fdd-btn'+(all?'':' act')+'" onclick="_wmToggleDd(event,\'wm-fdd-'+id+'\')">'+(all?'All'+(items.length>1?' ('+items.length+')':''):(current.size+'/'+items.length))+'</button>';
+    h+='<div class="wm-fdd-panel" id="wm-fdd-'+id+'">';
+    items.forEach(function(v){h+='<label class="wm-fdd-item"><input type="checkbox" '+(current==null||current.has(v)?'checked':'')+' value="'+v+'" data-type="'+type+'" onchange="_wmDdChange(\''+type+'\',this)">'+v+'</label>';});
+    h+='</div></div>';
+    return h;
+  };
+  /* IP filter — only show IPs that are currently checked in the left panel */
+  var allMips=[...document.querySelectorAll('.xft-mip')];
+  var activeMips=allMips.filter(function(m){return m.checked;});
+  /* Build region → unique IPs map from active (left-panel-checked) mips only */
+  var regOrder=[],regIpMap={};
+  activeMips.forEach(function(mip){
+    var reg=mip.dataset.reg||'?',ip=mip.dataset.ip;if(!ip)return;
+    if(!regIpMap[reg]){regIpMap[reg]=[];regOrder.push(reg);}
+    if(!regIpMap[reg].includes(ip))regIpMap[reg].push(ip);
+  });
+  regOrder=[...new Set(regOrder)];
+  var allUniqueIps=[...new Set(activeMips.map(function(m){return m.dataset.ip;}).filter(Boolean))];
+  var checkedIPs=new Set(allUniqueIps);  /* all visible IPs are active */
+  var allIPsOn=true;
+  var ipDDHtml='';
+  if(allUniqueIps.length){
+    ipDDHtml='<span style="font-size:8px;color:#6a8a9a">IP:</span>';
+    ipDDHtml+='<div class="wm-fdd-wrap"><button class="wm-fdd-btn'+(allIPsOn?'':' act')+'" onclick="_wmToggleDd(event,\'wm-fdd-ip\')">'+(allIPsOn?'All ('+allUniqueIps.length+')':checkedIPs.size+'/'+allUniqueIps.length)+'</button>';
+    ipDDHtml+='<div class="wm-fdd-panel" id="wm-fdd-ip" style="min-width:160px">';
+    ipDDHtml+='<div style="display:flex;align-items:center;gap:4px;padding:2px 2px 4px;border-bottom:1px solid #1a2a40;margin-bottom:3px">';
+    ipDDHtml+='<input type="text" id="wm-ip-srch" placeholder="search..." value="'+WM_IP_SEARCH.replace(/"/g,'&quot;')+'" oninput="WM_IP_SEARCH=this.value;_wmIpSearch(this.value)" style="flex:1;font-size:8px;background:#0a1520;border:1px solid #2a4060;color:#9ab4c8;padding:1px 5px;border-radius:2px;min-width:0;outline:none">';
+    ipDDHtml+='<span onclick="_wmIpSelVisible(true)" style="cursor:pointer;color:#5dade2;font-size:8px;white-space:nowrap;padding:0 2px">All</span>';
+    ipDDHtml+='<span style="color:#445566;font-size:8px">|</span>';
+    ipDDHtml+='<span onclick="_wmIpSelVisible(false)" style="cursor:pointer;color:#5dade2;font-size:8px;white-space:nowrap;padding:0 2px">None</span>';
+    ipDDHtml+='</div>';
+    regOrder.forEach(function(reg){
+      var ips=(regIpMap[reg]||[]).slice().sort();
+      var regAllOn=ips.every(function(ip){return checkedIPs.has(ip);});
+      var regPartial=!regAllOn&&ips.some(function(ip){return checkedIPs.has(ip);});
+      ipDDHtml+='<div class="wm-fdd-reg-hdr" data-reg="'+reg+'"><input type="checkbox" class="wm-fdd-reg-cb" data-reg="'+reg+'" '+(regAllOn?'checked':'')+(regPartial?' data-partial="1"':'')+' onchange="_wmDdRegChange(this)"><span>'+reg+'</span></div>';
+      ips.forEach(function(ip){
+        var hidden=WM_IP_SEARCH&&!ip.toLowerCase().includes(WM_IP_SEARCH.toLowerCase())?'display:none;':'';
+        ipDDHtml+='<label class="wm-fdd-item" data-ip="'+ip+'" data-reg="'+reg+'" style="padding-left:14px;'+hidden+'"><input type="checkbox" '+(checkedIPs.has(ip)?'checked':'')+' value="'+ip+'" data-type="ip" data-reg="'+reg+'" onchange="_wmDdChange(\'ip\',this)">'+ip+'</label>';
+      });
+    });
+    ipDDHtml+='</div></div>';  /* also re-apply search-hide to region headers after build */
+    if(WM_IP_SEARCH)setTimeout(function(){_wmIpSearch(WM_IP_SEARCH);},0);
+  }
+  var html='<span style="font-size:8px;color:#6a8a9a">Die(X,Y):</span>';
+  html+='<input id="wm-fi-dloc" class="wm-fi" placeholder="5,12" value="'+WM_F_DLOC+'" oninput="WM_F_DLOC=this.value.trim();_wmApplyAndRedraw()" style="width:60px">';
+  html+=_dd('Shot','shot',sShots,WM_F_SHOTS,'shot');
+  html+=_dd('Site','site',sSites,WM_F_SITES,'site');
+  html+=ipDDHtml;
+  html+='<button style="margin-left:auto;font-size:8px;padding:1px 7px;border:1px solid #2a4060;border-radius:3px;background:none;color:#8ab4d4;cursor:pointer" onclick="WM_F_DLOC=\'\';WM_F_SHOTS=null;WM_F_SITES=null;drawWaferMap()">Clear</button>';
+  bar.innerHTML=html;
+  /* Set indeterminate on partial region checkboxes in IP dropdown */
+  bar.querySelectorAll('.wm-fdd-reg-cb[data-partial]').forEach(function(cb){cb.indeterminate=true;});
+  /* Restore sticky open state after rebuild */
+  if(WM_OPEN_DD){
+    var _op=document.getElementById(WM_OPEN_DD);
+    if(_op){
+      _op.classList.add('open');
+      if(WM_OPEN_DD==='wm-fdd-ip'){var _si=document.getElementById('wm-ip-srch');if(_si)setTimeout(function(){_si.focus();_si.setSelectionRange(_si.value.length,_si.value.length);},0);}
+    }else{WM_OPEN_DD=null;}
+  }
+}
+function _wmIpAll(on){
+  document.querySelectorAll('.xft-mip').forEach(function(cb){cb.checked=on;});
+  if(typeof _xftUpdateAncestors==='function')_xftUpdateAncestors();
+  drawWaferMap();}
+function _wmIpSearch(val){
+  WM_IP_SEARCH=val||'';
+  var q=WM_IP_SEARCH.toLowerCase().trim();
+  var panel=document.getElementById('wm-fdd-ip');if(!panel)return;
+  panel.querySelectorAll('.wm-fdd-item[data-ip]').forEach(function(lbl){
+    lbl.style.display=!q||lbl.dataset.ip.toLowerCase().includes(q)?'':'none';
+  });
+  panel.querySelectorAll('.wm-fdd-reg-hdr[data-reg]').forEach(function(hdr){
+    var reg=hdr.dataset.reg;
+    var any=[...panel.querySelectorAll('.wm-fdd-item[data-ip][data-reg="'+reg+'"]')].some(function(l){return l.style.display!=='none';});
+    hdr.style.display=any?'':'none';
+  });}
+function _wmIpSelVisible(on){
+  var panel=document.getElementById('wm-fdd-ip');if(!panel)return;
+  panel.querySelectorAll('.wm-fdd-item[data-ip]').forEach(function(lbl){
+    if(lbl.style.display==='none')return;
+    var cb=lbl.querySelector('input[type=checkbox]');if(!cb||cb.checked===on)return;
+    cb.checked=on;
+    var _reg=cb.dataset.reg;
+    document.querySelectorAll('.xft-mip').forEach(function(mip){if(mip.dataset.ip===cb.value&&(!_reg||mip.dataset.reg===_reg))mip.checked=on;});
+  });
+  if(typeof _xftUpdateAncestors==='function')_xftUpdateAncestors();
+  drawWaferMap();}
+function _wmDdRegChange(cb){
+  /* Toggle all IPs in this region in the dropdown and sync to left panel */
+  var reg=cb.dataset.reg,on=cb.checked;
+  var panel=cb.closest('.wm-fdd-panel');
+  if(panel)panel.querySelectorAll('input[data-reg="'+reg+'"][data-type="ip"]').forEach(function(ip){ip.checked=on;});
+  document.querySelectorAll('.xft-mip[data-reg="'+reg+'"]').forEach(function(mip){mip.checked=on;});
+  if(typeof _xftUpdateAncestors==='function')_xftUpdateAncestors();
+  drawWaferMap();}
+function _wmToggleDd(e,id){
+  e.stopPropagation();
+  var p=document.getElementById(id);if(!p)return;
+  var wasOpen=p.classList.contains('open');
+  document.querySelectorAll('.wm-fdd-panel.open').forEach(function(el){el.classList.remove('open');});
+  WM_OPEN_DD=wasOpen?null:id;
+  if(!wasOpen)p.classList.add('open');
+}
+function _wmDdChange(type,cb){
+  if(type==='ip'){
+    var ipVal=cb.value,on=cb.checked,regVal=cb.dataset.reg;
+    document.querySelectorAll('.xft-mip').forEach(function(mip){if(mip.dataset.ip===ipVal&&(!regVal||mip.dataset.reg===regVal))mip.checked=on;});
+    if(typeof _xftUpdateAncestors==='function')_xftUpdateAncestors();
+    drawWaferMap();return;
+  }
+  var panel=cb.closest('.wm-fdd-panel');if(!panel)return;
+  var allCbs=[...panel.querySelectorAll('input[type=checkbox]')].filter(function(c){return c.value;});
+  var checked=allCbs.filter(function(c){return c.checked;}).map(function(c){return type==='site'?+c.value:c.value;});
+  if(type==='shot')WM_F_SHOTS=(checked.length===allCbs.length)?null:new Set(checked.map(Number));
+  else if(type==='site')WM_F_SITES=(checked.length===allCbs.length)?null:new Set(checked);
+  _wmApplyAndRedraw();
+}
+
+function _wmApplyAndRedraw(){
+  /* Redraw wafer map with updated filters (do not rebuild the whole filter bar) */
+  drawWaferMap();
+}
+/* \u2500\u2500 Apply wafer-map specific filters on aggregated dies \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+function _applyWmFilters(aggDies,bg){
+  if(!WM_F_DLOC&&!WM_F_SHOTS&&!WM_F_SITES)return aggDies;
+  return aggDies.filter(function(d){
+    if(WM_F_DLOC){
+      var parts=WM_F_DLOC.split(',').map(function(s){return s.replace(/[XYxy=\s]/g,'');});
+      var fx=parts[0]?parseInt(parts[0]):null,fy=parts[1]?parseInt(parts[1]):null;
+      if(fx!==null&&!isNaN(fx)&&+d.x!==fx)return false;
+      if(fy!==null&&!isNaN(fy)&&+d.y!==fy)return false;
+    }
+    if(WM_F_SHOTS&&bg&&bg.ret_map){var rm=bg.ret_map[d.x+','+d.y];var sh=rm&&rm[2]!=null?rm[2]:null;if(sh===null||!WM_F_SHOTS.has(sh))return false;}
+    if(WM_F_SITES&&bg&&bg.ret_map&&bg.ret_site_num){var rm2=bg.ret_map[d.x+','+d.y];if(!rm2)return false;var sn=bg.ret_site_num[rm2[0]+','+rm2[1]];if(sn==null||!WM_F_SITES.has(+sn))return false;}
+    return true;
+  });
+}
+
+
+function _getWmDies(){
+  const selLW=_selLW();if(!selLW.size)return[];
+  /* When test filter is active, re-derive die map from filtered per_ip */
+  if(SEL_TESTS.size>0&&SEL_TESTS.size<_allTestKeys.length){
+    var dm={};
+    D.per_ip.forEach(function(r){
+      if(!selLW.has(r.LOT+'|'+r.WAFER))return;
+      var tk=(r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'');
+      if(!SEL_TESTS.has(tk))return;
+      var k=r.LOT+'|'+r.WAFER+'|'+r.X+'|'+r.Y;
+      if(!dm[k])dm[k]={LOT:r.LOT,WAFER:r.WAFER,X:r.X,Y:r.Y,VISUAL_ID:r.VISUAL_ID,
+        Layout:String(r.LOT||'').substring(0,6).toUpperCase(),
+        IB:'',FB:'',Reticle:'',
+        CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,
+        _cf:new Set(),_sf:new Set(),_af:new Set(),_df:new Set(),_all:new Set()};
+      var d=dm[k],tt=(r.TESTTYPE||'').toUpperCase();
+      var pair=(r.BLOCK||'')+':'+(r.PARTITION||r.IP||'')+':'+(r.IP||r.PARTITION||'');
+      if(tt==='CHAIN')d._cf.add(pair);
+      else if(tt==='STUCKAT')d._sf.add(pair);
+      else if(tt==='ATSPEED')d._af.add(pair);
+      else if(tt==='DIAG')d._df.add(pair);
+      d._all.add(pair);
+    });
+    var derived=Object.values(dm);
+    derived.forEach(function(d){
+      d.CHAIN=d._cf.size;d.STUCKAT=d._sf.size;d.ATSPEED=d._af.size;d.DIAG=d._df.size;
+      d.fails_chain=[...d._cf].join(',');d.fails_stuckat=[...d._sf].join(',');
+      d.fails_atspeed=[...d._af].join(',');d.fails_diag=[...d._df].join(',');
+      d.fails=[...d._all].join(',');
+    });
+    return derived.filter(function(d){
+      var ttFails=TT_ALL.filter(function(tt){return WM_TT_SHOW.has(tt)&&(d[tt]||0)>0;});
+      if(!ttFails.length)return false;
+      if(_rvIBFilter.size>0&&!_rvIBFilter.has(String(d.IB||'').trim()))return false;
+      if(_rvFBFilter.size>0&&!_rvFBFilter.has(String(d.FB||'').trim()))return false;
+      if(_rvRetFilter.size>0&&!_rvRetFilter.has(String(d.Reticle||'').trim()))return false;
+      return true;
+    });
+  }
+  /* Normal path: use pre-built die_map */
+  return (D.die_map||[]).filter(function(d){
+    if(!selLW.has(d.LOT+'|'+d.WAFER))return false;
+    var ttFails=TT_ALL.filter(function(tt){return WM_TT_SHOW.has(tt)&&(d[tt]||0)>0;});
+    if(!ttFails.length)return false;
+    if(_rvIBFilter.size>0&&!_rvIBFilter.has(String(d.IB||'').trim()))return false;
+    if(_rvFBFilter.size>0&&!_rvFBFilter.has(String(d.FB||'').trim()))return false;
+    if(_rvRetFilter.size>0&&!_rvRetFilter.has(String(d.Reticle||'').trim()))return false;
+    return true;
+  });
+}
+
+function _heatColor(t){
+  /* t in [0,1]; 0=background, else heat */
+  if(t<=0)return'#1e3a50';
+  if(t<0.25)return'#3498db';
+  if(t<0.5)return'#1ca44a';
+  if(t<0.75)return'#f1c40f';
+  if(t<0.9)return'#e67e22';
+  return'#c0392b';
+}
+
+function _wmRenderComposite(){
+  if(!_wmCompCache||typeof wmRender!=='function')return;
+  const cWrap=document.getElementById('rv-composite-wrap');
+  if(!cWrap)return;
+  const avW=Math.max(120,cWrap.clientWidth-16);
+  const avH=Math.max(120,cWrap.clientHeight-16);
+  wmRender('rv-composite-wrap',{..._wmCompCache,width:Math.min(avW,avH)});
+}
+
+function drawWaferMap(){
+  _rvInitIBFBFilters();
+  const filtDies=_getWmDies();
+  window._wmAllDies=filtDies;  /* expose for CSV download */
+  const lbl=document.getElementById('wm-nav-lbl');
+  if(!filtDies.length){
+    if(lbl)lbl.textContent='No wafers selected';
+    const cw=document.getElementById('rv-composite-wrap');if(cw)cw.innerHTML='<div style="color:#556;padding:20px;font-size:11px">No fails</div>';
+    document.getElementById('rv-tiles-wrap').innerHTML='';
+    document.getElementById('rv-site-body').innerHTML='';
+    document.getElementById('svg-wm-legend').innerHTML='';
+    document.getElementById('tbl-wmap').innerHTML='';
+    return;
+  }
+
+  const layout=D.reticle_layout||{};
+  /* Active layout prefixes from filtered dies */
+  const pfxSet=new Set(filtDies.map(d=>d.Layout||'').filter(Boolean));
+  const pfxArr=[...pfxSet].filter(pfx=>layout[pfx]);
+  const bgPfx=pfxArr.length?pfxArr[0]:Object.keys(layout)[0]||'';
+  const bg=bgPfx?layout[bgPfx]:null;
+
+  /* How many wafers */
+  const wfrKeys=[...new Set(filtDies.map(d=>d.LOT+'/W'+d.WAFER))].sort();
+  if(lbl)lbl.textContent=wfrKeys.length+' wafer(s) \u2014 aggregated composite';
+
+  /* Selected IP set — computed before aggregation so _fc can reflect the IP filter.
+     Key is 'BLOCK|REGION|IP' — unique per config entry, same format as the fail pair.
+     _allMipsOn is true only when ALL checkboxes are checked (or none exist).
+     0 checked = empty selMipSet = show nothing (intentional). */
+  const _allMipElems=[...document.querySelectorAll('.xft-mip')];
+  const _checkedMipCnt=_allMipElems.filter(c=>c.checked).length;
+  const _allMipsOn=_allMipElems.length===0||_checkedMipCnt===_allMipElems.length;
+  const _selMipSet=_allMipsOn?null:new Set(_allMipElems.filter(c=>c.checked).map(c=>c.dataset.blk+'|'+c.dataset.reg+'|'+c.dataset.ip));
+
+  /* Aggregate across all selected wafers: composite by X|Y */
+  const xyMap={};
+  filtDies.forEach(d=>{
+    const k=d.X+'|'+d.Y;
+    if(!xyMap[k])xyMap[k]={x:d.X,y:d.Y,_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,_wfrs:[],_failPairs:new Set(),_apCr:{}};
+    const a=xyMap[k];
+    TT_ALL.forEach(tt=>{if(WM_TT_SHOW.has(tt))a[tt]+=(d[tt]||0);});
+    const wl=d.LOT+'/W'+d.WAFER;if(a._wfrs.indexOf(wl)<0)a._wfrs.push(wl);
+    TT_ALL.forEach(tt=>{if(WM_TT_SHOW.has(tt))(d['fails_'+tt.toLowerCase()]||'').split(',').filter(Boolean).forEach(p=>a._failPairs.add(p));});
+    if(!a._ibSet)a._ibSet=new Set();if(!a._fbSet)a._fbSet=new Set();
+    if(d.IB&&String(d.IB).trim()&&String(d.IB).trim()!=='null')a._ibSet.add(String(d.IB).trim());
+    if(d.FB&&String(d.FB).trim()&&String(d.FB).trim()!=='null')a._fbSet.add(String(d.FB).trim());
+    if(d.ap_cr)Object.keys(d.ap_cr).forEach(function(g){if(!a._apCr[g])a._apCr[g]=d.ap_cr[g];});
+  });
+  const aggDies=Object.values(xyMap);
+  /* Compute _fc: filtered by selected IPs when a filter is active, else raw TT sum */
+  aggDies.forEach(function(a){
+    if(_allMipsOn||!a._failPairs.size){
+      a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0);
+    }else{
+      var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var key=pts[0]+'|'+pts[1]+'|'+pts[2];if(key&&_selMipSet.has(key))fc++;});
+      a._fc=fc;
+    }
+  });
+
+  /* Build filter dropdowns from full aggregate (before extra wm filters) */
+  _buildWmFilterDDs(aggDies,bg);
+
+  /* Apply extra wafer-map filters (die loc, shot, block, site) */
+  const wmFiltAgg=_applyWmFilters(aggDies,bg);
+  const wmAllowXY=new Set(wmFiltAgg.map(d=>d.x+'|'+d.y));
+  const maxFc=Math.max(1,...wmFiltAgg.filter(d=>d._fc>0).map(d=>d._fc));
+
+  /* Sync color mode radio active states */
+  ['fail','freq','site','tt','ip','ib','fb'].forEach(function(m){const el=document.getElementById('wm-cm-'+m);if(el)el.classList.toggle('active',m===WM_COLOR_MODE);});
+  const _mode=WM_COLOR_MODE;
+  /* _selMipSet and _allMipsOn already computed above before aggregation */
+
+  /* Build composite die array: bg positions + fail positions merged */
+  const composMap={};
+  if(bg&&bg.x){bg.x.forEach((x,i)=>{const k=x+','+bg.y[i];if(!composMap[k])composMap[k]={x,y:bg.y[i],_fc:0,_wfrs:[],_failPairs:new Set()};});}
+  wmFiltAgg.forEach(d=>{composMap[d.x+','+d.y]=d;});
+  /* Attach IB/FB for ALL die positions (from die_bins) so we can color non-failing dies */
+  const _dbins=D.die_bins||{};
+  wfrKeys.forEach(function(wk){
+    const wb=_dbins[wk]||{};
+    Object.keys(wb).forEach(function(xy){
+      var ent=wb[xy];
+      if(!composMap[xy]){var pts=xy.split(',');composMap[xy]={x:+pts[0],y:+pts[1],_fc:0,_wfrs:[],_failPairs:new Set(),_apCr:{}};}
+      if(ent.ib&&!composMap[xy]._ib)composMap[xy]._ib=ent.ib;
+      if(ent.fb&&!composMap[xy]._fb)composMap[xy]._fb=ent.fb;
+      if(ent.ap_cr){if(!composMap[xy]._apCr)composMap[xy]._apCr={};Object.keys(ent.ap_cr).forEach(function(g){if(!composMap[xy]._apCr[g])composMap[xy]._apCr[g]=ent.ap_cr[g];});}
+    });
+  });
+  const composArr=Object.values(composMap);
+
+  /* AP/CR group color palette */
+  const _GC={'AP0':'#ff4444','AP1':'#ff8c00','AP2':'#ffd700','AP3':'#c471ed',
+             'CR0':'#4a90e2','CR1':'#00bcd4','CR2':'#2ecc71','CR3':'#e91e63'};
+  const _GO=['AP0','AP1','AP2','AP3','CR0','CR1','CR2','CR3'];
+  function _wmApCrTip(apCr){
+    if(!apCr||!Object.keys(apCr).length)return'';
+    var s='<br><span style="color:#8ab4d4;font-size:9px">&#9656; Core/Partition failures:</span>';
+    _GO.forEach(function(g){
+      var fft=apCr[g];if(!fft)return;
+      var short=fft.length>60?fft.slice(0,57)+'\u2026':fft;
+      s+='<br>&nbsp;<span style="color:'+(_GC[g]||'#aaa')+';font-weight:700">'+g+'</span>';
+      s+=' <span style="color:#c0ccd8;font-size:8px">'+short+'</span>';
+    });
+    return s;
+  }
+
+  /* Color + tooltip */
+  const colorFn=d=>_wmColor(d,_mode,maxFc,wfrKeys.length,bg,_allMipsOn?null:_selMipSet);
+  const tipFn=function(d){
+    if(!d._fc){
+      /* Non-failing die — only show tooltip in IB/FB mode */
+      if(_mode!=='ib'&&_mode!=='fb')return null;
+      var ibV=(d._ibSet&&d._ibSet.size)?[...d._ibSet].sort()[0]:(d._ib||null);
+      var fbV=(d._fbSet&&d._fbSet.size)?[...d._fbSet].sort()[0]:(d._fb||null);
+      if(!ibV&&!fbV)return null;
+      if(_rvIBFilter.size>0&&ibV&&!_rvIBFilter.has(ibV))return null;
+      if(_rvFBFilter.size>0&&fbV&&!_rvFBFilter.has(fbV))return null;
+      const si=_wmGetSite(d.x,d.y,bg);
+      var tip='<b>Die ('+d.x+', '+d.y+')</b>';
+      if(si&&si.site!=null)tip+=' <b>Site '+si.site+'</b>';
+      if(ibV)tip+=' &nbsp;IB:<b>'+ibV+'</b>';
+      if(fbV)tip+=' FB:<b style="color:#f59e0b">'+fbV+'</b>';
+      tip+='<br><span style="color:#7a9ab0;font-size:9px">No scan failure at this position</span>';
+      tip+=_wmApCrTip(d._apCr);
+      return tip;
+    }
+    const si=_wmGetSite(d.x,d.y,bg);
+    /* Group fail pairs by block→region→ip */
+    const bri={};
+    if(d._failPairs)d._failPairs.forEach(function(p){
+      var pts=p.split(':');var blk=pts[0]||'?',part=pts[1]||'',ip=pts[2]||part;
+      var reg=_blkIpToReg[blk+'|'+ip]||part||ip;
+      if(!bri[blk])bri[blk]={};
+      if(!bri[blk][reg])bri[blk][reg]=new Set();
+      if(ip)bri[blk][reg].add(ip);
+    });
+    var tip='<b>Die ('+d.x+', '+d.y+')</b>';
+    if(si&&si.site!=null)tip+=' <b>Site '+si.site+'</b>';
+    var ibStr=d._ibSet&&d._ibSet.size?[...d._ibSet].sort().join(','):'';
+    var fbStr=d._fbSet&&d._fbSet.size?[...d._fbSet].sort().join(','):'';
+    if(ibStr)tip+=' &nbsp;IB:<b>'+ibStr+'</b>';
+    if(fbStr)tip+=' FB:<b style="color:#f59e0b">'+fbStr+'</b>';
+    tip+='<br>Fails: '+d._fc+' ('+d._wfrs.length+'/'+wfrKeys.length+' wfrs)';
+    Object.keys(bri).slice(0,3).forEach(function(blk){
+      Object.keys(bri[blk]).slice(0,3).forEach(function(reg){
+        var ips=[...bri[blk][reg]].slice(0,4);
+        tip+='<br><span style="color:#8ab4d4">'+blk+'</span>→<span style="color:#c0ccd8">'+reg+'</span>→<span style="color:#f59e0b">'+ips.join(', ')+'</span>';
+      });
+    });
+    tip+=_wmApCrTip(d._apCr);
+    return tip;
+  };
+
+  const _ibfbPatternColors=new Set();
+  if(_mode==='ib'||_mode==='fb'){
+    const _mcPfx=_mode==='ib'?'IB:':'FB:';
+    const _ibfbFil=_mode==='ib'?_rvIBFilter:_rvFBFilter;
+    composArr.forEach(function(d){
+      if(!d._fc){
+        var v=_mode==='ib'?(d._ibSet&&d._ibSet.size?[...d._ibSet].sort()[0]:d._ib):
+                           (d._fbSet&&d._fbSet.size?[...d._fbSet].sort()[0]:d._fb);
+        if(v&&(_ibfbFil.size===0||_ibfbFil.has(v)))_ibfbPatternColors.add(mc(_mcPfx+v));
+      }
+    });
+  }
+  const _extraDefs=_ibfbPatternColors.size?_wmBuildPatterns([..._ibfbPatternColors]):'';
+
+  /* Draw composite */
+  _wmCompCache={
+    dies:composArr,colorFn,tooltipFn:tipFn,
+    retShots:bg&&bg.ret_shots?bg.ret_shots:[],
+    retMap:bg&&bg.ret_map?bg.ret_map:{},
+    retSiteNum:bg&&bg.ret_site_num?bg.ret_site_num:{},
+    retShotLabels:false,
+    bgColor:'#0d1520',borderColor:'#5dade2',shotColor:'#2471a3',
+    extraDefs:_extraDefs,
+  };
+  _wmRenderComposite();
+  document.getElementById('rv-composite-legend').textContent=wfrKeys.length+' wafer(s) | max fails/die: '+maxFc;
+  if(!_wmResizeReady){
+    _wmResizeReady=true;
+    if(typeof ResizeObserver!=='undefined'){
+      var _rto;
+      new ResizeObserver(function(){clearTimeout(_rto);_rto=setTimeout(_wmRenderComposite,120);})
+        .observe(document.getElementById('rv-composite-wrap'));
+    }
+  }
+
+  /* Per-wafer tiles (pane 2) */
+  const tilesWrap=document.getElementById('rv-tiles-wrap');
+  tilesWrap.innerHTML='';
+  const wfrMap={};
+  filtDies.forEach(d=>{const wk=d.LOT+'/W'+d.WAFER;if(!wfrMap[wk])wfrMap[wk]=[];wfrMap[wk].push(d);});
+  const wfrList=Object.keys(wfrMap).sort();
+  document.getElementById('rv-tiles-hdr').textContent='Per-Wafer ('+wfrList.length+')';
+  const _dbinsTile=D.die_bins||{};
+  wfrList.forEach(wk=>{
+    const wDies=wfrMap[wk].filter(d=>wmAllowXY.has(d.X+'|'+d.Y));
+    if(!wDies.length){const tile=document.createElement('div');tile.className='svg-wm-tile';const title=document.createElement('div');title.className='svg-wm-title';title.textContent=wk.replace('/',' · ')+' (filtered)';tile.appendChild(title);tilesWrap.appendChild(tile);return;}
+    const wxyMap={};
+    wDies.forEach(d=>{
+      const k=d.X+','+d.Y;
+      if(!wxyMap[k])wxyMap[k]={x:d.X,y:d.Y,_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set(),_apCr:{}};
+      const a=wxyMap[k];
+      TT_ALL.forEach(tt=>{if(WM_TT_SHOW.has(tt))a[tt]+=(d[tt]||0);});
+      TT_ALL.forEach(tt=>{if(WM_TT_SHOW.has(tt))(d['fails_'+tt.toLowerCase()]||'').split(',').filter(Boolean).forEach(p=>a._failPairs.add(p));});
+      if(d.IB&&String(d.IB).trim()&&String(d.IB).trim()!=='null')a._ibSet.add(String(d.IB).trim());
+      if(d.FB&&String(d.FB).trim()&&String(d.FB).trim()!=='null')a._fbSet.add(String(d.FB).trim());
+      if(d.ap_cr)Object.keys(d.ap_cr).forEach(function(g){if(!a._apCr[g])a._apCr[g]=d.ap_cr[g];});
+    });
+    const wAgg=Object.values(wxyMap);
+    wAgg.forEach(function(a){
+      if(_allMipsOn||!a._failPairs.size){a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0);}
+      else{var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var key=pts[0]+'|'+pts[1]+'|'+pts[2];if(key&&_selMipSet&&_selMipSet.has(key))fc++;});a._fc=fc;}
+    });
+    const wMaxFc=Math.max(1,...wAgg.map(d=>d._fc));
+    const wComposMap={};
+    if(bg&&bg.x){bg.x.forEach((x,i)=>{const k=x+','+bg.y[i];if(!wComposMap[k])wComposMap[k]={x,y:bg.y[i],_fc:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set()};});}
+    wAgg.forEach(d=>{wComposMap[d.x+','+d.y]=d;});
+    const _wbins=_dbinsTile[wk]||{};
+    Object.keys(_wbins).forEach(function(xy){var ent=_wbins[xy];if(!wComposMap[xy]){var pts=xy.split(',');wComposMap[xy]={x:+pts[0],y:+pts[1],_fc:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set(),_apCr:{}};}if(ent.ib&&!wComposMap[xy]._ib)wComposMap[xy]._ib=ent.ib;if(ent.fb&&!wComposMap[xy]._fb)wComposMap[xy]._fb=ent.fb;if(ent.ap_cr){if(!wComposMap[xy]._apCr)wComposMap[xy]._apCr={};Object.keys(ent.ap_cr).forEach(function(g){if(!wComposMap[xy]._apCr[g])wComposMap[xy]._apCr[g]=ent.ap_cr[g];});}});
+    const wCompos=Object.values(wComposMap);
+    let wExtraDefs='';
+    if(_mode==='ib'||_mode==='fb'){const _wPats=new Set();const _wPfx=_mode==='ib'?'IB:':'FB:';const _wFil=_mode==='ib'?_rvIBFilter:_rvFBFilter;wCompos.forEach(function(d){if(!d._fc){var v=_mode==='ib'?(d._ibSet&&d._ibSet.size?[...d._ibSet].sort()[0]:d._ib):(d._fbSet&&d._fbSet.size?[...d._fbSet].sort()[0]:d._fb);if(v&&(_wFil.size===0||_wFil.has(v)))_wPats.add(mc(_wPfx+v));}});if(_wPats.size)wExtraDefs=_wmBuildPatterns([..._wPats]);}
+    const tile=document.createElement('div');tile.className='svg-wm-tile';
+    tilesWrap.appendChild(tile);
+    const _wmrFn=typeof window.wmRender==='function'?window.wmRender:(typeof wmRender==='function'?wmRender:null);
+    const wTipFn=function(d){
+      if(!d._fc){
+        if(_mode!=='ib'&&_mode!=='fb')return null;
+        var ibV=(d._ibSet&&d._ibSet.size)?[...d._ibSet].sort()[0]:(d._ib||null);
+        var fbV=(d._fbSet&&d._fbSet.size)?[...d._fbSet].sort()[0]:(d._fb||null);
+        if(!ibV&&!fbV)return null;
+        if(_rvIBFilter.size>0&&ibV&&!_rvIBFilter.has(ibV))return null;
+        if(_rvFBFilter.size>0&&fbV&&!_rvFBFilter.has(fbV))return null;
+        const si=_wmGetSite(d.x,d.y,bg);
+        var tip='<b>Die ('+d.x+', '+d.y+')</b>';
+        if(si&&si.site!=null)tip+=' <b>Site '+si.site+'</b>';
+        if(ibV)tip+=' &nbsp;IB:<b>'+ibV+'</b>';
+        if(fbV)tip+=' FB:<b style="color:#f59e0b">'+fbV+'</b>';
+        tip+='<br><span style="color:#7a9ab0;font-size:9px">No scan failure at this position</span>';
+        tip+=_wmApCrTip(d._apCr);
+        return tip;
+      }
+      const si=_wmGetSite(d.x,d.y,bg);
+      const bri={};
+      if(d._failPairs)d._failPairs.forEach(function(p){
+        var pts=p.split(':');var blk=pts[0]||'?',part=pts[1]||'',ip=pts[2]||part;
+        var reg=_blkIpToReg[blk+'|'+ip]||part||ip;
+        if(!bri[blk])bri[blk]={};
+        if(!bri[blk][reg])bri[blk][reg]=new Set();
+        if(ip)bri[blk][reg].add(ip);
+      });
+      var tip='<b>Die ('+d.x+', '+d.y+')</b>';
+      if(si&&si.site!=null)tip+=' <b>Site '+si.site+'</b>';
+      var ibStr=d._ibSet&&d._ibSet.size?[...d._ibSet].sort().join(','):'';
+      var fbStr=d._fbSet&&d._fbSet.size?[...d._fbSet].sort().join(','):'';
+      if(ibStr)tip+=' &nbsp;IB:<b>'+ibStr+'</b>';
+      if(fbStr)tip+=' FB:<b style="color:#f59e0b">'+fbStr+'</b>';
+      tip+='<br>Fails: <b>'+d._fc+'</b>';
+      Object.keys(bri).slice(0,4).forEach(function(blk){
+        Object.keys(bri[blk]).slice(0,4).forEach(function(reg){
+          var ips=[...bri[blk][reg]].slice(0,5);
+          tip+='<br><span style="color:#8ab4d4">'+blk+'</span>→<span style="color:#c0ccd8">'+reg+'</span>→<span style="color:#f59e0b">'+ips.join(', ')+'</span>';
+        });
+      });
+      tip+=_wmApCrTip(d._apCr);
+      return tip;
+    };
+    if(_wmrFn){
+      try{
+        _wmrFn(tile,{
+          dies:wCompos,colorFn:d=>_wmColor(d,_mode,wMaxFc,1,bg,_allMipsOn?null:_selMipSet),
+          tooltipFn:wTipFn,
+          retShots:bg&&bg.ret_shots?bg.ret_shots:[],
+          retMap:bg&&bg.ret_map?bg.ret_map:{},
+          retSiteNum:{},
+          retShotLabels:false,
+          extraDefs:wExtraDefs,
+          width:190,bgColor:'#0d1520',borderColor:'#5dade2',shotColor:'#2471a3',
+        });
+      }catch(e){tile.innerHTML='<div style="color:#f00;font-size:8px;padding:2px">ERR:'+e.message+'</div>';}
+    } else {
+      tile.innerHTML='<div style="color:#888;font-size:9px;padding:4px">map unavailable</div>';
+    }
+    const title=document.createElement('div');title.className='svg-wm-title';title.textContent=wk.replace('/',' · ');
+    tile.insertBefore(title,tile.firstChild);
+  });
+
+  /* Reticle site analysis (pane 3) - HRY style, focus on current prefix */
+  const siteBody=document.getElementById('rv-site-body');
+  if(siteBody){
+    const SCOLS=['#0071C5','#E8421C','#1CA44A','#8B5CF6','#F59E0B','#06B6D4','#EC4899','#10B981','#A78BFA','#F97316'];
+    const _siteColor=function(s){if(s==null||s===''||s==='?')return'#3a4060';var n=parseInt(s);return isNaN(n)?SCOLS[Math.abs(s.charCodeAt(0))%SCOLS.length]:SCOLS[(n-1)%SCOLS.length]||'#3a4060';};
+    const siteMap={}; let totalFail=0;
+    const retMapS=bg&&bg.ret_map?bg.ret_map:{},retSiteNumS=bg&&bg.ret_site_num?bg.ret_site_num:{};
+    wmFiltAgg.forEach(function(d){
+      if(!d._fc)return;
+      totalFail+=d._fc;
+      const rm=retMapS[d.x+','+d.y];
+      const sn=(rm&&retSiteNumS[rm[0]+','+rm[1]]!=null)?String(retSiteNumS[rm[0]+','+rm[1]]):'?';
+      if(!siteMap[sn])siteMap[sn]={fc:0,pos:0,wfrs:new Set()};
+      siteMap[sn].fc+=d._fc;siteMap[sn].pos++;
+      if(d._wfrs)d._wfrs.forEach(function(w){siteMap[sn].wfrs.add(w);});
+    });
+    if(!totalFail){siteBody.innerHTML='<span style="color:#445566">No fail data in current filter</span>';}
+    else{
+      const srows=Object.keys(siteMap).map(function(sn){return{sn,fc:siteMap[sn].fc,pos:siteMap[sn].pos,pct:siteMap[sn].fc/totalFail,nWfrs:siteMap[sn].wfrs.size};}).sort(function(a,b){return b.fc-a.fc;});
+      const topPct=srows[0]?srows[0].pct:0;let shtml='';
+      if(topPct>=0.5)shtml+='<div style="background:#2a1a0a;border-left:3px solid #e67e22;padding:5px 8px;font-size:9px;color:#ffd166;margin-bottom:6px;border-radius:0 4px 4px 0">&#9888; Site <b>'+srows[0].sn+'</b> = <b>'+Math.round(topPct*100)+'%</b> of fails. Possible reticle/mask defect.</div>';
+      else if(topPct>=0.3)shtml+='<div style="background:#0d1a2a;border-left:3px solid #2471a3;padding:5px 8px;font-size:9px;color:#8ab4d4;margin-bottom:6px;border-radius:0 4px 4px 0">Site <b>'+srows[0].sn+'</b> leads at '+Math.round(topPct*100)+'% — partial concentration.</div>';
+      else shtml+='<div style="background:#0d1a2a;border-left:3px solid #27ae60;padding:5px 8px;font-size:9px;color:#8ab4d4;margin-bottom:6px;border-radius:0 4px 4px 0">Fails spread across multiple sites — not single-site reticle issue.</div>';
+      shtml+='<table style="border-collapse:collapse;width:100%;font-size:9px"><tr>'
+        +'<th style="text-align:left;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Site</th>'
+        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Fail Parts</th>'
+        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Die Locs</th>'
+        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Wafers</th>'
+        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">% Total</th>'
+        +'<th style="padding:2px 6px;background:#1a2a40;color:#8ab4d4">Bar</th></tr>';
+      srows.forEach(function(r){
+        var col=_siteColor(r.sn);
+        shtml+='<tr style="border-bottom:1px solid #1a2a40">'
+          +'<td style="padding:2px 6px;color:'+col+';font-weight:bold">'+r.sn+'</td>'
+          +'<td style="padding:2px 6px;text-align:right;color:#c0ccd8">'+r.fc+'</td>'
+          +'<td style="padding:2px 6px;text-align:right;color:#c0ccd8">'+r.pos+'</td>'
+          +'<td style="padding:2px 6px;text-align:right;color:#c0ccd8">'+r.nWfrs+'</td>'
+          +'<td style="padding:2px 6px;text-align:right;color:#ffd166">'+Math.round(r.pct*100)+'%</td>'
+          +'<td style="padding:2px 6px"><div style="width:'+Math.round(r.pct*70)+'px;height:7px;background:'+col+';border-radius:2px;opacity:0.85"></div></td></tr>';
+      });
+      shtml+='</table>';siteBody.innerHTML=shtml;
+    }
+  }
+
+  /* Legend (depends on color mode) */
+  const _leg=document.getElementById('svg-wm-legend');if(_leg){
+    if(_mode==='fail'||_mode==='freq'){
+      const lbl=_mode==='freq'?'Fail freq (% wafers):':'Fail density:';
+      const stops=[{c:'#3498db',l:'Low'},{c:'#1ca44a',l:'Med'},{c:'#f1c40f',l:'High'},{c:'#e67e22',l:'V.High'},{c:'#c0392b',l:'Max'}];
+      _leg.innerHTML=lbl+' '+stops.map(function(s){return'<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:11px;height:11px;display:inline-block;background:'+s.c+';border-radius:2px"></span>'+s.l+'</span>';}).join('&nbsp;');
+    }else if(_mode==='site'){
+      const SCOLS3=['#0071C5','#E8421C','#1CA44A','#8B5CF6','#F59E0B','#06B6D4','#EC4899','#10B981','#A78BFA','#F97316'];
+      const sitesInData=new Set(wmFiltAgg.filter(function(d){return d._fc>0;}).map(function(d){const si=_wmGetSite(d.x,d.y,bg);return si&&si.site!=null?si.site:null;}).filter(function(v){return v!=null;}));
+      _leg.innerHTML='Site: '+[...sitesInData].sort(function(a,b){return a-b;}).map(function(s){return'<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:11px;height:11px;display:inline-block;background:'+SCOLS3[(+s-1)%SCOLS3.length]+';border-radius:50%"></span>S'+s+'</span>';}).join(' ');
+    }else if(_mode==='tt'){
+      _leg.innerHTML='TT: '+TT_ALL.filter(function(tt){return WM_TT_SHOW.has(tt);}).map(function(tt){return'<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:11px;height:11px;display:inline-block;background:'+(TT_COLORS[tt]||'#888')+';border-radius:2px"></span>'+tt+'</span>';}).join(' ');
+    }else if(_mode==='ip'){
+      const ipsInData=new Set();
+      wmFiltAgg.filter(function(d){return d._fc>0&&d._failPairs;}).forEach(function(d){
+        d._failPairs.forEach(function(p){var pts=p.split(':');var ip=pts[2];if(!ip)return;var key=pts[0]+'|'+pts[1]+'|'+ip;if(_allMipsOn||_selMipSet.has(key))ipsInData.add(ip);});
+      });
+      _leg.innerHTML='IP: '+[...ipsInData].sort().map(function(ip){return'<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:11px;height:11px;display:inline-block;background:'+mc(ip)+';border-radius:2px"></span>'+ip+'</span>';}).join(' ');
+    }else if(_mode==='ib'||_mode==='fb'){
+      const binField=_mode==='ib'?'ib':'fb',mcPfx=_mode==='ib'?'IB:':'FB:';
+      const binVals=new Set();
+      Object.values(composMap).forEach(function(d){
+        var v=(d._ibSet&&_mode==='ib'&&d._ibSet.size)?[...d._ibSet].sort()[0]:
+              (d._fbSet&&_mode==='fb'&&d._fbSet.size)?[...d._fbSet].sort()[0]:
+              (d['_'+binField]||null);
+        if(v)binVals.add(v);
+      });
+      var legHtml=_mode.toUpperCase()+': '+[...binVals].sort().map(function(v){
+        var bright=mc(mcPfx+v);
+        return'<span style="display:inline-flex;align-items:center;gap:2px">'+
+          '<span style="width:11px;height:11px;display:inline-block;background:'+bright+';border-radius:2px" title="scan fail"></span>'+
+          '<span style="width:9px;height:9px;display:inline-block;background:repeating-conic-gradient('+bright+' 0% 25%,#0d1520 0% 50%) 0 0/6px 6px;border-radius:1px" title="no scan fail"></span>'+
+          v+'</span>';
+      }).join(' ');
+      legHtml+='<span style="font-size:7.5px;color:#6a8a9a;margin-left:6px">&#9646; scan fail &nbsp;&#9650; no scan fail</span>';
+      _leg.innerHTML=legHtml;
+    }
+  }
+  /* Fail Pattern Score */
+  _rvBuildPatternScore(wmFiltAgg,bg,wfrKeys.length);
+
+  /* Data table */
+  _wmFailDiesCache=wmFiltAgg.filter(d=>d._fc>0);
+  _wmDrawTable();
+}
+function _wmDrawTable(){
+  const fd=_wmFailDiesCache||[];
+  const _wms=_wmSortState||{col:'_fc',asc:false};
+  const _getSv=(d,col)=>col==='_wl'?d._wfrs.length:(d[col]||0);
+  const sorted=[...fd].sort((a,b)=>{const av=_getSv(a,_wms.col),bv=_getSv(b,_wms.col);const c=typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||''));return _wms.asc?c:-c;});
+  const tblRows=sorted.slice(0,500);
+  const _wmth=(c,l)=>'<th onclick="wmSort(\''+c+'\')"'+(c===_wms.col?' class="sarr '+(_wms.asc?'asc':'desc')+'"':'')+'>'+l+'</th>';
+  let tHtml='<table class="dt" id="tbl-wmap-inner"><thead><tr>'+_wmth('x','X')+_wmth('y','Y')+_wmth('CHAIN','CHAIN')+_wmth('STUCKAT','STUCKAT')+_wmth('ATSPEED','ATSPEED')+_wmth('DIAG','DIAG')+_wmth('_fc','Total')+_wmth('_wl','Wafers')+'</tr></thead><tbody>';
+  tblRows.forEach(d=>{tHtml+='<tr><td>'+d.x+'</td><td>'+d.y+'</td><td class="n">'+(d.CHAIN||0)+'</td><td class="n">'+(d.STUCKAT||0)+'</td><td class="n">'+(d.ATSPEED||0)+'</td><td class="n">'+(d.DIAG||0)+'</td><td class="n" style="font-weight:bold">'+d._fc+'</td><td style="font-size:7.5px">'+d._wfrs.join(', ')+'</td></tr>';});
+  tHtml+='</tbody></table>';
+  document.getElementById('tbl-wmap').innerHTML=tHtml;
+  document.getElementById('cnt-wmap').textContent=tblRows.length+(tblRows.length<fd.length?' of '+fd.length+' fail dies':' fail die'+(tblRows.length!==1?'s':''));
+}
+function wmSort(col){_wmSortState={col,asc:_wmSortState&&_wmSortState.col===col?!_wmSortState.asc:false};_wmDrawTable();}
+
+/* ── Die Table ─────────────────────────────────────────────────────── */
+function drawDieTable(){
+  const recs=getFiltered();const dm={};
+  recs.forEach(r=>{const k=r.VISUAL_ID;if(!dm[k])dm[k]={vid:r.VISUAL_ID,lot:r.LOT,wafer:r.WAFER,x:+r.X,y:+r.Y,fails:0,rfails:0,mods:new Set(),tts:new Set(),ips:new Set(),regions:new Set()};
+    const d=dm[k];if(r.STATUS==='FAIL')d.fails++;else d.rfails++;d.mods.add(r.MODULE);d.tts.add(r.TESTTYPE);d.ips.add(r.IP);d.regions.add(r.REGION);});
+  let rows=Object.values(dm).map(d=>({vid:d.vid,lot:d.lot,wafer:d.wafer,x:d.x,y:d.y,fails:d.fails,rfails:d.rfails,total:d.fails+d.rfails,modules:[...d.mods].join(','),testtypes:[...d.tts].join(','),ips:d.ips.size,regions:[...d.regions].join(',')}));
+  if(tblSearch)rows=rows.filter(r=>r.vid.toLowerCase().includes(tblSearch)||r.lot.toLowerCase().includes(tblSearch));
+  rows.sort((a,b)=>(_sortAsc?1:-1)*(a[_sortCol]>b[_sortCol]?1:a[_sortCol]<b[_sortCol]?-1:0));
+  const COLS=['vid','lot','wafer','x','y','fails','rfails','total','modules','testtypes','ips','regions'];
+  const HDRS=['Visual ID','Lot','Wafer','X','Y','FAILs','RESET_FAILs','Total','Modules','TestTypes','# IPs','Regions'];
+  let thtml='<table class="dt"><thead><tr>'+COLS.map((c,i)=>'<th onclick="dtSort(\''+c+'\')" class="'+(c===_sortCol?'sarr '+(_sortAsc?'asc':'desc'):'')+'">'+HDRS[i]+'</th>').join('')+'</tr></thead><tbody>';
+  rows.forEach(r=>{thtml+='<tr><td>'+r.vid+'</td><td>'+r.lot+'</td><td>'+r.wafer+'</td><td>'+r.x+'</td><td>'+r.y+'</td><td class="n" style="color:#c0392b;font-weight:bold">'+r.fails+'</td><td class="n" style="color:#e67e22;font-weight:bold">'+r.rfails+'</td><td class="n" style="font-weight:bold">'+r.total+'</td><td style="font-size:7.5px">'+r.modules+'</td><td style="font-size:7.5px">'+r.testtypes+'</td><td class="n">'+r.ips+'</td><td style="font-size:7.5px">'+r.regions+'</td></tr>';});
+  thtml+='</tbody></table>';document.getElementById('tbl-die').innerHTML=thtml;document.getElementById('cnt-die').textContent=rows.length+' dies';
+}
+function dtSort(col){if(_sortCol===col)_sortAsc=!_sortAsc;else{_sortCol=col;_sortAsc=false;}drawDieTable();}
+
+/* ── CSV export ─────────────────────────────────────────────────────── */
+function exportCsv(tblId,fname){const inner=document.querySelector('#'+tblId+' table')||document.getElementById(tblId+'-inner');if(!inner){return;}
+  const rows=[...inner.querySelectorAll('tr')].map(tr=>[...tr.querySelectorAll('th,td')].map(c=>'"'+c.textContent.replace(/"/g,'""')+'"').join(','));
+  const csv=rows.join('\n');const blob=new Blob([csv],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(fname||'export')+'.csv';a.click();}
+
+function _downloadDieCsv(){
+  /* Build a CSV from the currently-filtered failing dies (last drawWaferMap call), including AP/CR columns. */
+  var filtDies=window._wmAllDies||[];
+  var _GO=['AP0','AP1','AP2','AP3','CR0','CR1','CR2','CR3'];
+  var hdr=['LOT','WAFER','X','Y','IB','FB','CHAIN','STUCKAT','ATSPEED','DIAG'].concat(_GO);
+  var rows=[hdr.join(',')];
+  filtDies.forEach(function(d){
+    var apcr=d.ap_cr||{};
+    var base=[d.LOT,d.WAFER,d.X,d.Y,d.IB!=null?d.IB:'',d.FB!=null?d.FB:'',
+              d.CHAIN||0,d.STUCKAT||0,d.ATSPEED||0,d.DIAG||0];
+    var grpVals=_GO.map(function(g){var v=apcr[g];return v?'"'+String(v).replace(/"/g,'""')+'"':'';});
+    rows.push(base.concat(grpVals).join(','));
+  });
+  var blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download='scan_dies_ap_cr.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ── IB / FB dropdown functions ──────────────────────────────────── */
+function _rvOpenIBDD(e){var dd=document.getElementById('rv-ib-dd');if(dd)dd.style.display=dd.style.display==='none'?'block':'none';e.stopPropagation();}
+function _rvOpenFBDD(e){var dd=document.getElementById('rv-fb-dd');if(dd)dd.style.display=dd.style.display==='none'?'block':'none';e.stopPropagation();}
+function _rvIBAll(){document.querySelectorAll('#rv-ib-filters input[type="checkbox"]').forEach(function(cb){cb.checked=false;});_rvIBFilter=new Set();var lbl=document.getElementById('rv-ib-dd-lbl');if(lbl)lbl.textContent='All';_rvRebuildFBDD();drawWaferMap();}
+function _rvIBSelectAll(){document.querySelectorAll('#rv-ib-filters input[type="checkbox"]').forEach(function(cb){cb.checked=true;});var checked=[...document.querySelectorAll('#rv-ib-filters input[type="checkbox"]')].map(function(cb){return cb.value;});_rvIBFilter=new Set(checked);var lbl=document.getElementById('rv-ib-dd-lbl');if(lbl)lbl.textContent=checked.length>4?checked.length+' bins':checked.join(', ');_rvRebuildFBDD();drawWaferMap();}
+function _rvFBAll(){document.querySelectorAll('#rv-fb-filters input[type="checkbox"]').forEach(function(cb){cb.checked=false;});_rvFBFilter=new Set();var lbl=document.getElementById('rv-fb-dd-lbl');if(lbl)lbl.textContent='All';drawWaferMap();}
+function _rvFBSelectAll(){document.querySelectorAll('#rv-fb-filters input[type="checkbox"]').forEach(function(cb){cb.checked=true;});var checked=[...document.querySelectorAll('#rv-fb-filters input[type="checkbox"]')].map(function(cb){return cb.value;});_rvFBFilter=new Set(checked);var lbl=document.getElementById('rv-fb-dd-lbl');if(lbl)lbl.textContent=checked.length>4?checked.length+' bins':checked.join(', ');drawWaferMap();}
+function _rvIBChkChange(){
+  var checked=[...document.querySelectorAll('#rv-ib-filters input[type="checkbox"]:checked')].map(function(cb){return cb.value;});
+  _rvIBFilter=new Set(checked);
+  var lbl=document.getElementById('rv-ib-dd-lbl');if(lbl)lbl.textContent=checked.length?checked.join(', '):'All';
+  _rvRebuildFBDD();drawWaferMap();}
+function _rvFBChkChange(){
+  var checked=[...document.querySelectorAll('#rv-fb-filters input[type="checkbox"]:checked')].map(function(cb){return cb.value;});
+  _rvFBFilter=new Set(checked);
+  var lbl=document.getElementById('rv-fb-dd-lbl');if(lbl)lbl.textContent=checked.length?checked.join(', '):'All';
+  drawWaferMap();}
+function _rvRebuildFBDD(){
+  var fbCon=document.getElementById('rv-fb-filters');if(!fbCon)return;
+  var prevFB=new Set([...document.querySelectorAll('#rv-fb-filters input[type="checkbox"]:checked')].map(function(cb){return cb.value;}));
+  fbCon.innerHTML='';
+  var activeIBs=_rvIBFilter.size>0?[..._rvIBFilter]:Object.keys(_rvIBFBMap);
+  var fbSet=new Set();activeIBs.forEach(function(ib){(_rvIBFBMap[ib]||new Set()).forEach(function(fb){fbSet.add(fb);});});
+  var fbKeys=[...fbSet].sort(function(a,b){return(+a||0)-(+b||0)||a.localeCompare(b);});
+  _rvFBFilter=new Set([...prevFB].filter(function(fb){return fbSet.has(fb);}));
+  var fbLbl=document.getElementById('rv-fb-dd-lbl');if(fbLbl)fbLbl.textContent=_rvFBFilter.size?[..._rvFBFilter].join(', '):'All';
+  fbKeys.forEach(function(fb){
+    var lbl=document.createElement('label');
+    lbl.style.cssText='display:flex;align-items:center;gap:5px;cursor:pointer;font-size:9px;color:#c0ccd8;padding:2px 0';
+    var cb=document.createElement('input');cb.type='checkbox';cb.value=fb;
+    if(_rvFBFilter.has(fb))cb.checked=true;
+    cb.style.cssText='accent-color:#4a8acc;cursor:pointer;width:12px;height:12px';
+    cb.addEventListener('change',_rvFBChkChange);
+    lbl.appendChild(cb);lbl.appendChild(document.createTextNode('FB '+fb));
+    fbCon.appendChild(lbl);});}
+function _rvInitIBFBFilters(){
+  if(_rvFiltersInited)return;_rvFiltersInited=true;
+  /* Die Loc (reticle) pills — derived from reticle_layout or die_map */
+  var _activePfx=new Set((D.die_map||[]).map(function(d){return String(d.Layout||'').substring(0,6).toUpperCase();}).filter(Boolean));
+  var _layoutAll=D.reticle_layout||{};
+  var _retRaw=(_activePfx.size?[..._activePfx]:Object.keys(_layoutAll))
+    .reduce(function(a,pfx){return a.concat(((_layoutAll[pfx]||{}).reticle||[]).map(function(v){return String(v==null?'':v).trim();}).filter(Boolean));}, []);
+  if(!_retRaw.length)_retRaw=(D.die_map||[]).map(function(d){return String(d.Reticle||'').trim();}).filter(Boolean);
+  var retVals=[...new Set(_retRaw)].sort(function(a,b){var na=+a,nb=+b;return(isNaN(na)||isNaN(nb))?a.localeCompare(b):na-nb;});
+  var rc=document.getElementById('rv-ret-filters');
+  if(rc&&retVals.length){
+    retVals.forEach(function(v){
+      var b=document.createElement('span');b.className='rv-fpill';b.dataset.type='ret';b.dataset.val=v;
+      b.textContent=v;b.onclick=function(){_rvTogglePill(this,'ret');};
+      rc.appendChild(b);
+    });
+  }
+  _rvIBFBMap={};
+  (D.die_map||[]).forEach(function(d){
+    var ib=String(d.IB||'').trim(),fb=String(d.FB||'').trim();
+    if(!ib||ib==='null'||ib==='')return;
+    if(!_rvIBFBMap[ib])_rvIBFBMap[ib]=new Set();
+    if(fb&&fb!=='null'&&fb!=='')_rvIBFBMap[ib].add(fb);
+  });
+  /* Also include IB/FB from all die positions (die_bins covers non-scan-failing dies like IB1/IB2) */
+  Object.values(D.die_bins||{}).forEach(function(wdict){
+    Object.values(wdict).forEach(function(ent){
+      var ib=String(ent.ib||'').trim(),fb=String(ent.fb||'').trim();
+      if(!ib||ib==='null'||ib==='')return;
+      if(!_rvIBFBMap[ib])_rvIBFBMap[ib]=new Set();
+      if(fb&&fb!=='null'&&fb!=='')_rvIBFBMap[ib].add(fb);
+    });
+  });
+  var ibKeys=Object.keys(_rvIBFBMap).sort(function(a,b){return(+a||0)-(+b||0)||a.localeCompare(b);});
+  var ibCon=document.getElementById('rv-ib-filters');
+  if(ibCon&&ibKeys.length){
+    ibKeys.forEach(function(ib){
+      var lbl=document.createElement('label');
+      lbl.style.cssText='display:flex;align-items:center;gap:5px;cursor:pointer;font-size:9px;color:#c0ccd8;padding:2px 0';
+      var cb=document.createElement('input');cb.type='checkbox';cb.value=ib;
+      cb.style.cssText='accent-color:#4a8acc;cursor:pointer;width:12px;height:12px';
+      cb.addEventListener('change',_rvIBChkChange);
+      lbl.appendChild(cb);lbl.appendChild(document.createTextNode('IB '+ib));
+      ibCon.appendChild(lbl);
+    });
+  }
+  _rvRebuildFBDD();
+  document.addEventListener('click',function(e){
+    var ibw=document.getElementById('rv-ib-dd-wrap'),ibd=document.getElementById('rv-ib-dd');
+    if(ibd&&ibw&&!ibw.contains(e.target))ibd.style.display='none';
+    var fbw=document.getElementById('rv-fb-dd-wrap'),fbd=document.getElementById('rv-fb-dd');
+    if(fbd&&fbw&&!fbw.contains(e.target))fbd.style.display='none';
+  },true);
+}
+function rvToggleSection(id,show){
+  var el=document.getElementById(id);if(el)el.style.display=show?'':'none';
+  /* hide the h-handle when both pane-3 sections are hidden */
+  var hh=document.getElementById('rv-pane3-hhandle');
+  if(hh){var s=document.getElementById('rv-site-section'),p=document.getElementById('rv-pattern-section');
+    hh.style.display=(s&&s.style.display==='none'&&p&&p.style.display==='none')?'none':'';}
+}
+function _rvTogglePill(btn,type){
+  btn.classList.toggle('active');
+  if(type==='ret')_rvRetFilter=new Set([...document.querySelectorAll('.rv-fpill[data-type="ret"].active')].map(function(b){return b.dataset.val;}));
+  drawWaferMap();
+}
+/* ── Fail Pattern Score ─────────────────────────────────────── */
+function _rvBuildPatternScore(wmFiltAggDies,bg2,nWTotal2){
+  var body=document.getElementById('rv-pattern-body');if(!body)return;
+  var totFc=0,totChain=0,totSA=0,totAS=0,totDiag=0,totPos=0,totLayout=0;
+  var shotMap={};var fcArr=[];var failXY=[];
+  var allBgX=[],allBgY=[];var nShotsTotal=0;
+  var retMap2=bg2&&bg2.ret_map?bg2.ret_map:{};
+  var retShots2=bg2&&bg2.ret_shots?bg2.ret_shots:[];
+  if(bg2&&bg2.x){allBgX=[...bg2.x];allBgY=[...bg2.y];totLayout=allBgX.length;nShotsTotal=retShots2.length;}
+  wmFiltAggDies.forEach(function(d){
+    if(!d._fc)return;
+    totFc+=d._fc;totChain+=(d.CHAIN||0);totSA+=(d.STUCKAT||0);totAS+=(d.ATSPEED||0);totDiag+=(d.DIAG||0);totPos++;
+    fcArr.push(d._fc);failXY.push({x:d.x,y:d.y,fc:d._fc});
+    var rm=retMap2[d.x+','+d.y];
+    if(rm&&rm[2]!=null){var si=rm[2];if(!shotMap[si])shotMap[si]={fc:0,pos:0,idx:si};shotMap[si].fc+=d._fc;shotMap[si].pos++;}
+  });
+  if(!totFc){body.innerHTML='<span style="color:#445566">No fail data in current filter</span>';return;}
+  fcArr.sort(function(a,b){return b-a;});
+  var top10=fcArr.slice(0,Math.max(1,Math.ceil(fcArr.length*0.1)));
+  var concPct=Math.round(top10.reduce(function(s,v){return s+v;},0)/totFc*100);
+  var ttTot=Math.max(1,totChain+totSA+totAS+totDiag);
+  var cw=Math.round(totChain/ttTot*100),sw=Math.round(totSA/ttTot*100),aw=Math.round(totAS/ttTot*100),dw=Math.round(totDiag/ttTot*100);
+  var html='<div style="font-size:8.5px;color:#667788;margin-bottom:3px">Test Type Breakdown</div>';
+  html+='<div style="display:flex;height:11px;border-radius:3px;overflow:hidden;margin-bottom:3px">';
+  if(cw)html+='<div style="width:'+cw+'%;background:#0071C5" title="CHAIN '+cw+'%"></div>';
+  if(sw)html+='<div style="width:'+sw+'%;background:#E8421C" title="STUCKAT '+sw+'%"></div>';
+  if(aw)html+='<div style="width:'+aw+'%;background:#1CA44A" title="ATSPEED '+aw+'%"></div>';
+  if(dw)html+='<div style="width:'+dw+'%;background:#8B5CF6" title="DIAG '+dw+'%"></div>';
+  html+='</div><div style="display:flex;gap:8px;margin-bottom:7px;flex-wrap:wrap">';
+  if(totChain)html+='<span style="font-size:8px;color:#5dade2">&#9632; CHAIN '+cw+'%</span>';
+  if(totSA)html+='<span style="font-size:8px;color:#f0857a">&#9632; STUCKAT '+sw+'%</span>';
+  if(totAS)html+='<span style="font-size:8px;color:#58d68d">&#9632; ATSPEED '+aw+'%</span>';
+  if(totDiag)html+='<span style="font-size:8px;color:#a78bfa">&#9632; DIAG '+dw+'%</span>';
+  html+='</div>';
+  var concCol=concPct>=70?'#ff8080':concPct>=40?'#ffd166':'#58d68d';
+  html+='<table style="border-collapse:collapse;width:100%;font-size:9px;margin-bottom:8px">';
+  html+='<tr><td style="color:#667788;padding:1px 0">Fail parts (total)</td><td style="text-align:right;color:#ffd166">'+totFc+'</td></tr>';
+  html+='<tr><td style="color:#667788;padding:1px 0">Fail die locs</td><td style="text-align:right;color:#ffd166">'+totPos+(totLayout?' / '+totLayout:'')+'</td></tr>';
+  if(totLayout)html+='<tr><td style="color:#667788;padding:1px 0">Fail rate</td><td style="text-align:right;color:#ffd166">'+Math.round(totPos/totLayout*1000)/10+'%</td></tr>';
+  html+='<tr><td style="color:#667788;padding:1px 0">Spatial conc.</td><td style="text-align:right;color:'+concCol+'">'+concPct+'% in top 10%'+(concPct>=70?' &#9888;':'')+'</td></tr>';
+  html+='</table>';
+  if(failXY.length&&allBgX.length){
+    var cx=(Math.max(...allBgX)+Math.min(...allBgX))/2,cy=(Math.max(...allBgY)+Math.min(...allBgY))/2;
+    var bgR=allBgX.map(function(x,i){return Math.hypot(x-cx,allBgY[i]-cy);});
+    var maxR=Math.max(...bgR)||1;var n=failXY.length;
+    var wEdge=failXY.reduce(function(s,d){return s+(Math.hypot(d.x-cx,d.y-cy)/maxR>0.60?d.fc:0);},0)/totFc;
+    var wCenter=failXY.reduce(function(s,d){return s+(Math.hypot(d.x-cx,d.y-cy)/maxR<0.30?d.fc:0);},0)/totFc;
+    var wMid=failXY.reduce(function(s,d){var r=Math.hypot(d.x-cx,d.y-cy)/maxR;return s+(r>=0.30&&r<=0.65?d.fc:0);},0)/totFc;
+    var edgeScore=wEdge,centerScore=wCenter;
+    var donutScore=(wMid>0.45&&wEdge<0.35&&wCenter<0.25)?wMid:Math.max(0,wMid-0.35);
+    var nShots=Math.max(nShotsTotal,Object.keys(shotMap).length,1);
+    var maxShotFc=Object.values(shotMap).reduce(function(m,s){return Math.max(m,s.fc);},0);
+    var reticleScore=nShots>1?Math.max(0,(maxShotFc/totFc-1/nShots)/(1-1/nShots)):0;
+    var top20cut=Math.max(1,Math.ceil(fcArr.length*0.2));
+    var top20fc=fcArr.slice(0,top20cut).reduce(function(s,v){return s+v;},0)/totFc;
+    var sysScore=Math.max(0,(top20fc-0.5)/0.5);
+    var dominated=Math.max(edgeScore,centerScore,donutScore,reticleScore,sysScore);
+    var randomScore=Math.max(0,1-dominated*1.5);
+    var scores={EDGE:edgeScore,CENTER:centerScore,DONUT:donutScore,RETICLE:reticleScore,SYSTEMATIC:sysScore,RANDOM:randomScore};
+    var sorted2=Object.entries(scores).sort(function(a,b){return b[1]-a[1];});
+    var primary=sorted2[0][0];
+    var patColors={EDGE:'#e74c3c',CENTER:'#9b59b6',DONUT:'#f39c12',RETICLE:'#3498db',SYSTEMATIC:'#1abc9c',RANDOM:'#58d68d'};
+    var patTips={EDGE:'Fails concentrated in outer ring (r>0.6)',CENTER:'Fails concentrated near center (r<0.3)',DONUT:'Fails in mid-ring band',RETICLE:'One reticle shot disproportionately fails',SYSTEMATIC:'Small number of die locations hold most fails',RANDOM:'No dominant spatial pattern'};
+    var confidence=n<20?'LOW':n<50?'MED':'HIGH';
+    var confCol={LOW:'#e74c3c',MED:'#f39c12',HIGH:'#58d68d'}[confidence];
+    html+='<div style="font-size:8.5px;color:#667788;margin-bottom:4px">Spatial Pattern</div>';
+    html+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">';
+    html+='<span style="font-size:12px;font-weight:700;color:'+patColors[primary]+'" title="'+patTips[primary]+'">'+primary+'</span>';
+    html+='<span style="font-size:8px;color:'+confCol+'">'+confidence+' conf &middot; '+n+' fail locs</span></div>';
+    sorted2.filter(function(e2){return e2[1]>0.04;}).forEach(function(e2){
+      var bw=Math.round(e2[1]*100);
+      html+='<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px" title="'+patTips[e2[0]]+'">';
+      html+='<span style="width:66px;font-size:8px;color:#8ab4d4">'+e2[0]+'</span>';
+      html+='<div style="flex:1;height:6px;background:#1a2a40;border-radius:3px"><div style="width:'+bw+'%;height:6px;background:'+patColors[e2[0]]+';border-radius:3px;opacity:0.85"></div></div>';
+      html+='<span style="width:26px;font-size:8px;color:#ffd166;text-align:right">'+bw+'%</span></div>';
+    });
+    html+='<div style="font-size:7.5px;color:#3a5066;margin-top:3px;margin-bottom:8px">Edge r&gt;0.6 &middot; Center r&lt;0.3 &middot; Donut 0.3–0.65 &middot; Reticle=shot conc.</div>';
+  }
+  var shotRows=Object.values(shotMap).sort(function(a,b){return b.fc-a.fc;});
+  if(shotRows.length>1){
+    html+='<div style="font-size:8.5px;color:#667788;margin-bottom:3px">By Reticle Shot</div>';
+    html+='<table style="border-collapse:collapse;width:100%;font-size:9px"><tr>';
+    html+='<th style="text-align:left;padding:2px 4px;background:#1a2a40;color:#8ab4d4">Shot</th>';
+    html+='<th style="text-align:right;padding:2px 4px;background:#1a2a40;color:#8ab4d4">Parts</th>';
+    html+='<th style="text-align:right;padding:2px 4px;background:#1a2a40;color:#8ab4d4">Locs</th>';
+    html+='<th style="text-align:right;padding:2px 4px;background:#1a2a40;color:#8ab4d4">%</th></tr>';
+    shotRows.forEach(function(s){
+      var pct=Math.round(s.fc/totFc*100);
+      html+='<tr style="border-bottom:1px solid #1a2a40"><td style="padding:2px 4px;color:#8ab4d4">Shot '+(s.idx+1)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right;color:#c0ccd8">'+s.fc+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right;color:#c0ccd8">'+s.pos+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right;color:#ffd166">'+pct+'%</td></tr>';
+    });
+    html+='</table>';
+  }
+  body.innerHTML=html;
+}
+/* ── Close dropdowns on outside click ────────────────── */
+document.addEventListener('click',function(e){
+  ['part-dd-wrap','ip-dd-wrap'].forEach(function(id){var wrap=document.getElementById(id);if(wrap&&!wrap.contains(e.target)){var p=wrap.querySelector('.part-dd-panel');var b=wrap.querySelector('.part-dd-btn');if(p)p.classList.remove('open');if(b)b.classList.remove('open');}});
+  if(!e.target.closest('.wm-fdd-wrap')){document.querySelectorAll('.wm-fdd-panel.open').forEach(function(el){el.classList.remove('open');});WM_OPEN_DD=null;}
+  if(!e.target.closest('#rv-ib-dd-wrap'))document.querySelectorAll('#rv-ib-dd').forEach(function(el){el.style.display='none';});
+  if(!e.target.closest('#rv-fb-dd-wrap'))document.querySelectorAll('#rv-fb-dd').forEach(function(el){el.style.display='none';});
+});
+
+/* ── Bootstrap ─────────────────────────────────────────────────────── */
+if(D.per_ip&&D.per_ip.length){
+  /* Build block|ip → region lookup for tooltip */
+  D.per_ip.forEach(function(r){var k=(r.BLOCK||'')+'|'+(r.IP||'');if(!_blkIpToReg[k])_blkIpToReg[k]=r.REGION||'';});
+  buildInfoBar();buildXfChips();buildTestFilter();buildWfrTable();setTimeout(applyFilters,0);
+}
+else{document.getElementById("info-bar").innerHTML='<span style="color:#e74c3c">No data loaded. Run the pipeline first.</span>';}
+</script>
+</body>
+</html>
+

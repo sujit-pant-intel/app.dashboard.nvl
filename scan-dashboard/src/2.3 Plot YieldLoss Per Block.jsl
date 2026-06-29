@@ -1,0 +1,241 @@
+//contact - sujit.n.pant@intel.com
+
+
+dtSummary = Current Data Table();
+
+// --- Verify source columns ---
+hasYL = 1; Try(Column(dtSummary, "YieldLoss (%)"), hasYL = 0);
+hasTY = 1; Try(Column(dtSummary, "Target YieldLoss (%)"), hasTY = 0);
+hasFC = 1; Try(Column(dtSummary, "Fault Count"), hasFC = 0);
+If(hasYL == 0, Throw("YieldLoss (%) column not found in dtSummary."));
+
+// --- 12.1 Average YieldLoss (%) by Block, Partition ---
+dtViz = dtSummary << Summary(
+	Group(:Block, :Partition),
+	Mean(:Name("YieldLoss (%)")),
+	Output Table Name("Partition_YieldLoss_Averaged - Per Block")
+);
+
+
+Try(dtViz << Delete Columns("N Rows"));
+
+Column(dtViz, "Mean(YieldLoss (%))") << Set Name("YieldLoss (%)");
+Column(dtViz, "YieldLoss (%)")
+	<< Set Data Type(Numeric)
+	<< Set Modeling Type(Continuous)
+	<< Set Format("Fixed Dec", 2);
+
+
+// --- 12.2 Add Target YieldLoss (%) and Fault Count via join ---
+If(hasTY | hasFC,
+	// Build partition-level summary with proper column references
+	If(hasTY & hasFC,
+		dtPartAgg = dtSummary << Summary(
+			Group(:Partition),
+			Mean(Column(dtSummary, "Target YieldLoss (%)")  << Get Name),
+			Mean(Column(dtSummary, "Fault Count") << Get Name),
+			Output Table Name("tmp_part_metrics")
+		);
+	,
+		If(hasTY,
+			dtPartAgg = dtSummary << Summary(
+				Group(:Partition),
+				Mean(Column(dtSummary, "Target YieldLoss (%)") << Get Name),
+				Output Table Name("tmp_part_metrics")
+			);
+		,
+			dtPartAgg = dtSummary << Summary(
+				Group(:Partition),
+				Mean(Column(dtSummary, "Fault Count") << Get Name),
+				Output Table Name("tmp_part_metrics")
+			);
+		);
+	);
+	
+	Try(dtPartAgg << Delete Columns("N Rows"));
+	
+	// Rename columns by finding them
+	partCols = dtPartAgg << Get Column Names("String");
+	
+	If(hasTY,
+		For(i = 1, i <= N Items(partCols), i++,
+			If(Contains(partCols[i], "Target") & Contains(partCols[i], "YieldLoss"),
+				Column(dtPartAgg, partCols[i])
+					<< Set Name("Target YieldLoss (%)")
+					<< Set Data Type(Numeric)
+					<< Set Modeling Type(Continuous)
+					<< Set Format("Percent", 12, 2);
+				Break();
+			);
+		);
+	);
+	
+	If(hasFC,
+		For(i = 1, i <= N Items(partCols), i++,
+			If(Contains(partCols[i], "Fault") & Contains(partCols[i], "Count"),
+				Column(dtPartAgg, partCols[i])
+					<< Set Name("Fault Count")
+					<< Set Data Type(Numeric)
+					<< Set Modeling Type(Continuous)
+					<< Set Format("Best", 12);
+				Break();
+			);
+		);
+	);
+	
+	// Join to viz table
+	dtViz << Update(
+		With(dtPartAgg),
+		Match Columns(:Partition = :Partition),
+		Add Columns from Update table(All)
+	);
+	
+	Try(Close(dtPartAgg, No Save));
+);
+
+// Set Partition column as the label column and label all rows
+dtViz << Set Label Columns(:Partition);
+For(i = 1, i <= N Rows(dtViz), i++,
+	Row State(dtViz, i) = As Row State(8);  // 8 is the label bit
+);
+
+// --- 12.3 Create plot with grid lines ---
+hasTY_in_viz = 1; Try(Column(dtViz, "Target YieldLoss (%)"), hasTY_in_viz = 0);
+
+If(hasTY_in_viz,
+	gb = dtViz << Graph Builder(
+		Size(1200, 900),
+		Show Control Panel(0),
+		Variables(
+			X(:Block),
+			X(:Partition, Position(1)),
+			Y(:Name("YieldLoss (%)")),
+			Y(:Name("Target YieldLoss (%)"), Position(1))
+		),
+		Elements(Points(X(1), X(2), Y(1), Y(2), Legend(102))),
+		SendToReport(
+			Dispatch(
+				{}, "400", ScaleBox,
+				{Legend Model(
+					102,
+					Properties(0, {Marker Size(6), Fill Color("Blue")}, Item ID("YieldLoss (%)", 1)),
+					Properties(1, {Marker Size(6), Fill Color("Red"), Marker(5)}, Item ID("Target YieldLoss (%)", 1))
+				)}
+			),
+			Dispatch({}, "graph title", TextEditBox, {Set Text("Partition YieldLoss Analysis")}),
+			Dispatch({}, "X title", TextEditBox, {Set Text("Block / Partition")}),
+			Dispatch({}, "Y title", TextEditBox, {Set Text("YieldLoss (%)")}),
+			Dispatch({}, "400", LegendBox, {Set Font Size(16)})
+		)
+	);
+,
+	gb = dtViz << Graph Builder(
+		Size(1200, 900),
+		Show Control Panel(0),
+		Variables(
+			X(:Block),
+			X(:Partition, Position(1)),
+			Y(:Name("YieldLoss (%)"))
+		),
+		Elements(Points(X(1), X(2), Y(1), Legend(102))),
+		SendToReport(
+			Dispatch(
+				{}, "400", ScaleBox,
+				{Legend Model(102, Properties(0, {Marker Size(6), Fill Color("Blue")}, Item ID("YieldLoss (%)", 1)))}
+			),
+			Dispatch({}, "graph title", TextEditBox, {Set Text("Partition YieldLoss Analysis")}),
+			Dispatch({}, "X title", TextEditBox, {Set Text("Block / Partition")}),
+			Dispatch({}, "Y title", TextEditBox, {Set Text("YieldLoss (%)")}),
+			Dispatch({}, "400", LegendBox, {Set Font Size(16)})
+		)
+	);
+);
+
+// Enable grid lines
+rep = Report(gb);
+For(ax = 1, ax <= 6, ax++, Try(rep[AxisBox(ax)] << Show Major Grid(1)));
+
+Print("Graph created with solid blue markers (size 6) and grid lines");
+/* ===== end Step 12 ===== */
+
+// --- 12.4 Create Fault Count vs YieldLoss scatter plot ---
+Print("Creating Fault Count vs YieldLoss scatter plot...");
+
+hasFCviz = 1; Try(Column(dtViz, "Fault Count"), hasFCviz = 0);
+
+If(hasFCviz & hasTY_in_viz,
+	gb2 = dtViz << Graph Builder(
+		Size(1186, 1025),
+		Show Control Panel(0),
+		Variables(
+			X(:Name("Fault Count")),
+			Y(:Name("YieldLoss (%)")),
+			Y(:Name("Target YieldLoss (%)"), Position(1)),
+			Color(:Partition)
+		),
+		Elements(
+			Points(X, Y(1), Y(2), Legend(6)),
+			Line Of Fit(X, Y(2), Legend(8), Degree("Cubic"), Confidence of Fit(0))
+		),
+		SendToReport(
+			Dispatch(
+				{}, "Fault Count", ScaleBox,
+				{Scale("Log"), Min(700000), Max(224597401.35), Inc(1), Minor Ticks(1),
+				Label Row({Show Major Grid(1), Show Minor Grid(1)})}
+			),
+			Dispatch(
+				{}, "400", ScaleBox,
+				{Legend Model(
+					6,
+					Properties(0, {Marker("FilledCircle"), Marker Size(6)}, Item ID("ARR", 1)),
+					Properties(1, {Marker("FilledCircle"), Marker Size(6)}, Item ID("ASL", 1)),
+					Properties(2, {Marker("FilledCircle"), Marker Size(6)}, Item ID("ASR", 1)),
+					Properties(3, {Marker("FilledCircle"), Marker Size(6)}, Item ID("BSL", 1)),
+					Properties(4, {Marker("FilledCircle"), Marker Size(6)}, Item ID("BSR", 1)),
+					Properties(5, {Marker("FilledCircle"), Marker Size(6)}, Item ID("BUS_SSC", 1)),
+					Properties(6, {Marker("FilledCircle"), Marker Size(6)}, Item ID("BUS_UTC", 1)),
+					Properties(7, {Marker("FilledCircle"), Marker Size(6)}, Item ID("CBOPAIRAS", 1)),
+					Properties(8, {Marker("FilledCircle"), Marker Size(6)}, Item ID("CBOPAIRBS0", 1)),
+					Properties(9, {Marker("FilledCircle"), Marker Size(6)}, Item ID("CBOPAIRBS1", 1)),
+					Properties(10, {Marker("FilledCircle"), Marker Size(6)}, Item ID("CCU", 1)),
+					Properties(11, {Marker("FilledCircle"), Marker Size(6)}, Item ID("CHANAS", 1)),
+					Properties(12, {Marker("FilledCircle"), Marker Size(6)}, Item ID("CHANBS", 1)),
+					Properties(13, {Marker("FilledCircle"), Marker Size(6)}, Item ID("DLVR_ATOM", 1)),
+					Properties(14, {Marker("FilledCircle"), Marker Size(6)}, Item ID("DLVR_ICORE0", 1)),
+					Properties(15, {Marker("FilledCircle"), Marker Size(6)}, Item ID("DLVR_ICORE1", 1)),
+					Properties(16, {Marker("FilledCircle"), Marker Size(6)}, Item ID("DLVR_RING", 1)),
+					Properties(17, {Marker("FilledCircle"), Marker Size(6)}, Item ID("DMU", 1)),
+					Properties(18, {Marker("FilledCircle"), Marker Size(6)}, Item ID("EXE", 1)),
+					Properties(19, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FE", 1)),
+					Properties(20, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FEC", 1)),
+					Properties(21, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FLATCORE", 1)),
+					Properties(22, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FMAV0", 1)),
+					Properties(23, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FMAV1", 1)),
+					Properties(24, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FOV0", 1)),
+					Properties(25, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FOV1", 1)),
+					Properties(26, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FPC", 1)),
+					Properties(27, {Marker("FilledCircle"), Marker Size(6)}, Item ID("FUSE", 1)),
+					Properties(28, {Marker("FilledCircle"), Marker Size(6)}, Item ID("IEC", 1)),
+					Properties(29, {Marker("FilledCircle"), Marker Size(6)}, Item ID("MEC", 1)),
+					Properties(30, {Marker("FilledCircle"), Marker Size(6)}, Item ID("MEU", 1)),
+					Properties(31, {Marker("FilledCircle"), Marker Size(6)}, Item ID("MISC", 1)),
+					Properties(32, {Marker("FilledCircle"), Marker Size(6)}, Item ID("MLC", 1)),
+					Properties(33, {Marker("FilledCircle"), Marker Size(6)}, Item ID("MSID", 1)),
+					Properties(34, {Marker("FilledCircle"), Marker Size(6)}, Item ID("OOO_INT", 1)),
+					Properties(35, {Marker("FilledCircle"), Marker Size(6)}, Item ID("OOO_VEC", 1)),
+					Properties(36, {Marker("FilledCircle"), Marker Size(6)}, Item ID("PM", 1)),
+					Properties(37, {Marker("FilledCircle"), Marker Size(6)}, Item ID("PMH", 1)),
+					Properties(38, {Marker("FilledCircle"), Marker Size(6)}, Item ID("YieldLoss (%)", 1)),
+					Properties(39, {Marker("X"), Marker Size(6)}, Item ID("Target YieldLoss (%)", 1))
+				)}
+			),
+			Dispatch({}, "graph title", TextEditBox, {Set Text("Fault Count vs YieldLoss by Partition")}),
+			Dispatch({}, "Y title", TextEditBox, {Set Text("YieldLoss (%)")}),
+			Dispatch({}, "400", LegendBox, {Set Font Size(14)})
+		)
+	);
+	
+	Print("Fault Count scatter plot created with FilledCircle markers size 6");
+);
+
+/* ===== end Step 12 ===== */

@@ -1,0 +1,270 @@
+﻿//contact - sujit.n.pant@intel.com
+
+// ============================================================
+// JSL Script: Stack HRY*LEVEL4*, clean data, preserve Partition tokens
+// ============================================================
+
+Names Default To Here(1);
+dt = Current Data Table();
+
+// ---------- 1. Identify and filter HRY columns ----------
+allCols = dt << Get Column Names("String");
+level4Cols = {};
+hryColsToDelete = {};
+
+For(i = 1, i <= N Items(allCols), i++,
+	colName = allCols[i];
+	If(Contains(colName, "HRY"),
+		If(Contains(colName, "LEVEL4"),
+			Insert Into(level4Cols, colName),
+			Insert Into(hryColsToDelete, colName)
+		)
+	);
+);
+
+// Delete non-LEVEL4 HRY columns
+If(N Items(hryColsToDelete) > 0,
+	dt << Delete Columns(hryColsToDelete);
+	Print("Deleted " || Char(N Items(hryColsToDelete)) || " non-LEVEL4 HRY columns");
+);
+
+// Validate LEVEL4 columns exist
+If(N Items(level4Cols) == 0, 
+	Throw("No HRY*LEVEL4* columns found. Script terminated.");
+);
+
+Print("Found " || Char(N Items(level4Cols)) || " LEVEL4 columns to stack");
+
+// ---------- 2. Stack the LEVEL4 columns ----------
+dtStacked = dt << Stack(
+	columns(Eval(level4Cols)),
+	Source Label Column("Test_Name"),
+	Stacked Data Column("Test_Result"),
+	Output Table("Stacked_HRY_LEVEL4_Data")
+);
+
+Print("Stacked data table created with " || Char(N Rows(dtStacked)) || " rows");
+
+// ---------- 3. Delete unwanted rows (efficient batch operations) ----------
+// Delete rows containing TOP_LEFT
+dtStacked << Select Where(Contains(Char(:Test_Name), "TOP_LEFT"));
+selectedRows = dtStacked << Get Selected Rows;
+deletedCount = N Items(selectedRows);
+If(deletedCount > 0,
+	dtStacked << Delete Rows;
+	Print("Deleted " || Char(deletedCount) || " rows containing TOP_LEFT");
+);
+dtStacked << Clear Select;
+
+// Delete UNTESTED or PASS rows
+dtStacked << Select Where(
+	Uppercase(Trim(Char(:Test_Result))) == "UNTESTED" | 
+	Uppercase(Trim(Char(:Test_Result))) == "PASS"|
+	Is Missing(:Test_Result) |
+	Trim(Char(:Test_Result)) == ""
+);
+selectedRows = dtStacked << Get Selected Rows;
+deletedCount = N Items(selectedRows);
+If(deletedCount > 0,
+	dtStacked << Delete Rows;
+	Print("Deleted " || Char(deletedCount) || " rows with UNTESTED or PASS");
+);
+dtStacked << Clear Select;
+
+// Validate remaining data
+If(N Rows(dtStacked) == 0,
+	Throw("All rows were deleted. No data remaining to process.");
+);
+Print("Remaining rows after cleanup: " || Char(N Rows(dtStacked)));
+
+// ---------- 4. Load Partition definitions from CSV ----------
+partitionList = {};
+
+// Get script directory
+scriptPath = "";
+Try(
+	// Get the directory of the currently running script
+	scriptPath = Get Script Path();
+	If(!Is Missing(scriptPath) & scriptPath != "",
+		// Extract directory from full script path
+		For(i = Length(scriptPath), i >= 1, i--,
+			If(Substr(scriptPath, i, 1) == "/" | Substr(scriptPath, i, 1) == "\",
+				scriptPath = Substr(scriptPath, 1, i);
+				Break();
+			);
+		);
+	,
+		scriptPath = Get Default Directory();
+	);
+,
+	scriptPath = Get Default Directory();
+);
+
+csvPath = scriptPath || "..\collateral\Partition_Info.csv";
+dtPartInfo = Empty();
+
+If(File Exists(csvPath),
+	dtPartInfo = Open(csvPath, "Text", Invisible);
+	
+	// Extract non-missing partition names
+	rawParts = Column(dtPartInfo, "Partition") << Get Values;
+	For(i = 1, i <= N Items(rawParts), i++,
+		If(!Is Missing(rawParts[i]),
+			Insert Into(partitionList, Trim(Char(rawParts[i])));
+		);
+	);
+	
+	Print("Loaded " || Char(N Items(partitionList)) || " Partition entries from CSV");
+	Print("CSV Path: " || csvPath);
+,
+	Print("WARNING: Partition_Info.csv NOT found at: " || csvPath);
+	Print("Proceeding without partition protection");
+);
+
+// ---------- 5. Create Part_1 through Part_10 columns ----------
+For(k = 1, k <= 10, k++,
+	dtStacked << New Column("Part_" || Char(k), Character, Nominal);
+);
+
+// ---------- 6. Split Test_Name intelligently (preserving multi-part Partition tokens) ----------
+Print("Splitting Test_Name by underscore (preserving Partition tokens)...");
+
+For(r = 1, r <= N Rows(dtStacked), r++,
+	// Progress indicator for large datasets
+	If(Mod(r, 500) == 0, Print("  Processing row " || Char(r) || " of " || Char(N Rows(dtStacked))));
+	
+	fullName = Char(dtStacked:Test_Name[r]);
+	If(Is Missing(fullName), fullName = "");
+	fullName = Trim(fullName);
+	
+	// Initial split by underscore
+	tempParts = Words(fullName, "_");
+	finalParts = {};
+	
+	// Walk through parts and merge multi-underscore partition tokens
+	i = 1;
+	While(i <= N Items(tempParts),
+		matchFound = 0;
+		
+		// Check if current position starts a known partition token
+		If(N Items(partitionList) > 0,
+			For(pIdx = 1, pIdx <= N Items(partitionList), pIdx++,
+				partToken = partitionList[pIdx];
+				
+				If(!Is Missing(partToken) & partToken != "",
+					// Handle multi-part partition tokens (containing underscores)
+					If(Contains(partToken, "_"),
+						partTokenParts = Words(partToken, "_");
+						numPartsNeeded = N Items(partTokenParts);
+						
+						// Check if we have enough remaining parts to match
+						If(i + numPartsNeeded - 1 <= N Items(tempParts),
+							// Reconstruct the candidate string
+							candidate = tempParts[i];
+							For(j = 2, j <= numPartsNeeded, j++,
+								candidate = candidate || "_" || tempParts[i + j - 1];
+							);
+							
+							// Exact match - preserve as single token
+							If(candidate == partToken,
+								Insert Into(finalParts, partToken);
+								i = i + numPartsNeeded;
+								matchFound = 1;
+								Break();
+							);
+						);
+					,
+						// Single-part partition token
+						If(tempParts[i] == partToken,
+							Insert Into(finalParts, partToken);
+							i = i + 1;
+							matchFound = 1;
+							Break();
+						);
+					);
+				);
+			);
+		);
+		
+		// No partition match - add part as-is
+		If(matchFound == 0,
+			Insert Into(finalParts, tempParts[i]);
+			i = i + 1;
+		);
+	);
+	
+	// Populate Part columns (up to 10)
+	For(p = 1, p <= Min(N Items(finalParts), 10), p++,
+		Column(dtStacked, "Part_" || Char(p))[r] = finalParts[p];
+	);
+	
+	// Fill unused Part columns with empty strings
+	For(p = N Items(finalParts) + 1, p <= 10, p++,
+		Column(dtStacked, "Part_" || Char(p))[r] = "";
+	);
+);
+
+Print("Splitting complete");
+
+// ---------- 7. Rename Part columns to meaningful names ----------
+Print("Renaming Part columns...");
+
+Try(Column(dtStacked, "Part_3") << Set Name("Block"); Print("  Part_3 -> Block"));
+Try(Column(dtStacked, "Part_4") << Set Name("Level"); Print("  Part_4 -> Level"));
+Try(Column(dtStacked, "Part_5") << Set Name("Partition"); Print("  Part_5 -> Partition"));
+Try(Column(dtStacked, "Part_7") << Set Name("Module"); Print("  Part_7 -> Module"));
+Try(Column(dtStacked, "Part_8") << Set Name("TestType"); Print("  Part_8 -> TestType"));
+
+// ---------- 8. Merge Partition_Info.csv into stacked table ----------
+Print("Merging Partition_Info.csv data into stacked table...");
+
+partColExists = 0;
+Try(
+	Column(dtStacked, "Partition");
+	partColExists = 1;
+);
+
+If(dtPartInfo != Empty() & partColExists,
+	Print("Partition_Info.csv columns: " || Char(dtPartInfo << Get Column Names("String")));
+	
+	// Get columns to add (exclude Partition since it already exists)
+	partInfoCols = dtPartInfo << Get Column Names("String");
+	colsToAdd = {};
+	For(i = 1, i <= N Items(partInfoCols), i++,
+		If(partInfoCols[i] != "Partition",
+			Insert Into(colsToAdd, partInfoCols[i]);
+		);
+	);
+	
+	// Perform the merge
+	dtStacked << Update(
+		With(dtPartInfo),
+		Match Columns(:Partition = :Partition),
+		Add Columns from Update table(Eval(colsToAdd))
+	);
+	
+	Print("Successfully merged " || Char(N Items(colsToAdd)) || " columns from Partition_Info.csv");
+	Print("  Added columns: " || Char(colsToAdd));
+	
+	Close(dtPartInfo, No Save);
+,
+	If(dtPartInfo == Empty(),
+		Print("WARNING: Cannot merge - Partition_Info.csv was not loaded");
+	);
+	If(!partColExists,
+		Print("WARNING: Cannot merge - Partition column does not exist in stacked table");
+	);
+);
+
+// ---------- 9. Delete unused Part columns ----------
+Try(
+	dtStacked << Delete Columns({"Part_1", "Part_2", "Part_6", "Part_9", "Part_10"});
+	Print("Deleted unused Part columns");
+);
+
+// ---------- 10. Final report ----------
+Print("=================================================");
+Print("Script completed successfully!");
+Print("Stacked table: " || (dtStacked << Get Name) || " (" || Char(N Rows(dtStacked)) || " rows)");
+Print("  Columns: " || Char(dtStacked << Get Column Names("String")));
+Print("=================================================");

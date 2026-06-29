@@ -1,0 +1,9 @@
+{
+  "input": [
+    "C:/work/scan/data/scan_data.CSV"
+  ],
+  "config": "",
+  "output": "C:/work/scan/data/output",
+  "keep_tests": "",
+  "standalone": true
+}

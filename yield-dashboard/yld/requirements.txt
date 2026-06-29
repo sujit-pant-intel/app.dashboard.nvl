@@ -1,0 +1,36 @@
+# ────────────────────────────────────────────────────────────────────
+# DEV / BUILD requirements — end users do NOT need Python.
+# The deployed dashboard.exe is fully self-contained (PyInstaller
+# bundles the Python interpreter + all packages inside the .exe).
+# End users only need:  dashboard.exe  +  the non-Python data files.
+# ────────────────────────────────────────────────────────────────────
+# Install (developers building/compiling the project):
+#   $env:HTTPS_PROXY = "http://proxy-us.intel.com:911"
+#   python -m pip install --user -r yield_dashboard/requirements.txt
+
+# ── Core data / plotting ─────────────────────────────────────────────
+pandas>=1.5
+numpy>=1.21
+matplotlib>=3.5
+seaborn>=0.12
+openpyxl>=3.0
+
+# ── Subprocess dispatch via _loader.py ───────────────────────────────
+# _loader.py uses only stdlib (importlib, runpy, pathlib) — no pip package needed.
+
+# ── Report / chart extras ────────────────────────────────────────────
+graphviz>=0.20          # generate_flowchart.py (Digraph)
+docopt>=0.6             # legacy CLI flags in older scripts
+
+# ── Build / packaging ────────────────────────────────────────────────
+cython                  # compile .py → .pyd (deploy_dashboard.py Cython path)
+setuptools              # required by Cython build
+pyinstaller             # bundle dashboard.py → dashboard.exe
+
+# ────────────────────────────────────────────────────────────────────
+# JMP 17 Integration  (optional — no pip package needed)
+# ────────────────────────────────────────────────────────────────────
+# JMP Pro 17 must be installed.  Dashboard invokes JMP via subprocess:
+#   "C:\Program Files\SAS\JMPPRO\17\jmp.exe" -run script.jsl
+# JMP 18+ provides a `jmpconnect` pip package for direct Python access.
+#   JMP 17 only: Python-inside-JMP via "JSL >> Python Submit".

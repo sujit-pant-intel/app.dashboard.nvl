@@ -1,0 +1,423 @@
+"""
+run_trend.py
+============
+Yield Trend Chart automation for NVL816-BLLC.
+
+Workflow
+--------
+1. Pull AQUA data using NVL_Yield-Trend - AutoPull.txt  (own pull, independent
+   of the yield dashboard pull — different report config / column set).
+   Or skip the pull with --local-csv to supply an existing file.
+2. Run  trend_chart.py <aqua_csv> --out <trend_report.html>
+3. Send email with the trend HTML as an attachment
+
+This script is meant to be run separately from run_automation.py,
+e.g. daily or weekly from Task Scheduler.
+
+Usage
+-----
+  python run_trend.py                                    # full AQUA pull + trend
+  python run_trend.py --dry-run
+  python run_trend.py --local-csv "C:\\data\\pull.csv"  # skip AQUA, use local file
+  python run_trend.py --base-dir "\\\\server\\auto\\yield-trend"
+  python run_trend.py --interval weekly     # daily/weekly/monthly (default: weekly)
+  python run_trend.py --email user@intel.com
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import gzip
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+from datetime import datetime
+from pathlib import Path
+
+# ── UTF-8 output on Windows ────────────────────────────────────────────────────
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+# ── Paths ───────────────────────────────────────────────────────────────────────
+_HERE      = Path(__file__).resolve().parent
+_REPO_ROOT = _HERE.parent.parent.parent.parent.parent  # app.yield.nvl/
+_TREND_SCRIPT = _REPO_ROOT / "code" / "dashboard" / "yield-dashboard" / "yld" / "src" / "trend_chart.py"
+_PROD_CFG_DIR = _REPO_ROOT / "shared" / "setup" / "config" / "yield-dashboard"
+_EMAIL_CFG    = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard" / "email_config.json"
+_7Z_EXE       = Path(r"C:\Program Files\7-Zip\7z.exe")
+
+# Trend-specific AQUA config (different from yield dashboard pull)
+_AQUA_CFG  = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard" / "NVL_Yield-Trend - AutoPull.txt"
+_AQUA_EXE_GAR = r"\\gar.corp.intel.com\ec\proj\ba\aqua\AquaHbase\AquaCMDClient\Client\AquaCmdLine.exe"
+_AQUA_EXE_AMR = r"\\FMSAPP3301.amr.corp.intel.com\Installer\AquaHbase\AquaCMDClient\Client\AquaCmdLine.exe"
+
+_BASE_DIR  = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield-trend")
+_EMAIL_TO  = "sujit.n.pant@intel.com"
+
+
+def _log(msg: str) -> None:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+def _ts() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AQUA pull  (same pattern as run_automation.py)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _aqua_report_name(config_path: Path) -> str:
+    try:
+        for line in config_path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+            if line.strip().startswith("@ Report :"):
+                return line.strip().split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return "NVL_Yield_Trend"
+
+
+def pull_aqua(aqua_exe: str, report_config: Path, data_dir: Path, dry_run: bool) -> Path | None:
+    """Run AquaCmdLine.exe with the trend report config. Returns path to downloaded file."""
+    data_dir.mkdir(parents=True, exist_ok=True)
+    ts       = _ts()
+    out_base = data_dir / f"trend_{ts}"
+    out_req  = out_base.with_suffix(".zip")
+
+    report_name = _aqua_report_name(report_config)
+    temp_dir    = Path(os.environ.get("TEMP", tempfile.gettempdir()))
+    temp_pat    = f"{report_name}*.CSV"
+
+    _exe_lower   = str(aqua_exe).lower()
+    _aqua_server = "AMR" if "amr" in _exe_lower else "GAR"
+
+    cmd = [
+        aqua_exe,
+        "-AquaServer",    _aqua_server,
+        "-ReportConfig",  str(report_config),
+        "-OutputFileName", str(out_req),
+    ]
+
+    _log(f"{'DRY-RUN  ' if dry_run else ''}AQUA pull → {out_base}.*")
+    _log(f"  Config : {report_config.name}")
+    _log(f"  CMD    : {' '.join(cmd)}")
+
+    if dry_run:
+        _log("  DRY-RUN: skipping AQUA pull")
+        return out_base.with_suffix(".csv")
+
+    before_temp = {p.resolve() for p in temp_dir.glob(temp_pat)}
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+        if result.stdout.strip():
+            _log(f"  AQUA: {result.stdout.strip()[:400]}")
+        if result.returncode != 0:
+            _log(f"  ERROR: AQUA rc={result.returncode}\n{result.stderr.strip()[:400]}")
+            return None
+    except FileNotFoundError:
+        _log(f"  ERROR: AquaCmdLine.exe not found: {aqua_exe}")
+        return None
+    except subprocess.TimeoutExpired:
+        _log("  ERROR: AQUA timed out")
+        return None
+
+    # Primary: any file written to data_dir with our stem
+    written = [p for p in data_dir.glob(f"{out_base.name}*") if p.stat().st_size > 0]
+    if written:
+        out = max(written, key=lambda p: p.stat().st_mtime)
+        _log(f"  Output: {out.name} ({out.stat().st_size:,} bytes)")
+        return out
+
+    # Fallback: new CSV in %TEMP%
+    after_temp = {p.resolve() for p in temp_dir.glob(temp_pat)}
+    new_csvs   = sorted(after_temp - before_temp, key=lambda p: p.stat().st_mtime)
+    if new_csvs:
+        src  = max(new_csvs, key=lambda p: p.stat().st_mtime)
+        dest = data_dir / f"trend_{ts}.csv"
+        shutil.copy2(src, dest)
+        _log(f"  Fallback from %TEMP%: {src.name} → {dest.name}")
+        return dest
+
+    _log("  ERROR: AQUA produced no output file")
+    return None
+
+
+def _normalise_aqua_file(raw_path: Path, tmp_dir: Path) -> Path:
+    """
+    If AQUA returned a zip/csv, extract and return a plain .csv path.
+    If it's already a .csv, return as-is.
+    """
+    suffix = raw_path.suffix.lower()
+    if suffix == ".zip":
+        with zipfile.ZipFile(raw_path) as zf:
+            csvs = [n for n in zf.namelist() if n.lower().endswith(".csv")]
+            if not csvs:
+                raise ValueError(f"No CSV inside {raw_path.name}")
+            out = tmp_dir / csvs[0]
+            zf.extract(csvs[0], tmp_dir)
+            _log(f"  Extracted: {out.name}  ({out.stat().st_size:,} bytes)")
+            return out
+    # plain .csv or .CSV
+    return raw_path
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Product config
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _find_product_config() -> str:
+    candidates = sorted(_PROD_CFG_DIR.glob("*.json"))
+    for c in candidates:
+        if "BB+AIO" in c.name and "L0" in c.name:
+            return str(c)
+    return str(candidates[0]) if candidates else ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Run trend_chart.py
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_trend_chart(csv_path: Path, out_html: Path, interval: str,
+                    cfg_path: str, dry_run: bool) -> bool:
+    cmd = [
+        sys.executable, str(_TREND_SCRIPT),
+        str(csv_path),
+        "--interval", interval,
+        "--out", str(out_html),
+    ]
+    if cfg_path:
+        cmd += ["--cfg", cfg_path]
+
+    _log(f"  CMD: {' '.join(cmd)}")
+    if dry_run:
+        _log("  DRY-RUN: would run trend_chart.py")
+        return True
+
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
+    result = subprocess.run(cmd, capture_output=False, text=True, timeout=600,
+                            env=env, cwd=str(_TREND_SCRIPT.parent))
+    if result.returncode != 0:
+        _log(f"  WARNING: trend_chart.py exited with rc={result.returncode}")
+        return False
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Email helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _send_via_outlook(to: str, subject: str, body_html: str, attachments: list[str]) -> None:
+    import win32com.client as _win
+    outlook = _win.Dispatch("Outlook.Application")
+    mail    = outlook.CreateItem(0)
+    mail.To = to
+    mail.Subject = subject
+    mail.HTMLBody = body_html
+    for att in attachments:
+        mail.Attachments.Add(att)
+    mail.Send()
+    _log("  Email sent via Outlook COM.")
+
+
+def _send_via_smtp(to: str, subject: str, body_html: str, attachments: list[str]) -> None:
+    import smtplib
+    import time
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.application import MIMEApplication
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"]    = "yield-trend-automation@intel.com"
+    msg["To"]      = to
+    msg.attach(MIMEText(body_html, "html", "utf-8"))
+    for att_path in attachments:
+        with open(att_path, "rb") as f:
+            part = MIMEApplication(f.read(), Name=Path(att_path).name)
+        part["Content-Disposition"] = f'attachment; filename="{Path(att_path).name}"'
+        msg.attach(part)
+    
+    msg_str = msg.as_string()
+    # Retry with exponential backoff (account for network issues)
+    max_retries = 3
+    base_delay = 2  # seconds
+    for attempt in range(1, max_retries + 1):
+        try:
+            _log(f"  SMTP attempt {attempt}/{max_retries}...")
+            with smtplib.SMTP("smtpauth.intel.com", 587, timeout=60) as s:
+                s.starttls()
+                s.sendmail(msg["From"], [to], msg_str)
+            _log("  Email sent via SMTP.")
+            return
+        except (smtplib.SMTPException, OSError, TimeoutError) as e:
+            if attempt < max_retries:
+                delay = base_delay * (2 ** (attempt - 1))
+                _log(f"  SMTP attempt {attempt} failed: {e}")
+                _log(f"  Retrying in {delay}s...")
+                time.sleep(delay)
+            else:
+                _log(f"  SMTP all {max_retries} attempts failed: {e}")
+                raise
+
+
+def send_email(to: str, subject: str, body_html: str,
+               dry_run: bool, attachments: list[str] | None = None) -> None:
+    _log(f"{'DRY-RUN: ' if dry_run else ''}Sending email → {to}")
+    if dry_run:
+        _log(f"  Subject: {subject}")
+        for a in (attachments or []):
+            _log(f"  Attach : {a}")
+        return
+    atts = attachments or []
+    try:
+        _send_via_outlook(to, subject, body_html, atts)
+        return
+    except ImportError:
+        _log("  win32com not available — falling back to SMTP.")
+    except Exception as e:
+        _log(f"  Outlook COM failed ({e}) — falling back to SMTP.")
+    try:
+        _send_via_smtp(to, subject, body_html, atts)
+    except Exception as e:
+        _log(f"  ERROR sending email: {e}")
+
+
+def _build_email_body(run_ts: str, trend_html: Path, interval: str) -> str:
+    size_kb = trend_html.stat().st_size // 1024 if trend_html.exists() else 0
+    return f"""<!DOCTYPE html><html><body style="font-family:sans-serif">
+<h2 style="color:#1a5276">NVL816-BLLC Yield Trend Report</h2>
+<p>Generated: <strong>{run_ts}</strong></p>
+<p>Interval: <strong>{interval}</strong> &nbsp;|&nbsp;
+   Report size: <strong>{size_kb:,} KB</strong></p>
+<p>The interactive trend chart is attached. Open it in any browser.</p>
+<hr/>
+<p style="font-size:0.85em;color:#888">Pant, Sujit N — GEMS FTE &nbsp;|&nbsp;
+auto-generated by run_trend.py</p>
+</body></html>"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="NVL816-BLLC Yield Trend automation")
+    ap.add_argument("--base-dir",      default=str(_BASE_DIR),
+                    help="Automation base directory (default: network share)")
+    ap.add_argument("--aqua-exe",      default=_AQUA_EXE_AMR,
+                    help="Path to AquaCmdLine.exe")
+    ap.add_argument("--report-config", default=str(_AQUA_CFG),
+                    help="AQUA report config txt (default: NVL_Yield-Trend - AutoPull.txt)")
+    ap.add_argument("--local-csv",     default="",
+                    help="Skip AQUA pull; use this existing CSV/zip file directly")
+    ap.add_argument("--interval",      default="weekly",
+                    choices=["daily", "weekly", "bi-weekly", "monthly"],
+                    help="Trend grouping interval (default: weekly)")
+    ap.add_argument("--email",         default="",
+                    help="Override recipient email address")
+    ap.add_argument("--dry-run",       action="store_true",
+                    help="Plan only — do not pull AQUA, run trend_chart, or send email")
+    args = ap.parse_args()
+
+    base_dir = Path(args.base_dir)
+    data_dir = base_dir / "data"
+    trend_dir = base_dir / "output" / "trend"
+    run_ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts_label = _ts()
+
+    _log("=" * 65)
+    _log(f"run_trend  {'[DRY-RUN]' if args.dry_run else '[LIVE]'}")
+    _log(f"Base dir : {base_dir}")
+    _log(f"Interval : {args.interval}")
+    _log("=" * 65)
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="nvl_trend_"))
+    try:
+        # ── 1. Get AQUA data ────────────────────────────────────────────────
+        if args.local_csv:
+            raw_path = Path(args.local_csv)
+            _log(f"\nUsing local file: {raw_path}")
+        else:
+            _log(f"\nPulling AQUA data…")
+            if not args.dry_run:
+                data_dir.mkdir(parents=True, exist_ok=True)
+            raw_path = pull_aqua(
+                args.aqua_exe,
+                Path(args.report_config),
+                data_dir,
+                args.dry_run,
+            )
+            if not raw_path and not args.dry_run:
+                _log("AQUA pull failed — aborting.")
+                sys.exit(1)
+
+        # ── 2. Normalise (unzip if needed) ──────────────────────────────────
+        if raw_path and not args.dry_run:
+            csv_path = _normalise_aqua_file(raw_path, tmp_dir)
+            _log(f"\nInput CSV : {csv_path.name}  ({csv_path.stat().st_size:,} bytes)")
+        else:
+            csv_path = raw_path  # dry-run: path is fictitious, that's fine
+
+        # ── 3. Run trend_chart.py ───────────────────────────────────────────
+        if not args.dry_run:
+            trend_dir.mkdir(parents=True, exist_ok=True)
+
+        out_html    = trend_dir / f"NVL816-BLLC_yield_trend_{ts_label}.html"
+        latest_html = trend_dir / "NVL816-BLLC_yield_trend_latest.html"
+
+        cfg_path = _find_product_config()
+        if cfg_path:
+            _log(f"\nProduct config: {Path(cfg_path).name}")
+
+        _log(f"\nRunning trend_chart.py → {out_html.name}")
+        ok = run_trend_chart(csv_path, out_html, args.interval, cfg_path, args.dry_run)
+
+        if not args.dry_run and ok and out_html.exists():
+            shutil.copy2(str(out_html), str(latest_html))
+            _log(f"  Latest: {latest_html.name}  ({out_html.stat().st_size:,} bytes)")
+
+        # ── 4. Send email ───────────────────────────────────────────────────
+        email_cfg: dict = {}
+        if _EMAIL_CFG.exists():
+            try:
+                email_cfg = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        email_to = (args.email
+                    or email_cfg.get("email_to_report")
+                    or email_cfg.get("email_to")
+                    or _EMAIL_TO)
+
+        subject = f"NVL816-BLLC Yield Trend Report {ts_label}"
+        body    = _build_email_body(run_ts, out_html if (ok and not args.dry_run) else Path(""), args.interval)
+
+        attachments = []
+        if ok and not args.dry_run and out_html.exists():
+            att_tmp  = Path(tempfile.mkdtemp(prefix="nvl_att_"))
+            att_file = att_tmp / out_html.name
+            shutil.copy2(str(out_html), str(att_file))
+            attachments = [str(att_file)]
+
+        _log(f"\nRecipient: {email_to}")
+        send_email(to=email_to, subject=subject, body_html=body,
+                   dry_run=args.dry_run, attachments=attachments)
+
+        _log("\n" + "=" * 65)
+        _log(f"Trend report : {out_html}")
+        _log(f"Latest       : {latest_html}")
+        _log("=" * 65)
+
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

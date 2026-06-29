@@ -1,0 +1,2173 @@
+"""class_analysis_html.py — CLASS analysis page generator.
+
+Three-panel architecture following chart_tools specs:
+  Panel 1 : Lot/Wafer filter (Program_Name_6248, Program_Name_U1.U5,
+            Sort_lot, sort_Wafer, sort_x, sort_y)
+  Panel 2 : Parameter stats table  (SICC Sort, SICC Class, Vmin Core/Atom/CCF)
+  Panel 3 : Chart tabs
+              Variability   — strip chart cards for all groups
+              Distribution  — histogram panels for SICC Sort + SICC Class
+              VMIN-CORE     — XY scatter
+              VMIN-ATOM     — XY scatter
+              VMIN-CCF      — XY scatter
+
+Public API
+----------
+    generate_html(df, product_config, vmin_meta, output_path,
+                  spec_lookup=None) -> str
+        Returns output_path.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import pandas as pd
+
+try:
+    from _constants import _wm_inject
+except ImportError:
+    def _wm_inject(h: str) -> str:          # type: ignore[misc]
+        return h
+
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+_MAX_DIE_VALUES = 500       # cap per (wafer × param) row
+_BANNER_COLS = [
+    '#1a5276', '#117a65', '#6e2f8a', '#7d4e00',
+    '#922b21', '#1a6e2b', '#1a3a72', '#7d4500',
+]
+_COLOUR_PAL = [
+    '#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6',
+    '#1abc9c','#e67e22','#34495e','#16a085','#8e44ad',
+    '#27ae60','#2980b9','#d35400','#7f8c8d','#c0392b',
+]
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def _esc(s: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9]', '_', s)
+
+
+def _safe(v):
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        return None if (f != f) else round(f, 6)
+    except Exception:
+        return None
+
+
+def _fmt_n(v, prec: int = 4) -> str:
+    if v is None:
+        return ''
+    try:
+        f = float(v)
+        if f != f:
+            return ''
+        if abs(f) >= 1000:
+            return f'{f:.0f}'
+        if abs(f) >= 10:
+            return f'{f:.1f}'
+        return f'{f:.{prec}g}'
+    except Exception:
+        return ''
+
+
+def _find_col(cols: List[str], *needles: str) -> Optional[str]:
+    """Case-insensitive match; normalises spaces/underscores before comparing."""
+    def _norm(s: str) -> str:
+        return s.upper().replace('_', ' ')
+    for c in cols:
+        cn = _norm(c)
+        if all(_norm(n) in cn for n in needles):
+            return c
+    return None
+
+
+def _param_cols(df_cols: List[str], patterns: List[str]) -> List[str]:
+    import fnmatch
+    result: List[str] = []
+    for pat in patterns:
+        for c in df_cols:
+            if (fnmatch.fnmatch(c.upper(), pat.upper()) or
+                    fnmatch.fnmatch(c, pat)):
+                if c not in result:
+                    result.append(c)
+    return result
+
+
+# ── Data builders ─────────────────────────────────────────────────────────────
+
+def _build_wfr_data(df: pd.DataFrame,
+                    lot_col: str, wafer_col: str,
+                    prog6248_col: Optional[str],
+                    progU1U5_col: Optional[str],
+                    x_col: Optional[str],
+                    y_col: Optional[str]) -> list:
+    rows = []
+    for (lot, wafer), g in df.groupby([lot_col, wafer_col], sort=False):
+        def _first_str(col):
+            if col and col in g.columns:
+                vs = g[col].dropna()
+                return str(vs.iloc[0]) if len(vs) else ''
+            return ''
+
+        def _irange(col):
+            if col and col in g.columns:
+                s = pd.to_numeric(g[col], errors='coerce').dropna()
+                if len(s):
+                    return int(s.min()), int(s.max())
+            return None, None
+
+        xmin, xmax = _irange(x_col)
+        ymin, ymax = _irange(y_col)
+        rows.append({
+            'lot':      str(lot),
+            'wafer':    str(wafer),
+            'prog6248': _first_str(prog6248_col),
+            'progU1U5': _first_str(progU1U5_col),
+            'xmin': xmin, 'xmax': xmax,
+            'ymin': ymin, 'ymax': ymax,
+            'n': len(g),
+        })
+    return rows
+
+
+def _build_pcm_rows(df: pd.DataFrame,
+                    lot_col: str, wafer_col: str,
+                    all_params: List[str],
+                    param_group: Dict[str, str]) -> list:
+    rows = []
+    for (lot, wafer), g in df.groupby([lot_col, wafer_col], sort=False):
+        lot_s, wfr_s = str(lot), str(wafer)
+        for param in all_params:
+            if param not in g.columns:
+                continue
+            s = pd.to_numeric(g[param], errors='coerce').dropna()
+            n = len(s)
+            if n == 0:
+                continue
+            med = float(s.median())
+            std = float(s.std()) if n > 1 else 0.0
+            cv  = (_safe(std / abs(med) * 100) if med != 0 else None)
+            dvs = [round(float(v), 5) for v in s.values[:_MAX_DIE_VALUES]]
+            rows.append({
+                'lot':       lot_s,
+                'wafer':     wfr_s,
+                'group':     param_group.get(param, ''),
+                'param':     param,
+                'n':         n,
+                'median':    _safe(med),
+                'std':       _safe(std),
+                'cv':        cv,
+                'min_val':   _safe(float(s.min())),
+                'max_val':   _safe(float(s.max())),
+                'die_values': dvs,
+            })
+    return rows
+
+
+# ── Main entry point ──────────────────────────────────────────────────────────
+
+def generate_html(df: pd.DataFrame,
+                  product_config: dict,
+                  vmin_meta: dict,
+                  output_path: str,
+                  spec_lookup: Optional[dict] = None) -> str:
+    """Generate the CLASS analysis HTML page.
+
+    Parameters
+    ----------
+    df             : Normalised CLASS DataFrame (output of class_normalize)
+    product_config : Parsed product-config JSON
+    vmin_meta      : {module: [(short_key, freq_mhz, idx, raw_col), ...]}
+    output_path    : Destination .html file
+    spec_lookup    : Optional {param: (lsl, usl, target, unit, name)} dict
+
+    Returns output_path.
+    """
+    cols = list(df.columns)
+
+    # ── Identify key columns ──────────────────────────────────────────────────
+    lot_col   = next((c for c in ['Lot',   'SORT_LOT']   if c in cols), None)
+    wafer_col = next((c for c in ['Wafer', 'SORT_WAFER'] if c in cols), None)
+    if not lot_col or not wafer_col:
+        raise RuntimeError("Lot/Wafer columns not found in DataFrame")
+
+    x_col   = next((c for c in ['SORT_X', 'X'] if c in cols), None)
+    y_col   = next((c for c in ['SORT_Y', 'Y'] if c in cols), None)
+
+    prog6248_col = _find_col(cols, 'PROGRAM_NAME', '6248')
+    progU1U5_col = _find_col(cols, 'PROGRAM_NAME', 'U1.U5')
+
+    # ── Build param groups from product_config ─────────────────────────────────
+    cfg_groups = product_config.get('groups', [])
+    all_params: List[str] = []
+    param_group: Dict[str, str] = {}
+    groups_ordered: List[str] = []
+
+    # SICC groups from config
+    for grp_cfg in cfg_groups:
+        gname    = grp_cfg['name']
+        patterns = grp_cfg.get('patterns', [])
+        gparams  = _param_cols(cols, patterns)
+        if gparams:
+            groups_ordered.append(gname)
+            for p in gparams:
+                if p not in all_params:
+                    all_params.append(p)
+                param_group[p] = gname
+
+    # Vmin groups from vmin_meta (if not already in config groups)
+    _vmin_group_names = {'core': 'Vmin Core', 'atom': 'Vmin Atom', 'ccf': 'Vmin CCF'}
+    for module, entries in vmin_meta.items():
+        gname = _vmin_group_names.get(module, f'Vmin {module.capitalize()}')
+        if gname not in groups_ordered:
+            groups_ordered.append(gname)
+        for short_key, *_ in entries:
+            if short_key in cols and short_key not in all_params:
+                all_params.append(short_key)
+                param_group[short_key] = gname
+
+    # ── PCM_PARAM_META ─────────────────────────────────────────────────────────
+    pcm_param_meta: Dict[str, dict] = {}
+    for p in all_params:
+        sl = (spec_lookup or {}).get(p)
+        pcm_param_meta[p] = {
+            'group':  param_group.get(p, ''),
+            'lsl':    _safe(sl[0]) if sl else None,
+            'usl':    _safe(sl[1]) if sl else None,
+            'target': _safe(sl[2]) if sl else None,
+            'unit':   (sl[3] if sl else '') or '',
+            'name':   (sl[4] if sl else '') or '',
+        }
+
+    # ── Distribution panels (SICC Sort + SICC Class) ──────────────────────────
+    dist_panels = []
+    for grp_cfg in cfg_groups:
+        gname    = grp_cfg['name']
+        if 'sicc' in gname.lower() or 'dist' in gname.lower():
+            gparams = [p for p in all_params if param_group.get(p) == gname]
+            if gparams:
+                dist_panels.append({'label': gname, 'params': gparams})
+
+    if not dist_panels:
+        # Fallback: first two groups
+        for gn in groups_ordered[:2]:
+            gparams = [p for p in all_params if param_group.get(p) == gn]
+            if gparams:
+                dist_panels.append({'label': gn, 'params': gparams})
+
+    # ── XY panels (one per Vmin module) ───────────────────────────────────────
+    xy_panels = []
+    for module in ('core', 'atom', 'ccf'):
+        entries = vmin_meta.get(module, [])
+        gname   = _vmin_group_names.get(module, f'Vmin {module.capitalize()}')
+        gparams = [e[0] for e in entries if e[0] in cols]
+        if gparams:
+            xy_panels.append({
+                'label':  f'VMIN \u2014 {module.upper()}',
+                'group':  gname,
+                'params': gparams,
+            })
+
+    # ── Build data structures ─────────────────────────────────────────────────
+    wfr_data  = _build_wfr_data(df, lot_col, wafer_col,
+                                  prog6248_col, progU1U5_col, x_col, y_col)
+    pcm_rows  = _build_pcm_rows(df, lot_col, wafer_col, all_params, param_group)
+
+    meta       = product_config
+    title      = meta.get('title', 'CLASS Analysis')
+    subtitle   = meta.get('subtitle', '')
+    date_str   = datetime.now().strftime('%Y-%m-%d %H:%M')
+    n_lots     = len({r['lot'] for r in wfr_data})
+    n_wfrs     = len(wfr_data)
+
+    html = _render_html(
+        wfr_data         = wfr_data,
+        pcm_rows         = pcm_rows,
+        pcm_groups       = groups_ordered,
+        pcm_param_meta   = pcm_param_meta,
+        dist_panels      = dist_panels,
+        xy_panels        = xy_panels,
+        title            = title,
+        subtitle         = subtitle,
+        date_str         = date_str,
+        n_lots           = n_lots,
+        n_wfrs           = n_wfrs,
+        prog6248_col     = prog6248_col,
+        progU1U5_col     = progU1U5_col,
+        x_col            = x_col,
+        y_col            = y_col,
+    )
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_wm_inject(html), encoding='utf-8')
+    return str(out)
+
+
+# ── HTML renderer ─────────────────────────────────────────────────────────────
+
+def _render_html(wfr_data, pcm_rows, pcm_groups, pcm_param_meta,
+                 dist_panels, xy_panels, title, subtitle,
+                 date_str, n_lots, n_wfrs,
+                 prog6248_col, progU1U5_col, x_col, y_col):
+
+    # ── Serialise data ────────────────────────────────────────────────────────
+    WFR_DATA_JS       = json.dumps(wfr_data,        separators=(',', ':'))
+    PCM_ROWS_JS       = json.dumps(pcm_rows,         separators=(',', ':'))
+    PCM_GROUPS_JS     = json.dumps(pcm_groups,       separators=(',', ':'))
+    PCM_PARAM_META_JS = json.dumps(pcm_param_meta,   separators=(',', ':'))
+    PCM_DIST_JS       = json.dumps(dist_panels,      separators=(',', ':'))
+    PCM_XY_JS         = json.dumps(xy_panels,        separators=(',', ':'))
+
+    # Tab labels
+    xy_tab_labels = ''.join(
+        f'<button class="tab-btn" onclick="showTab(this,\'tab-xy{i}\')">'
+        f'\u00d7 {p["label"]}</button>'
+        for i, p in enumerate(xy_panels)
+    )
+    xy_tab_divs_list = []
+    for xi, xp in enumerate(xy_panels):
+        _panel_inner = (
+            f'<div style="flex-shrink:0;border-bottom:3px solid #bcd">'
+            f'<div style="background:#1a6e2b;border-bottom:1px solid #bcd;padding:4px 10px;'
+            f'display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleXYP({xi})">'
+            f'<button id="xyp{xi}-toggle" style="border:none;background:none;cursor:pointer;'
+            f'font-size:14px;color:#fff;padding:0 4px;line-height:1">&#9660;</button>'
+            f'<span style="font-size:14px;font-weight:bold;color:#fff">&#9673; {xp["label"]}</span>'
+            f'</div>'
+            f'<div id="xyp{xi}-body" style="display:flex;flex-direction:row;min-height:0">'
+            f'<div id="xyp{xi}a-wrap" style="flex:1;border-right:2px solid #dde;'
+            f'min-width:0;display:flex;flex-direction:column"></div>'
+            f'<div id="xyp{xi}b-wrap" style="flex:1;min-width:0;'
+            f'display:flex;flex-direction:column"></div>'
+            f'</div></div>'
+        )
+        xy_tab_divs_list.append(f'<div id="tab-xy{xi}" class="tab-panel">{_panel_inner}</div>')
+    xy_tab_divs = ''.join(xy_tab_divs_list)
+
+    # Group card HTML (for variability tab — placeholders filled by JS)
+    grp_cards_html = ''.join(
+        f'''<div class="grp-card" id="card-grp-{_esc(g)}">
+  <div class="grp-card-hdr"
+       onclick="var c=this.parentElement;
+                c.classList.toggle('gc-collapsed');
+                this.querySelector('.gc-tog').textContent=
+                c.classList.contains('gc-collapsed')?'+':'-'">
+    <span class="gc-tog" style="font-size:22px;line-height:1;width:22px;
+          display:inline-block;text-align:center">-</span>
+    {g}
+    <span style="font-weight:normal;font-size:10px;opacity:.7" id="card-grp-{_esc(g)}-cnt"></span>
+    <button onclick="event.stopPropagation();downloadGrpCSV('{g.replace(chr(39), chr(92)+chr(39))}')"
+            style="margin-left:auto;padding:2px 8px;font-size:10px;font-weight:bold;
+                   border:none;border-radius:3px;background:#27ae60;color:#fff;cursor:pointer"
+            onmouseover="this.style.background='#1e8449'"
+            onmouseout="this.style.background='#27ae60'">&#11015; CSV</button>
+  </div>
+  <div class="grp-card-body">
+    <svg id="svg-grp-{_esc(g)}" style="display:block;width:100%"></svg>
+    <div class="grp-legend" style="padding:2px 8px 6px"></div>
+  </div>
+</div>'''
+        for g in pcm_groups
+    )
+
+    # Distribution panel HTML
+    dist_html = ''
+    for di, dp in enumerate(dist_panels):
+        dist_html += f'''<div style="flex-shrink:0;border-bottom:3px solid #bcd">
+  <div style="background:#1a6e2b;border-bottom:1px solid #bcd;padding:4px 10px;
+              display:flex;align-items:center;gap:8px;cursor:pointer"
+       onclick="toggleDistP({di})">
+    <button id="distp{di}-toggle" style="border:none;background:none;cursor:pointer;
+            font-size:14px;color:#fff;padding:0 4px;line-height:1">&#9660;</button>
+    <span style="font-size:14px;font-weight:bold;color:#fff">
+      &#9673; Panel {di+1} &mdash; {dp['label']}</span>
+  </div>
+  <div id="distp{di}-body"></div>
+</div>
+'''
+
+    col_hdr_prog6248 = f'<th style="{_TH_ST}">Prog 6248</th>' if prog6248_col else ''
+    col_hdr_u1u5     = f'<th style="{_TH_ST}">Prog U1.U5</th>' if progU1U5_col else ''
+    col_hdr_x        = f'<th style="{_TH_ST}">X</th>' if x_col else ''
+    col_hdr_y        = f'<th style="{_TH_ST}">Y</th>' if y_col else ''
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+html,body{{height:100%;overflow:hidden;font-family:Arial,sans-serif;
+           background:#f0f2f5;color:#2c3e50;font-size:13px}}
+/* ── Page layout ── */
+#app{{display:flex;flex-direction:column;height:100vh}}
+.page-hdr{{background:#1f3a50;color:#fff;padding:7px 14px;flex-shrink:0}}
+.page-hdr h1{{font-size:14px;font-weight:bold}}
+.page-hdr .sub{{font-size:11px;color:#aed6f1;margin-top:2px}}
+.info-bar{{display:flex;flex-wrap:wrap;gap:8px;padding:6px 14px;
+           background:#2c3e50;color:#ecf0f1;font-size:11px;
+           border-bottom:2px solid #1a252f;flex-shrink:0}}
+.info-bar b{{color:#f1c40f}}
+.info-bar .sep{{color:#4a6a8a;margin:0 2px}}
+/* ── Tab bar ── */
+.tabs{{display:flex;align-items:center;background:#1a252f;
+       padding:5px 12px;gap:5px;border-bottom:3px solid #27ae60;flex-shrink:0;
+       flex-wrap:wrap}}
+.tab-btn{{padding:6px 18px;border:2px solid transparent;border-radius:5px;
+          background:rgba(255,255,255,.07);color:#95a5a6;cursor:pointer;
+          font-size:12px;font-weight:bold;
+          transition:background .12s,color .12s,border-color .12s}}
+.tab-btn:hover{{background:rgba(39,174,96,.20);color:#a9dfbf;
+                border-color:rgba(39,174,96,.40)}}
+.tab-btn.active{{background:#27ae60;color:#fff;border-color:#1e8449;
+                 box-shadow:0 2px 6px rgba(39,174,96,.35)}}
+/* ── Three-panel ── */
+.three-panel{{display:flex;flex-direction:row;flex:1;min-height:0;
+              overflow:hidden;gap:0}}
+#panel1{{width:280px;min-width:120px;flex-shrink:0;background:#fff;
+         display:flex;flex-direction:column;
+         border-right:2px solid #d0d7de;overflow:hidden;position:relative}}
+.p1-resize{{width:5px;flex-shrink:0;background:#d0d7de;cursor:col-resize;
+            align-self:stretch;transition:background .15s;user-select:none}}
+.p1-resize:hover,.p1-resize.dragging{{background:#2980b9}}
+.sp12{{width:22px;flex-shrink:0;background:#ecf0f1;cursor:col-resize;
+       display:flex;align-items:center;justify-content:center;
+       border-left:1px solid #d0d7de;border-right:1px solid #d0d7de;
+       user-select:none;position:relative;z-index:2}}
+.sp12:hover{{background:#d6eaff}}
+.sp12-btn{{background:none;border:none;font-size:13px;cursor:pointer;
+           color:#2c3e50;line-height:1;padding:0;display:block}}
+#panel2{{width:380px;min-width:160px;flex-shrink:0;background:#fff;
+         display:flex;flex-direction:column;
+         overflow:hidden;border-right:2px solid #d0d7de;transition:width .15s}}
+#panel2.p2-hidden{{width:0!important;min-width:0!important;
+                   overflow:hidden;border:none}}
+.p2-hdr{{background:#34495e;color:#fff;padding:5px 10px;
+         font-size:11px;font-weight:bold;flex-shrink:0;
+         display:flex;align-items:center;gap:6px}}
+.p2-body{{flex:1;overflow:auto}}
+.sp23{{width:5px;flex-shrink:0;background:#d0d7de;cursor:col-resize;
+       align-self:stretch;transition:background .15s;user-select:none}}
+.sp23:hover,.sp23.dragging{{background:#2980b9}}
+#panel3{{flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;
+         background:#f0f2f5;padding:6px}}
+/* ── Tab panels ── */
+.tab-panel{{display:none}}
+.tab-panel.active{{display:block}}
+/* ── Panel 1 header + search ── */
+.p1-hdr{{background:#2c3e50;color:#fff;padding:5px 8px;font-size:11px;
+         font-weight:bold;display:flex;justify-content:space-between;
+         align-items:center;flex-shrink:0}}
+.cb{{background:none;border:1px solid #7f8c8d;color:#bdc3c7;
+     font-size:10px;padding:1px 5px;cursor:pointer;border-radius:3px;
+     margin-left:2px}}
+.cb:hover{{background:#3d5166;color:#fff}}
+.p1-search-row{{display:flex;gap:2px;padding:4px 5px;
+                background:#f0f2f5;border-bottom:1px solid #dde;flex-shrink:0}}
+.p1-search-row input{{flex:1;min-width:0;padding:2px 4px;font-size:10px;
+                       border:1px solid #ccc;border-radius:3px;background:#fff}}
+.p1-body{{flex:1;overflow-y:auto}}
+/* ── Filter table ── */
+.wfr-tbl{{border-collapse:collapse;width:100%;font-size:11px}}
+.wfr-tbl th{{background:#34495e;color:#ecf0f1;padding:3px 7px;
+             text-align:left;position:sticky;top:0;z-index:2;
+             white-space:nowrap}}
+.wfr-tbl td{{padding:3px 7px;border-bottom:1px solid #eee;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}}
+.wfr-tbl tr.wfr-row{{cursor:pointer}}
+.wfr-tbl tr.wfr-row.sel td{{background:#d6eaff}}
+.wfr-tbl tr.wfr-row:not(.sel):hover td{{background:#eaf4ff}}
+.wfr-tbl tr.lot-hdr td{{background:#2c3e50;color:#ecf0f1;font-weight:bold;
+                         font-size:11px;cursor:pointer;padding:3px 7px}}
+.wfr-tbl tr.lot-hdr:hover td{{background:#34495e}}
+.wfr-tbl tr.wfr-hidden{{display:none}}
+/* ── Param table (panel 2) ── */
+.hm-tbl{{border-collapse:collapse;font-size:11px;
+         white-space:nowrap;table-layout:auto;width:100%}}
+.hm-tbl th{{background:#2c3e50;color:#fff;padding:4px 8px;
+            text-align:right;position:sticky;top:0;z-index:1}}
+.hm-tbl th:first-child{{text-align:left;position:sticky;left:0;z-index:2;
+                         background:#2c3e50}}
+.hm-tbl td{{padding:3px 8px;border-bottom:1px solid #eee;
+            text-align:right;white-space:nowrap}}
+.hm-tbl tbody tr:nth-child(even):not(.cat-hdr){{background:#f4f8ff}}
+.hm-tbl td.tn{{position:sticky;left:0;background:#f8f9fa;text-align:left;
+               cursor:pointer;border-right:2px solid #dde;z-index:1;
+               max-width:200px;overflow:hidden;text-overflow:ellipsis}}
+.hm-tbl td.tn:hover{{background:#eaf4ff}}
+.hm-tbl tr.sel-row td{{background:#eaf4ff!important}}
+.hm-tbl tr.sel-row td.tn{{background:#d6eaff!important;border-left:3px solid #2980b9;font-weight:bold}}
+.hm-tbl tbody tr:not(.cat-hdr):hover{{background:#eaf4ff!important;cursor:pointer}}
+.hm-tbl tr.cat-hdr td{{background:#2c3e50;color:#ecf0f1;font-weight:bold;
+                        font-size:11px;cursor:pointer;padding:4px 8px}}
+.hm-tbl tr.cat-hdr:hover td{{background:#34495e}}
+.hm-tbl tr.grp-hidden{{display:none}}
+.cell-r{{background:#fdecea!important;color:#c0392b;font-weight:bold}}
+/* ── Variability group cards ── */
+.grp-card{{background:#fff;border-radius:5px;
+           box-shadow:0 1px 4px rgba(0,0,0,.10);margin-bottom:8px;overflow:hidden}}
+.grp-card-hdr{{display:flex;align-items:center;gap:5px;padding:4px 10px;
+               font-size:11px;font-weight:bold;color:#ecf0f1;background:#34495e;
+               cursor:pointer;user-select:none}}
+.grp-card-body{{padding:0}}
+.grp-card.gc-collapsed .grp-card-body{{display:none}}
+/* ── Toolbar (variability) ── */
+#var-toolbar{{display:flex;flex-wrap:wrap;align-items:center;gap:5px;
+              padding:5px 12px;background:#1f3a50;color:#ecf0f1;
+              font-size:11px;flex-shrink:0;border-bottom:1px solid #1a252f}}
+#var-toolbar label{{cursor:pointer;display:flex;align-items:center;gap:3px}}
+#var-toolbar b{{color:#f1c40f}}
+#var-toolbar select{{font-size:11px;padding:1px 3px;border-radius:3px;
+                     border:1px solid #4a6278;background:#2c3e50;color:#ecf0f1}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <div class="page-hdr">
+    <h1>{title}</h1>
+    <div class="sub">{subtitle}</div>
+  </div>
+
+  <!-- Info bar -->
+  <div class="info-bar">
+    <span><b>Lots:</b> {n_lots}</span>
+    <span class="sep">|</span>
+    <span><b>Wafers:</b> {n_wfrs}</span>
+    <span class="sep">|</span>
+    <span><b>Generated:</b> {date_str}</span>
+    <span id="ib-sel" style="margin-left:6px;color:#aed6f1"></span>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab(this,'tab-var')">
+      &#9741; Variability</button>
+    <button class="tab-btn" onclick="showTab(this,'tab-dist')">
+      &#9107; Distribution</button>
+    {xy_tab_labels}
+  </div>
+
+  <!-- Variability toolbar -->
+  <div id="var-toolbar">
+    <b>Group&nbsp;by:</b>
+    <label><input type="checkbox" id="gby-none" checked
+           onchange="setGby('none',this.checked)">None</label>
+    <label><input type="checkbox" id="gby-lot"
+           onchange="setGby('lot',this.checked)">Lot</label>
+    <label><input type="checkbox" id="gby-wafer"
+           onchange="setGby('wafer',this.checked)">Wafer</label>
+    <span style="width:1px;background:#4a6278;align-self:stretch;margin:0 4px"></span>
+    <b>Mode:</b>
+    <label><input type="radio" name="var-mode" value="perdie" checked
+           onchange="_VAR_PER_SITE=this.value==='perdie';drawAllCharts()">Per die</label>
+    <label><input type="radio" name="var-mode" value="median"
+           onchange="_VAR_PER_SITE=this.value==='perdie';drawAllCharts()">Median</label>
+    <span style="width:1px;background:#4a6278;align-self:stretch;margin:0 4px"></span>
+    <b>&#8597; H:</b>
+    <input type="range" id="var-h-sl" min="200" max="900" step="25" value="480"
+           oninput="_CHART_H=+this.value;
+                    document.getElementById('var-h-val').textContent=this.value+'px';
+                    drawAllCharts()"
+           style="width:80px;accent-color:#3498db">
+    <span id="var-h-val" style="min-width:34px;color:#aed6f1;font-size:10px">480px</span>
+    <span style="width:1px;background:#4a6278;align-self:stretch;margin:0 4px"></span>
+    <button onclick="downloadVarCSV()"
+            style="padding:2px 8px;font-size:10px;font-weight:bold;border:none;
+                   border-radius:3px;background:#27ae60;color:#fff;cursor:pointer"
+            onmouseover="this.style.background='#1e8449'"
+            onmouseout="this.style.background='#27ae60'">&#11015; CSV</button>
+  </div>
+
+  <!-- Three-panel layout -->
+  <div class="three-panel">
+
+    <!-- Panel 1: filter -->
+    <div id="panel1">
+      <div class="p1-hdr">
+        &#128269; Filter
+        <span id="row-info" style="font-weight:normal;font-size:10px;color:inherit"></span>
+        <span>
+          <button class="cb" onclick="selAll()">All</button>
+          <button class="cb" onclick="clrAll()">Clr</button>
+          <button class="cb" id="show-sel-btn"
+                  onclick="toggleShowSel()" title="Show selected only">Sel</button>
+        </span>
+      </div>
+      <div class="p1-search-row">
+        <input placeholder="Lot..." oninput="onSearch('lot',this.value)" title="Lot">
+        <input placeholder="Wafer..." oninput="onSearch('wafer',this.value)" title="Wafer">
+        <input placeholder="Prog..." oninput="onSearch('prog',this.value)" title="Program">
+      </div>
+      <div class="p1-body">
+        <table class="wfr-tbl">
+          <thead>
+            <tr>
+              <th>Lot</th>
+              <th>Wafer</th>
+              {col_hdr_prog6248}
+              {col_hdr_u1u5}
+              {col_hdr_x}
+              {col_hdr_y}
+              <th style="{_TH_ST}">N</th>
+            </tr>
+          </thead>
+          <tbody id="wfr-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- P1 resize handle -->
+    <div class="p1-resize" id="p1-resize"></div>
+
+    <!-- sp12: toggle panel 2 -->
+    <div class="sp12" id="sp12" onmousedown="startSplitSp12(event)"
+         title="Drag to resize | click to toggle table">
+      <button class="sp12-btn" id="p2-toggle-btn"
+              onclick="event.stopPropagation();toggleP2()"
+              title="Toggle parameter table">&#9654;</button>
+    </div>
+
+    <!-- Panel 2: parameter table -->
+    <div id="panel2" class="p2-hidden">
+      <div class="p2-hdr">
+        &#128202; Parameter Table
+        <button onclick="downloadVarCSV()"
+                style="margin-left:6px;padding:2px 8px;font-size:10px;font-weight:bold;
+                       border:none;border-radius:3px;background:#27ae60;
+                       color:#fff;cursor:pointer"
+                onmouseover="this.style.background='#1e8449'"
+                onmouseout="this.style.background='#27ae60'">&#11015; CSV</button>
+      </div>
+      <div class="p2-body">
+        <table class="hm-tbl">
+          <thead id="var-head"></thead>
+          <tbody id="var-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- sp23 resize -->
+    <div class="sp23" id="sp23" onmousedown="startSplitSp23(event)"></div>
+
+    <!-- Panel 3: content area -->
+    <div id="panel3">
+
+      <!-- Variability tab -->
+      <div id="tab-var" class="tab-panel active">
+        {grp_cards_html}
+      </div>
+
+      <!-- Distribution tab -->
+      <div id="tab-dist" class="tab-panel">
+        {dist_html}
+      </div>
+
+      <!-- XY (Vmin) tabs -->
+      {xy_tab_divs}
+
+    </div><!-- #panel3 -->
+  </div><!-- .three-panel -->
+</div><!-- #app -->
+
+<script>
+/* ── Embedded data ─────────────────────────────────────────────────────── */
+var WFR_DATA       = {WFR_DATA_JS};
+var PCM_ROWS       = {PCM_ROWS_JS};
+var PCM_GROUPS     = {PCM_GROUPS_JS};
+var PCM_PARAM_META = {PCM_PARAM_META_JS};
+var PCM_DIST_PANELS = {PCM_DIST_JS};
+var PCM_XY_PANELS  = {PCM_XY_JS};
+
+/* ── Global state ──────────────────────────────────────────────────────── */
+var SEL_WFR      = new Set();   // indices into WFR_DATA
+var _SHOW_SEL    = false;
+var _SEARCH      = {{lot:'',wafer:'',prog:''}};
+var _GRP_COLLAPSE= {{}};   // lot -> collapsed
+var _VAR_PER_SITE = true;
+var _CHART_H     = 480;
+var _GBY         = [];     // group-by fields
+var SEL_PARAM    = null;
+var _GRP_VIS     = {{}};
+var _GRP_ROW_COLLAPSE = {{}};  // param-table group collapse
+var _DRAW_PENDING = null;
+var _DIST_COLLAPSED = {{}};
+var _XY_COLLAPSED   = {{}};
+var _FP_ST = {{}};
+var _XY_DRAW_PENDING = {{}};
+
+PCM_GROUPS.forEach(function(g){{_GRP_VIS[g]=true;}});
+
+// Init SEL_WFR = all
+WFR_DATA.forEach(function(_,i){{SEL_WFR.add(i);}});
+
+/* ── Utility ────────────────────────────────────────────────────────────── */
+function _rKey(r){{return r.lot+'/'+r.wafer;}}
+
+function activeKeys(){{
+  var s=new Set();
+  SEL_WFR.forEach(function(i){{
+    var w=WFR_DATA[i]; s.add(w.lot+'/'+w.wafer);
+  }});
+  return s;
+}}
+
+var _COLOUR_PAL = {json.dumps(_COLOUR_PAL, separators=(',',':'))};
+var _cCache={{}};
+function _cMap(){{
+  var keys=[]; var map={{}};
+  if(_GBY.length===0) return {{map:{{}},keys:[]}};
+  SEL_WFR.forEach(function(i){{
+    var w=WFR_DATA[i];
+    var k=_GBY.map(function(f){{return w[f]||'';}}). join('/');
+    if(!map[k]){{map[k]=_COLOUR_PAL[keys.length%_COLOUR_PAL.length]; keys.push(k);}}
+  }});
+  return {{map:map,keys:keys}};
+}}
+function _grpKey(r){{
+  return _GBY.map(function(f){{return r[f]||'';}}).join('/');
+}}
+function _cPal(i){{return _COLOUR_PAL[i%_COLOUR_PAL.length];}}
+
+function _sRand(s){{var x=Math.sin(s+1)*10000; return x-Math.floor(x);}}
+function _med(arr){{
+  if(!arr.length)return null;
+  var s=arr.slice().sort(function(a,b){{return a-b;}});
+  var m=Math.floor(s.length/2);
+  return s.length%2?s[m]:(s[m-1]+s[m])/2;
+}}
+function _fmt(v,p){{
+  if(v==null||v!=v)return '';
+  var f=parseFloat(v); p=p||4;
+  if(Math.abs(f)>=1000)return f.toFixed(0);
+  if(Math.abs(f)>=10)return f.toFixed(1);
+  return f.toPrecision(p);
+}}
+function _niceStep(r){{
+  if(r<=0||!isFinite(r))return 0.1;
+  var m=Math.pow(10,Math.floor(Math.log10(r)));
+  var s=r/m;
+  return s<1.5?m:s<3?2*m:s<7?5*m:10*m;
+}}
+
+/* ── Shared helpers ──────────────────────────────────────────────────────── */
+/* Build WFR lookup keyed by "lot/wafer" for program fields */
+var _WFR_LOOKUP={{}};
+(function(){{
+  WFR_DATA.forEach(function(w){{_WFR_LOOKUP[w.lot+'/'+w.wafer]=w;}});
+}})();
+
+function _std(arr){{
+  if(!arr||arr.length<2)return 0;
+  var m=arr.reduce(function(a,b){{return a+b;}},0)/arr.length;
+  var vr=arr.reduce(function(a,b){{return a+(b-m)*(b-m);}},0)/(arr.length-1);
+  return Math.sqrt(vr);
+}}
+function _pct(arr,p){{
+  if(!arr||!arr.length)return null;
+  var s=arr.slice().sort(function(a,b){{return a-b;}});
+  var i=(p/100)*(s.length-1);
+  var lo=Math.floor(i),hi=Math.ceil(i);
+  return s[lo]+(s[hi]-s[lo])*(i-lo);
+}}
+/* Group key for a PCM_ROWS row given gby array */
+function _grpKeyWith(r,gby){{
+  if(!gby||!gby.length)return 'All';
+  var w=_WFR_LOOKUP[r.lot+'/'+r.wafer]||{{}};
+  var parts=[];
+  if(gby.indexOf('lot')>=0)parts.push(r.lot||'');
+  if(gby.indexOf('wafer')>=0)parts.push(String(r.wafer||''));
+  if(gby.indexOf('prog6248')>=0)parts.push(w.prog6248||'');
+  if(gby.indexOf('progU1U5')>=0)parts.push(w.progU1U5||'');
+  return parts.join('/')||'All';
+}}
+/* Colour map for given gby: returns {{map:{{key:colour}}, keys:[...ordered]}} */
+var _PALETTE=['#3498db','#e74c3c','#2ecc71','#9b59b6','#f39c12','#1abc9c','#e67e22','#34495e',
+              '#16a085','#c0392b','#27ae60','#8e44ad','#d35400','#2c3e50','#7f8c8d','#f1c40f'];
+function _cMapWith(rows,gby){{
+  var keys=[],seen={{}};
+  rows.forEach(function(r){{
+    var k=_grpKeyWith(r,gby);
+    if(!seen[k]){{seen[k]=true;keys.push(k);}}
+  }});
+  var map={{}};
+  keys.forEach(function(k,i){{map[k]=_PALETTE[i%_PALETTE.length];}});
+  return {{map:map,keys:keys}};
+}}
+/* OLS trend fit: returns {{m,b}} or null */
+function _olsFit(pts){{
+  var n=pts.length;
+  if(n<2)return null;
+  var sx=0,sy=0,sxx=0,sxy=0;
+  pts.forEach(function(p){{sx+=p[0];sy+=p[1];sxx+=p[0]*p[0];sxy+=p[0]*p[1];}});
+  var d=n*sxx-sx*sx;
+  if(!d)return null;
+  return {{m:(n*sxy-sx*sy)/d,b:(sy*sxx-sx*sxy)/d}};
+}}
+/* Theil-Sen trend fit: returns {{m,b}} or null */
+function _theilsenFit(pts){{
+  if(pts.length<2)return null;
+  var slopes=[];
+  for(var i=0;i<pts.length-1;i++){{
+    for(var j=i+1;j<pts.length;j++){{
+      var dx=pts[j][0]-pts[i][0];
+      if(dx!==0)slopes.push((pts[j][1]-pts[i][1])/dx);
+    }}
+  }}
+  if(!slopes.length)return null;
+  var m=_pct(slopes,50);
+  var ints=pts.map(function(p){{return p[1]-m*p[0];}});
+  return {{m:m,b:_pct(ints,50)}};
+}}
+function _escH(s){{return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}
+
+function showTab(btn,id){{
+  document.querySelectorAll('.tab-btn').forEach(function(b){{b.classList.remove('active');}});
+  document.querySelectorAll('.tab-panel').forEach(function(p){{p.classList.remove('active');}});
+  btn.classList.add('active');
+  var el=document.getElementById(id);
+  if(el)el.classList.add('active');
+  // lazy render for distribution / xy tabs
+  if(id==='tab-dist') buildDistTab();
+  var xym=id.match(/^tab-xy(\\d+)$/);
+  if(xym)buildXYTab(+xym[1]);
+}}
+
+/* ── Panel 1 filter logic ─────────────────────────────────────────────── */
+function buildWfrList(){{
+  var tbody=document.getElementById('wfr-tbody');
+  if(!tbody)return;
+  var rows=[]; var slotIdx=0;
+  // Group by lot
+  var lotMap={{}}, lotOrder=[];
+  WFR_DATA.forEach(function(w,i){{
+    if(!lotMap[w.lot]){{lotMap[w.lot]=[];lotOrder.push(w.lot);}}
+    lotMap[w.lot].push({{w:w,i:i}});
+  }});
+  var selCount=SEL_WFR.size;
+  document.getElementById('row-info').textContent=
+    selCount===WFR_DATA.length?'':
+    '('+selCount+'/'+WFR_DATA.length+' sel)';
+
+  var showProg = {json.dumps(bool(prog6248_col))}.toString()==='true';
+  var showU1U5 = {json.dumps(bool(progU1U5_col))}.toString()==='true';
+  var showX    = {json.dumps(bool(x_col))}.toString()==='true';
+  var showY    = {json.dumps(bool(y_col))}.toString()==='true';
+
+  lotOrder.forEach(function(lot){{
+    var wfrs=lotMap[lot];
+    var collapsed=_GRP_COLLAPSE[lot];
+    // Lot header row
+    var lotSel=wfrs.every(function(e){{return SEL_WFR.has(e.i);}});
+    rows.push('<tr class="lot-hdr" onclick="_toggleLot(\\''+_escStr(lot)+'\\')">'+
+      '<td colspan="20">'+(collapsed?'&#9658;':'&#9660;')+' '+_escH(lot)+
+      ' <span style="font-weight:normal;font-size:10px;opacity:.7">('+wfrs.length+' wafers)</span></td></tr>');
+    wfrs.forEach(function(e){{
+      var w=e.w; var i=e.i;
+      var hidden=collapsed;
+      // Search filter
+      var sl=_SEARCH.lot, sw=_SEARCH.wafer, sp=_SEARCH.prog;
+      if(sl&&w.lot.toLowerCase().indexOf(sl.toLowerCase())<0)hidden=true;
+      if(sw&&w.wafer.toLowerCase().indexOf(sw.toLowerCase())<0)hidden=true;
+      if(sp&&(w.prog6248||'').toLowerCase().indexOf(sp.toLowerCase())<0&&
+             (w.progU1U5||'').toLowerCase().indexOf(sp.toLowerCase())<0)hidden=true;
+      if(_SHOW_SEL&&!SEL_WFR.has(i))hidden=true;
+      var sel=SEL_WFR.has(i);
+      var tr='<tr class="wfr-row'+(sel?' sel':'')+(hidden?' wfr-hidden':'')+
+             '" onclick="toggleWfr('+i+')" data-wi="'+i+'">';
+      tr+='<td>'+_escH(w.lot)+'</td><td>'+_escH(w.wafer)+'</td>';
+      if(showProg)tr+='<td>'+_escH(w.prog6248||'')+'</td>';
+      if(showU1U5)tr+='<td>'+_escH(w.progU1U5||'')+'</td>';
+      if(showX)tr+='<td>'+(w.xmin!=null?w.xmin+'..'+w.xmax:'')+'</td>';
+      if(showY)tr+='<td>'+(w.ymin!=null?w.ymin+'..'+w.ymax:'')+'</td>';
+      tr+='<td style="text-align:right">'+w.n.toLocaleString()+'</td></tr>';
+      rows.push(tr);
+    }});
+  }});
+  tbody.innerHTML=rows.join('');
+}}
+
+function toggleWfr(i){{
+  if(SEL_WFR.has(i))SEL_WFR.delete(i); else SEL_WFR.add(i);
+  buildWfrList(); rerender();
+}}
+function selAll(){{WFR_DATA.forEach(function(_,i){{SEL_WFR.add(i);}});buildWfrList();rerender();}}
+function clrAll(){{SEL_WFR.clear();buildWfrList();rerender();}}
+function toggleShowSel(){{
+  _SHOW_SEL=!_SHOW_SEL;
+  var btn=document.getElementById('show-sel-btn');
+  btn.style.background=_SHOW_SEL?'#2980b9':'';
+  btn.style.color=_SHOW_SEL?'#fff':'';
+  buildWfrList();
+}}
+function onSearch(f,v){{_SEARCH[f]=v;buildWfrList();}}
+function _toggleLot(lot){{
+  _GRP_COLLAPSE[lot]=!_GRP_COLLAPSE[lot];
+  buildWfrList();
+}}
+function _escStr(s){{return s.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");}}
+function _escH(s){{
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}}
+
+/* ── Panel 2 toggle ─────────────────────────────────────────────────────── */
+function toggleP2(){{
+  var p2=document.getElementById('panel2');
+  var btn=document.getElementById('p2-toggle-btn');
+  var hidden=p2.classList.toggle('p2-hidden');
+  btn.innerHTML=hidden?'&#9654;':'&#9664;';
+  if(!hidden)buildParamTable();
+}}
+
+/* ── Panel resize (P1) ──────────────────────────────────────────────────── */
+(function(){{
+  var handle=document.getElementById('p1-resize');
+  var p1=document.getElementById('panel1');
+  var dragging=false,startX,startW;
+  handle.addEventListener('mousedown',function(e){{
+    dragging=true;startX=e.clientX;startW=p1.offsetWidth;
+    handle.classList.add('dragging');e.preventDefault();
+  }});
+  document.addEventListener('mousemove',function(e){{
+    if(!dragging)return;
+    var w=Math.max(120,startW+(e.clientX-startX));
+    p1.style.width=w+'px';
+  }});
+  document.addEventListener('mouseup',function(){{
+    if(dragging){{dragging=false;handle.classList.remove('dragging');}}
+  }});
+}})();
+
+/* SP12 drag */
+function startSplitSp12(e){{
+  var p2=document.getElementById('panel2');
+  var startX=e.clientX,startW=p2.offsetWidth;
+  function mm(ev){{
+    var w=Math.max(0,startW+(ev.clientX-startX));
+    p2.style.width=w+'px';
+    if(p2.classList.contains('p2-hidden')&&w>20)p2.classList.remove('p2-hidden');
+  }}
+  function mu(){{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);}}
+  document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+  e.preventDefault();
+}}
+
+/* SP23 drag */
+function startSplitSp23(e){{
+  var p2=document.getElementById('panel2');
+  var startX=e.clientX,startW=p2.offsetWidth;
+  function mm(ev){{
+    var w=Math.max(160,startW+(ev.clientX-startX));
+    p2.style.width=w+'px';
+  }}
+  function mu(){{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);}}
+  document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+  e.preventDefault();
+}}
+
+/* ── Group-by ────────────────────────────────────────────────────────────── */
+function setGby(field,checked){{
+  if(field==='none'){{
+    if(checked){{_GBY=[];['lot','wafer'].forEach(function(f){{
+      var el=document.getElementById('gby-'+f);if(el)el.checked=false;
+    }});}}
+  }} else {{
+    if(checked){{
+      if(_GBY.indexOf(field)<0)_GBY.push(field);
+      var ne=document.getElementById('gby-none');if(ne)ne.checked=false;
+    }} else {{
+      var idx=_GBY.indexOf(field);if(idx>=0)_GBY.splice(idx,1);
+      if(!_GBY.length){{var ne2=document.getElementById('gby-none');if(ne2)ne2.checked=true;}}
+    }}
+  }}
+  rerender();
+}}
+
+function rerender(){{
+  updateInfoBar();
+  drawAllCharts();
+  buildParamTable();
+}}
+
+function updateInfoBar(){{
+  var ak=activeKeys();
+  var n=0;
+  PCM_ROWS.forEach(function(r){{if(ak.has(_rKey(r))&&PCM_ROWS.length&&r.param===PCM_ROWS[0].param)n+=r.n;}});
+  document.getElementById('ib-sel').textContent=
+    SEL_WFR.size===WFR_DATA.length?'':
+    '('+SEL_WFR.size+' wafers selected)';
+}}
+
+/* ── Variability strip chart ─────────────────────────────────────────────── */
+function drawAllCharts(){{
+  if(_DRAW_PENDING){{cancelAnimationFrame(_DRAW_PENDING);_DRAW_PENDING=null;}}
+  var ak=activeKeys();
+  var cm=_cMap();
+  var gi=0;
+  var queue=PCM_GROUPS.slice();
+  function _next(){{
+    if(!queue.length){{_DRAW_PENDING=null;return;}}
+    var grp=queue.shift();
+    var gid=grp.replace(/[^a-zA-Z0-9]/g,'_');
+    var svgEl=document.getElementById('svg-grp-'+gid);
+    var card=document.getElementById('card-grp-'+gid);
+    if(!svgEl){{gi++;_DRAW_PENDING=requestAnimationFrame(_next);return;}}
+    if(!_GRP_VIS[grp]){{
+      if(card)card.style.display='none';
+      gi++;_DRAW_PENDING=requestAnimationFrame(_next);return;
+    }}
+    if(card)card.style.display='';
+    var params=PCM_ROWS
+      .filter(function(r){{return r.group===grp;}})
+      .reduce(function(a,r){{if(a.indexOf(r.param)<0)a.push(r.param);return a;}},
+              []);
+    var cnt=document.getElementById('card-grp-'+gid+'-cnt');
+    if(cnt)cnt.textContent='('+params.length+' params)';
+    _drawGroupChart(svgEl,grp,gi,params,ak,cm);
+    gi++;
+    _DRAW_PENDING=requestAnimationFrame(_next);
+  }}
+  _DRAW_PENDING=requestAnimationFrame(_next);
+}}
+
+function _drawGroupChart(svgEl,grp,gi,params,ak,cm){{
+  if(!params||!params.length){{svgEl.style.display='none';return;}}
+  svgEl.style.display='block';
+  var W=Math.max(svgEl.parentElement?svgEl.parentElement.clientWidth-8:700,300);
+  var ML=90,MR=80,MT=32,MB=8;
+  var xStep=Math.max(32,(W-ML-MR)/params.length);
+  var CW=xStep*params.length;
+  var CH=_CHART_H;
+  var xLblH=Math.max(120,Math.min(260,params.reduce(function(mx,p){{
+    return Math.max(mx,p.length);}},0)*8+20));
+  var H=MT+CH+xLblH+MB;
+
+  function xPos(i){{return ML+(i+0.5)*xStep;}}
+  // Compute Y range
+  var allVals=[];
+  PCM_ROWS.forEach(function(r){{
+    if(params.indexOf(r.param)<0)return;
+    if(!ak.has(_rKey(r)))return;
+    (_VAR_PER_SITE?r.die_values:[r.median]).forEach(function(v){{
+      if(v!=null&&isFinite(v))allVals.push(v);
+    }});
+  }});
+  var ylo,yhi;
+  if(allVals.length>=2){{
+    var srt=allVals.slice().sort(function(a,b){{return a-b;}});
+    var p01=srt[Math.floor(srt.length*0.01)];
+    var p99=srt[Math.min(srt.length-1,Math.ceil(srt.length*0.99))];
+    var dr=p99-p01||Math.abs(p01)*0.1||0.1;
+    var pad=dr*0.15,ns=_niceStep(dr);
+    ylo=Math.floor((p01-pad)/ns)*ns;
+    yhi=Math.ceil((p99+pad)/ns)*ns;
+  }} else {{ylo=0;yhi=1;}}
+  function yPos(v){{return MT+(1-(v-ylo)/(yhi-ylo))*CH;}}
+
+  var p=[];
+  p.push('<svg viewBox="0 0 '+(ML+CW+MR)+' '+H+'" width="100%" height="'+H+'" xmlns="http://www.w3.org/2000/svg">');
+  p.push('<rect width="'+(ML+CW+MR)+'" height="'+H+'" fill="#f8f9fa"/>');
+  p.push('<rect x="'+ML+'" y="'+MT+'" width="'+CW+'" height="'+CH+'" fill="white" stroke="#ccc" stroke-width="1"/>');
+  // Y grid
+  var yStep2=_niceStep((yhi-ylo)/5);
+  var yStart2=Math.ceil(ylo/yStep2)*yStep2;
+  for(var yi2=0;yi2<60;yi2++){{
+    var yv2=yStart2+yi2*yStep2;
+    if(yv2>yhi+yStep2*0.01)break;
+    var yp2=+yPos(yv2).toFixed(1);
+    p.push('<line x1="'+ML+'" y1="'+yp2+'" x2="'+(ML+CW)+'" y2="'+yp2+'" stroke="rgba(0,0,0,.07)" stroke-width=".7"/>');
+    p.push('<text x="'+(ML-3)+'" y="'+yp2+'" text-anchor="end" dominant-baseline="middle" font-size="14" font-weight="bold" fill="#111">'+_fmt(yv2)+'</text>');
+  }}
+  p.push('<text transform="translate(16,'+(MT+CH/2)+') rotate(-90)" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#111">Value</text>');
+
+  // Dots batched by colour
+  var dotPaths={{}};
+  params.forEach(function(param,i){{
+    var xi=xPos(i);
+    // Alternating column tint
+    if(i%2)p.push('<rect x="'+(xi-xStep/2).toFixed(1)+'" y="'+MT+'" width="'+xStep.toFixed(1)+'" height="'+CH+'" fill="rgba(0,0,0,.02)"/>');
+    // Selected highlight
+    if(SEL_PARAM===param)p.push('<rect x="'+(xi-xStep/2).toFixed(1)+'" y="'+MT+'" width="'+xStep.toFixed(1)+'" height="'+CH+'" fill="rgba(52,152,219,.10)" stroke="#3498db" stroke-width="1.2"/>');
+    // Spec lines
+    var meta=PCM_PARAM_META[param]||{{}};
+    if(meta.lsl!=null){{var yL=+yPos(meta.lsl).toFixed(1);if(yL>=MT&&yL<=MT+CH)p.push('<line x1="'+(xi-xStep*.45).toFixed(1)+'" y1="'+yL+'" x2="'+(xi+xStep*.45).toFixed(1)+'" y2="'+yL+'" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4,3" opacity=".85"/>');}}
+    if(meta.usl!=null){{var yU=+yPos(meta.usl).toFixed(1);if(yU>=MT&&yU<=MT+CH)p.push('<line x1="'+(xi-xStep*.45).toFixed(1)+'" y1="'+yU+'" x2="'+(xi+xStep*.45).toFixed(1)+'" y2="'+yU+'" stroke="#2980b9" stroke-width="1.5" stroke-dasharray="4,3" opacity=".85"/>');}}
+
+    // Collect dots
+    var colDots=[];
+    PCM_ROWS.forEach(function(r){{
+      if(r.param!==param||!ak.has(_rKey(r)))return;
+      var col=(_GBY.length>0?cm.map[_grpKey(r)]:null)||'#3498db';
+      var vals=_VAR_PER_SITE?r.die_values:[r.median];
+      vals.forEach(function(v,vi){{
+        if(v==null||!isFinite(v))return;
+        var yp3=+yPos(v).toFixed(1);
+        if(yp3<MT||yp3>MT+CH)return;
+        colDots.push({{col:col,ri:r.n,vi:vi,yp:yp3}});
+      }});
+    }});
+    // Subsample
+    var MAX=500;
+    if(colDots.length>MAX){{
+      var step=colDots.length/MAX;
+      var smp=[];
+      for(var si=0;si<MAX;si++)smp.push(colDots[Math.floor(si*step)]);
+      colDots=smp;
+    }}
+    colDots.forEach(function(d){{
+      var jitter=(_sRand(d.ri*997+d.vi)-.5)*xStep*.52;
+      var cx=+(xi+jitter).toFixed(1);
+      var cy=d.yp;
+      if(!dotPaths[d.col])dotPaths[d.col]='';
+      dotPaths[d.col]+='M'+cx+','+cy+'m-2.5,0a2.5,2.5,0,1,0,5,0a2.5,2.5,0,1,0,-5,0';
+    }});
+  }});
+  // Emit dot paths
+  Object.keys(dotPaths).forEach(function(col){{
+    p.push('<path d="'+dotPaths[col]+'" fill="'+col+'" opacity=".70"/>');
+  }});
+  // Median diamonds (on top)
+  params.forEach(function(param,i){{
+    var xi=xPos(i);
+    var vals2=[];
+    PCM_ROWS.forEach(function(r){{
+      if(r.param!==param||!ak.has(_rKey(r)))return;
+      (_VAR_PER_SITE?r.die_values:[r.median]).forEach(function(v){{
+        if(v!=null&&isFinite(v))vals2.push(v);
+      }});
+    }});
+    var med2=_med(vals2);
+    if(med2!=null){{
+      var yp4=+yPos(med2).toFixed(1);
+      if(yp4>=MT&&yp4<=MT+CH)
+        p.push('<polygon points="'+xi.toFixed(1)+','+(yp4-7)+' '+(xi+7).toFixed(1)+','+yp4+' '+xi.toFixed(1)+','+(yp4+7)+' '+(xi-7).toFixed(1)+','+yp4+'" fill="#27ae60" stroke="#1a6e2b" stroke-width="1.2" opacity=".92"/>');
+    }}
+    // X label
+    var lbl=param.length>22?param.slice(0,21)+'\u2026':param;
+    p.push('<text transform="translate('+xPos(i).toFixed(1)+','+(MT+CH+4)+') rotate(-48)" text-anchor="end" font-size="16" font-weight="bold" fill="#111">'+_escH(lbl)+'</text>');
+  }});
+  // Axes
+  p.push('<line x1="'+ML+'" y1="'+MT+'" x2="'+ML+'" y2="'+(MT+CH)+'" stroke="#aaa" stroke-width="1"/>');
+  p.push('<line x1="'+ML+'" y1="'+(MT+CH)+'" x2="'+(ML+CW)+'" y2="'+(MT+CH)+'" stroke="#aaa" stroke-width="1"/>');
+  p.push('</svg>');
+  svgEl.outerHTML=p.join('');
+
+  // Legend
+  var card=document.getElementById('card-grp-'+grp.replace(/[^a-zA-Z0-9]/g,'_'));
+  if(card){{
+    var legDiv=card.querySelector('.grp-legend');
+    if(legDiv){{
+      if(cm.keys.length>0){{
+        legDiv.innerHTML=cm.keys.map(function(k,ki){{
+          return '<span style="display:inline-flex;align-items:center;gap:4px;margin:2px 8px;font-size:10px">'+
+            '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+_COLOUR_PAL[ki%_COLOUR_PAL.length]+'"></span>'+
+            _escH(k)+'</span>';
+        }}).join('');
+      }} else legDiv.innerHTML='';
+    }}
+  }}
+}}
+
+function downloadGrpCSV(grp){{
+  var ak=activeKeys();
+  var params=PCM_ROWS.filter(function(r){{return r.group===grp;}})
+    .reduce(function(a,r){{if(a.indexOf(r.param)<0)a.push(r.param);return a;}},[]);
+  var lines=['lot,wafer,param,n,median,std,cv,min,max'];
+  PCM_ROWS.forEach(function(r){{
+    if(r.group!==grp||!ak.has(_rKey(r)))return;
+    lines.push([r.lot,r.wafer,r.param,r.n,_fmt(r.median),_fmt(r.std),
+      r.cv!=null?_fmt(r.cv):'',_fmt(r.min_val),_fmt(r.max_val)].join(','));
+  }});
+  _dlCSV(grp.replace(/[^a-zA-Z0-9]/g,'_')+'_var.csv',lines.join('\\n'));
+}}
+
+function downloadVarCSV(){{
+  var ak=activeKeys();
+  var lines=['lot,wafer,group,param,n,median,std,cv,min,max'];
+  PCM_ROWS.forEach(function(r){{
+    if(!ak.has(_rKey(r)))return;
+    lines.push([r.lot,r.wafer,r.group,r.param,r.n,
+      _fmt(r.median),_fmt(r.std),r.cv!=null?_fmt(r.cv):'',
+      _fmt(r.min_val),_fmt(r.max_val)].join(','));
+  }});
+  _dlCSV('class_var.csv',lines.join('\\n'));
+}}
+
+function _dlCSV(fn,txt){{
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(txt);
+  a.download=fn;a.click();
+}}
+
+/* ── Parameter table (Panel 2) ──────────────────────────────────────────── */
+function buildParamTable(){{
+  var p2=document.getElementById('panel2');
+  if(!p2||p2.classList.contains('p2-hidden'))return;
+  var ak=activeKeys();
+  // Compute per-param stats across selected wafers
+  var pStats={{}};
+  PCM_ROWS.forEach(function(r){{
+    if(!ak.has(_rKey(r)))return;
+    if(!pStats[r.param])pStats[r.param]={{n:0,vals:[],group:r.group}};
+    var s=pStats[r.param];
+    s.n+=r.n;
+    (r.die_values||[]).forEach(function(v){{if(v!=null&&isFinite(v))s.vals.push(v);}});
+  }});
+
+  var thead=document.getElementById('var-head');
+  var tbody=document.getElementById('var-body');
+  if(!thead||!tbody)return;
+  thead.innerHTML='<tr><th style="text-align:left;min-width:160px;position:sticky;left:0;z-index:2;background:#2c3e50">Parameter</th><th style="min-width:44px">N</th><th style="min-width:70px">Median</th><th style="min-width:50px">&sigma;</th><th style="min-width:60px">Spread(%)</th><th style="min-width:58px">Min</th><th style="min-width:58px">Max</th><th style="min-width:50px">LSL</th><th style="min-width:50px">USL</th><th style="min-width:34px">Unit</th></tr>';
+
+  var rows=[];
+  var grpSeen={{}};
+  PCM_GROUPS.forEach(function(grp){{
+    var gparams=PCM_ROWS.reduce(function(a,r){{
+      if(r.group===grp&&a.indexOf(r.param)<0)a.push(r.param);return a;}},[]);
+    if(!gparams.length)return;
+    if(!grpSeen[grp]){{
+      grpSeen[grp]=true;
+      var collapsed=_GRP_ROW_COLLAPSE[grp];
+      rows.push('<tr class="cat-hdr" onclick="toggleGrpRow(\\''+_escStr(grp)+'\\')"><td colspan="10">'+(collapsed?'&#9658;':'&#9660;')+' '+_escH(grp)+'<span style="font-weight:normal;font-size:10px;color:#aed6f1"> ('+gparams.length+')</span></td></tr>');
+    }}
+    var collapsed2=_GRP_ROW_COLLAPSE[grp];
+    gparams.forEach(function(param){{
+      var s=pStats[param];
+      var meta=PCM_PARAM_META[param]||{{}};
+      var isSel=SEL_PARAM===param;
+      var cls=(isSel?'sel-row':'')+(collapsed2?' grp-hidden':'');
+      if(!s){{
+        rows.push('<tr class="'+cls+'" onclick="selParam(\\''+_escStr(param)+'\\')"><td class="tn" title="'+_escH(param)+'">'+_escH(param)+'</td><td colspan="9" style="color:#aaa;font-style:italic">no data</td></tr>');
+        return;
+      }}
+      var vals3=s.vals;
+      var med3=_med(vals3); var n3=s.n;
+      var std3=vals3.length>1?(function(){{var m2=vals3.reduce(function(a,v){{return a+v;}},0)/vals3.length;return Math.sqrt(vals3.reduce(function(a,v){{return a+(v-m2)*(v-m2);}},0)/(vals3.length-1));}})():0;
+      var cv3=med3&&med3!==0?(std3/Math.abs(med3)*100):null;
+      var min3=Math.min.apply(null,vals3); var max3=Math.max.apply(null,vals3);
+      var medCls=(meta.lsl!=null&&med3<meta.lsl)||(meta.usl!=null&&med3>meta.usl)?' cell-r':'';
+      rows.push('<tr class="'+cls+'" onclick="selParam(\\''+_escStr(param)+'\\')">'+
+        '<td class="tn" title="'+_escH(param+(meta.name?' \u2014 '+meta.name:''))+'">'+_escH(param)+(meta.name?'<span style="color:#7f8c8d;font-size:10px;margin-left:4px">('+_escH(meta.name)+')</span>':'')+'</td>'+
+        '<td>'+n3+'</td>'+
+        '<td class="'+medCls+'">'+_fmt(med3)+'</td>'+
+        '<td>'+_fmt(std3)+'</td>'+
+        '<td>'+(cv3!=null?cv3.toFixed(1)+'%':'')+'</td>'+
+        '<td>'+_fmt(min3)+'</td>'+
+        '<td>'+_fmt(max3)+'</td>'+
+        '<td style="color:#c0392b">'+_fmt(meta.lsl)+'</td>'+
+        '<td style="color:#2980b9">'+_fmt(meta.usl)+'</td>'+
+        '<td style="color:#7f8c8d;font-size:10px">'+(meta.unit||'')+'</td>'+
+        '</tr>');
+    }});
+  }});
+  tbody.innerHTML=rows.join('');
+}}
+
+function toggleGrpRow(grp){{
+  _GRP_ROW_COLLAPSE[grp]=!_GRP_ROW_COLLAPSE[grp];
+  buildParamTable();
+}}
+
+function selParam(p){{
+  SEL_PARAM=(SEL_PARAM===p)?null:p;
+  buildParamTable();
+  drawAllCharts();
+}}
+
+/* ── Distribution tab ────────────────────────────────────────────────────── */
+var _PDLY_H_P={{}};      // pn -> svg height (default 350)
+var _PDLY_GBY_P={{}};    // pn -> [field, ...]  e.g. ['lot','wafer']
+
+function toggleDistP(n){{
+  _DIST_COLLAPSED[n]=!_DIST_COLLAPSED[n];
+  var btn=document.getElementById('distp'+n+'-toggle');
+  if(btn)btn.innerHTML=_DIST_COLLAPSED[n]?'&#9654;':'&#9660;';
+  var body=document.getElementById('distp'+n+'-body');
+  if(body)body.style.display=_DIST_COLLAPSED[n]?'none':'';
+}}
+
+function toggleGbyP(pn,field){{
+  if(!_PDLY_GBY_P[pn])_PDLY_GBY_P[pn]=[];
+  var idx=_PDLY_GBY_P[pn].indexOf(field);
+  if(field==='none'){{
+    _PDLY_GBY_P[pn]=[];
+  }}else{{
+    if(idx>=0)_PDLY_GBY_P[pn].splice(idx,1);
+    else _PDLY_GBY_P[pn].push(field);
+  }}
+  _reBuildDistPanel(pn);
+  _syncGbyBtnsP(pn);
+}}
+function _syncGbyBtnsP(pn){{
+  var gby=_PDLY_GBY_P[pn]||[];
+  ['none','lot','wafer','prog6248','progU1U5'].forEach(function(f){{
+    var el=document.getElementById('pdly-gby-'+pn+'-'+f);
+    if(!el)return;
+    if(f==='none')el.checked=(gby.length===0);
+    else el.checked=(gby.indexOf(f)>=0);
+  }});
+}}
+function _reBuildDistPanel(pn){{
+  var body=document.getElementById('distp'+pn+'-body');
+  if(!body)return;
+  // preserve control bar
+  var ctrl=body.querySelector('.pdly-ctrl');
+  var html=_buildDistCards(pn);
+  var oldCards=body.querySelector('.pdly-cards');
+  if(oldCards)oldCards.remove();
+  var div=document.createElement('div');
+  div.className='pdly-cards';
+  div.innerHTML=html;
+  body.appendChild(div);
+}}
+
+function _buildDistCtrlBar(pn){{
+  var h=_PDLY_H_P[pn]||350;
+  var gby=_PDLY_GBY_P[pn]||[];
+  var gbyFields=[
+    {{id:'none',   label:'None'}},
+    {{id:'lot',    label:'Lot'}},
+    {{id:'wafer',  label:'Wafer'}},
+    {{id:'prog6248',label:'Prog 6248'}},
+    {{id:'progU1U5',label:'Prog U1.U5'}}
+  ];
+  var cbHtml=gbyFields.map(function(f){{
+    var chk=(f.id==='none')?(gby.length===0):(gby.indexOf(f.id)>=0);
+    return '<label style="margin-right:10px;cursor:pointer;font-size:12px;color:#ecf0f1">'
+      +'<input type="checkbox" id="pdly-gby-'+pn+'-'+f.id+'" '+(chk?'checked':'')+' '
+      +'onchange="toggleGbyP('+pn+',\\''+f.id+'\\'')" style="margin-right:3px">'+f.label+'</label>';
+  }}).join('');
+  return '<div class="pdly-ctrl" style="background:#1f3a50;padding:7px 12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;border-radius:4px 4px 0 0">'
+    +'<span style="color:#bdc3c7;font-size:12px;font-weight:600;margin-right:4px">Group by:</span>'
+    +cbHtml
+    +'<div style="flex:1"></div>'
+    +'<label style="color:#bdc3c7;font-size:12px;margin-right:4px">H:</label>'
+    +'<input type="range" min="150" max="900" step="25" value="'+h+'" '
+    +'oninput="this.nextElementSibling.textContent=this.value;_PDLY_H_P['+pn+']=+this.value;_reBuildDistPanel('+pn+')" '
+    +'style="width:110px;cursor:pointer">'
+    +'<span style="color:#ecf0f1;font-size:12px;min-width:30px">'+h+'</span>'
+    +'</div>';
+}}
+
+function _buildDistCards(pn){{
+  var panel=PCM_DIST_PANELS[pn]; if(!panel)return '';
+  var ak=activeKeys();
+  var gby=_PDLY_GBY_P[pn]||[];
+  var svgH=_PDLY_H_P[pn]||350;
+  var svgW=700,ML=72,MR=100,MT=40,MB=72;
+  var plotW=svgW-ML-MR, plotH=svgH-MT-MB;
+  var cards=[];
+
+  panel.params.forEach(function(param){{
+    var meta=PCM_PARAM_META[param]||{{}};
+    // Collect all matching rows
+    var activeRows=[];
+    PCM_ROWS.forEach(function(r){{
+      if(r.param!==param||!ak.has(_rKey(r)))return;
+      activeRows.push(r);
+    }});
+    if(!activeRows.length)return;
+
+    // Build per-group value arrays
+    var cm=_cMapWith(activeRows,gby);
+    var grpVals={{}};  // key -> []
+    cm.keys.forEach(function(k){{grpVals[k]=[];}});
+    activeRows.forEach(function(r){{
+      var k=_grpKeyWith(r,gby);
+      (r.die_values||[]).forEach(function(v){{
+        if(v!=null&&isFinite(v))grpVals[k].push(v);
+      }});
+    }});
+    var allVals=[];
+    cm.keys.forEach(function(k){{allVals=allVals.concat(grpVals[k]);}});
+    if(!allVals.length)return;
+
+    // Stats on all values
+    var N=allVals.length;
+    var sorted=allVals.slice().sort(function(a,b){{return a-b;}});
+    var med=_pct(sorted,50), sd=_std(allVals);
+    var cv=(med&&med!==0)?Math.abs(sd/med*100):null;
+    var p1=_pct(sorted,1), p99=_pct(sorted,99);
+    var mn=sorted[0],mx=sorted[sorted.length-1];
+    if(mn===mx){{mn-=0.5;mx+=0.5;}}
+
+    // Sigma shading
+    var s3lo=med-3*sd, s3hi=med+3*sd;
+    var s6lo=med-6*sd, s6hi=med+6*sd;
+    var lsl=meta.lsl!=null?+meta.lsl:null;
+    var usl=meta.usl!=null?+meta.usl:null;
+    var tgt=meta.target!=null?+meta.target:null;
+
+    // OOS detection
+    var oosSpec=false,oosSigma=false;
+    if(lsl!=null){{var below=sorted.filter(function(v){{return v<lsl;}}).length; if(below>0)oosSpec=true;}}
+    if(usl!=null){{var above=sorted.filter(function(v){{return v>usl;}}).length; if(above>0)oosSpec=true;}}
+    if(sd>0){{
+      var out6=sorted.filter(function(v){{return v<s6lo||v>s6hi;}}).length;
+      if(out6>0)oosSigma=true;
+    }}
+
+    // Bins
+    var nBins=Math.max(10,Math.min(40,Math.ceil(Math.sqrt(N)*2.2)));
+    var binW=(mx-mn)/nBins;
+    // Build per-group bin arrays
+    var nGrps=cm.keys.length;
+    var grpBins={{}};
+    cm.keys.forEach(function(k){{
+      var ba=[]; for(var i=0;i<nBins;i++)ba.push(0);
+      (grpVals[k]||[]).forEach(function(v){{
+        var b=Math.min(nBins-1,Math.floor((v-mn)/binW));
+        ba[b]++;
+      }});
+      grpBins[k]=ba;
+    }});
+    // Max bin height across all groups
+    var maxY=0;
+    cm.keys.forEach(function(k){{
+      var m=Math.max.apply(null,grpBins[k]);
+      if(m>maxY)maxY=m;
+    }});
+    if(!maxY)return;
+
+    // SVG
+    function xPx(v){{return ML+(v-mn)/(mx-mn)*plotW;}}
+    function yPx(c){{return MT+plotH-(c/maxY)*plotH;}}
+    var ps=['<svg width="100%" height="'+svgH+'" viewBox="0 0 '+svgW+' '+svgH+'" style="display:block;max-width:700px;font-family:sans-serif">'];
+    ps.push('<rect width="'+svgW+'" height="'+svgH+'" fill="#f8f9fa"/>');
+    ps.push('<rect x="'+ML+'" y="'+MT+'" width="'+plotW+'" height="'+plotH+'" fill="white" stroke="#ccc" stroke-width="1"/>');
+
+    // ±6σ shading (red, light)
+    if(sd>0){{
+      var x6lo=Math.max(xPx(s6lo),ML), x6hi=Math.min(xPx(s6hi),ML+plotW);
+      if(x6lo>ML)ps.push('<rect x="'+ML+'" y="'+MT+'" width="'+(x6lo-ML).toFixed(1)+'" height="'+plotH+'" fill="rgba(192,57,43,.10)"/>');
+      if(x6hi<ML+plotW)ps.push('<rect x="'+x6hi.toFixed(1)+'" y="'+MT+'" width="'+(ML+plotW-x6hi).toFixed(1)+'" height="'+plotH+'" fill="rgba(192,57,43,.10)"/>');
+    }}
+    // ±3σ shading (orange, lighter)
+    if(sd>0){{
+      var x3lo=Math.max(xPx(s3lo),ML), x3hi=Math.min(xPx(s3hi),ML+plotW);
+      if(x3lo>ML)ps.push('<rect x="'+ML+'" y="'+MT+'" width="'+(x3lo-ML).toFixed(1)+'" height="'+plotH+'" fill="rgba(230,126,34,.08)"/>');
+      if(x3hi<ML+plotW)ps.push('<rect x="'+x3hi.toFixed(1)+'" y="'+MT+'" width="'+(ML+plotW-x3hi).toFixed(1)+'" height="'+plotH+'" fill="rgba(230,126,34,.08)"/>');
+    }}
+
+    // Y-axis grid + labels
+    for(var yi=0;yi<=5;yi++){{
+      var yv=maxY*yi/5, yp=+(MT+plotH-(yv/maxY)*plotH).toFixed(1);
+      ps.push('<line x1="'+ML+'" y1="'+yp+'" x2="'+(ML+plotW)+'" y2="'+yp+'" stroke="rgba(0,0,0,.10)" stroke-width=".8"/>');
+      ps.push('<text x="'+(ML-4)+'" y="'+yp+'" text-anchor="end" dominant-baseline="middle" font-size="11" fill="#555">'+Math.round(yv)+'</text>');
+    }}
+    ps.push('<text transform="translate(14,'+(MT+plotH/2)+') rotate(-90)" text-anchor="middle" font-size="11" fill="#555">Samples</text>');
+
+    // Histogram bars (side-by-side per group)
+    var bpxD=plotW/nBins;
+    var barW=nGrps>1?Math.max(0.5,(bpxD-1)/nGrps):(bpxD-1);
+    cm.keys.forEach(function(k,gi){{
+      var col=cm.map[k];
+      grpBins[k].forEach(function(cnt,bi){{
+        if(!cnt)return;
+        var bh=(cnt/maxY)*plotH;
+        var bx=(ML+bi*bpxD+gi*barW).toFixed(1);
+        var by=(MT+plotH-bh).toFixed(1);
+        ps.push('<rect x="'+bx+'" y="'+by+'" width="'+barW.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+col+'" opacity=".80"/>');
+      }});
+    }});
+
+    // X-axis ticks + labels
+    var xStep=_niceStep((mx-mn)/6);
+    var x0=Math.ceil(mn/xStep)*xStep;
+    for(var xi=x0;xi<=mx+xStep*0.01;xi+=xStep){{
+      var xp=+(xPx(xi)).toFixed(1);
+      if(xp<ML||xp>ML+plotW+1)continue;
+      ps.push('<line x1="'+xp+'" y1="'+(MT+plotH)+'" x2="'+xp+'" y2="'+(MT+plotH+4)+'" stroke="#888" stroke-width="1"/>');
+      ps.push('<text x="'+xp+'" y="'+(MT+plotH+16)+'" text-anchor="middle" font-size="10" fill="#444">'+_fmt(xi,3)+'</text>');
+    }}
+    // X axis unit label
+    var xLabel=_escH(param)+(meta.unit?' ('+_escH(meta.unit)+')':'');
+    ps.push('<text x="'+(ML+plotW/2)+'" y="'+(svgH-4)+'" text-anchor="middle" font-size="11" fill="#555">'+xLabel+'</text>');
+
+    // Reference lines (drawn after bars)
+    function specLine(val,col,dash,w){{
+      if(val==null)return;
+      var xsv=xPx(val);
+      if(xsv<ML-1||xsv>ML+plotW+1)return;
+      ps.push('<line x1="'+xsv.toFixed(1)+'" y1="'+MT+'" x2="'+xsv.toFixed(1)+'" y2="'+(MT+plotH)+'" stroke="'+col+'" stroke-width="'+(w||2)+'" stroke-dasharray="'+(dash||'5,3')+'" opacity=".9"/>');
+    }}
+    if(sd>0){{
+      specLine(s3lo,'#e67e22','4,3',1.5); specLine(s3hi,'#e67e22','4,3',1.5);
+      specLine(s6lo,'#c0392b','4,3',1.5); specLine(s6hi,'#c0392b','4,3',1.5);
+    }}
+    specLine(med,'#27ae60','6,3',2);
+    specLine(lsl,'#e74c3c','6,3',2); specLine(usl,'#e74c3c','6,3',2);
+    specLine(tgt,'#8e44ad','6,3',2);
+
+    // Stats summary line (upper-right inside plot)
+    var medLbl=_fmt(med,4), sdLbl=_fmt(sd,3), cvLbl=cv!=null?cv.toFixed(1):'—';
+    var statsLine='N='+N+' | Med='+medLbl+' | σ='+sdLbl+' | Spread='+cvLbl+'%';
+    ps.push('<text x="'+(ML+plotW-3)+'" y="'+(MT+14)+'" text-anchor="end" font-size="10" fill="#2c3e50" opacity=".75">'+statsLine+'</text>');
+
+    // Right-side legend
+    var legX=ML+plotW+6;
+    var legItems=[
+      {{label:'Median',col:'#27ae60'}},
+      {{label:'±3σ',  col:'#e67e22'}},
+      {{label:'±6σ',  col:'#c0392b'}},
+    ];
+    if(tgt!=null) legItems.push({{label:'Target',col:'#8e44ad'}});
+    if(lsl!=null||usl!=null) legItems.push({{label:'LSL/USL',col:'#e74c3c'}});
+    legItems.forEach(function(li,k){{
+      var ly=MT+12+k*18;
+      ps.push('<line x1="'+legX+'" y1="'+ly+'" x2="'+(legX+18)+'" y2="'+ly+'" stroke="'+li.col+'" stroke-width="2" stroke-dasharray="4,2"/>');
+      ps.push('<text x="'+(legX+22)+'" y="'+(ly+4)+'" font-size="10" fill="#333">'+li.label+'</text>');
+    }});
+    // Group colour swatches in legend
+    if(nGrps>1){{
+      var swY=MT+12+legItems.length*18+6;
+      ps.push('<text x="'+legX+'" y="'+swY+'" font-size="10" font-weight="600" fill="#333">Groups</text>');
+      cm.keys.forEach(function(k,gi){{
+        var sy=swY+14+gi*15;
+        ps.push('<rect x="'+legX+'" y="'+(sy-8)+'" width="12" height="10" fill="'+cm.map[k]+'" opacity=".80"/>');
+        ps.push('<text x="'+(legX+16)+'" y="'+sy+'" font-size="9" fill="#333">'+_escH(k)+'</text>');
+      }});
+    }}
+
+    ps.push('</svg>');
+
+    // Stats table
+    function fmtN(v){{return v!=null&&isFinite(v)?_fmt(v,4):'—';}}
+    var lslN  = lsl!=null?lsl:null;
+    var uslN  = usl!=null?usl:null;
+    var pctLSL= lslN!=null?+(sorted.filter(function(v){{return v<lslN;}}).length/N*100).toFixed(2):null;
+    var pctUSL= uslN!=null?+(sorted.filter(function(v){{return v>uslN;}}).length/N*100).toFixed(2):null;
+    var out6c = sd>0?sorted.filter(function(v){{return v<s6lo||v>s6hi;}}).length:0;
+    var tblRows=[
+      ['N', N],
+      ['Median', fmtN(med)+(meta.unit?' '+meta.unit:'')],
+      ['σ', fmtN(sd)],
+      ['Spread (%)', cv!=null?cv.toFixed(2):'—'],
+      ['P1', fmtN(p1)],
+      ['P99', fmtN(p99)],
+      ['Target', fmtN(tgt)],
+      ['LSL', fmtN(lslN)],
+      ['USL', fmtN(uslN)],
+      ['% < LSL', pctLSL!=null?pctLSL+'%':'—'],
+      ['% > USL', pctUSL!=null?pctUSL+'%':'—'],
+      ['±6σ out', out6c],
+    ];
+    var tblHtml='<table style="font-size:11px;border-collapse:collapse;margin:6px 0 0 0;width:100%;max-width:360px">'
+      +'<thead><tr><th style="background:#34495e;color:#ecf0f1;padding:3px 8px;text-align:left">Stat</th>'
+      +'<th style="background:#34495e;color:#ecf0f1;padding:3px 8px;text-align:right">Value</th></tr></thead><tbody>';
+    tblRows.forEach(function(row,ri){{
+      var bg=ri%2?'#f8f9fa':'white';
+      tblHtml+='<tr style="background:'+bg+'"><td style="padding:2px 8px;color:#555">'+row[0]+'</td>'
+        +'<td style="padding:2px 8px;text-align:right;font-weight:600;color:#2c3e50">'+row[1]+'</td></tr>';
+    }});
+    tblHtml+='</tbody></table>';
+
+    // OOS badge
+    var oosHtml='';
+    if(oosSpec) oosHtml+='<span style="background:#e74c3c;color:white;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:6px">SPEC OOS</span>';
+    else if(oosSigma) oosHtml+='<span style="background:#d35400;color:white;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:6px">6σ OUT</span>';
+
+    // Card border
+    var cardBorder=oosSpec?'2px solid #e74c3c':oosSigma?'2px solid #e67e22':'1px solid #dee2e6';
+
+    // Card header
+    var cardHead='<div style="background:#f0f4f8;padding:5px 10px;font-size:12px;font-weight:600;color:#2c3e50;border-bottom:1px solid #dee2e6;display:flex;align-items:center">'
+      +_escH(param)+(meta.unit?' <span style="font-weight:400;color:#7f8c8d;margin-left:4px">('+_escH(meta.unit)+')</span>':'')
+      +oosHtml+'</div>';
+
+    cards.push('<div style="display:inline-flex;flex-direction:column;vertical-align:top;margin:6px;border:'+cardBorder+';border-radius:4px;overflow:hidden;background:white">'
+      +cardHead
+      +'<div style="display:flex;gap:0">'
+      +'<div>'+ps.join('')+'</div>'
+      +'<div style="padding:6px;border-left:1px solid #eee;min-width:160px">'+tblHtml+'</div>'
+      +'</div>'
+      +'</div>');
+  }});
+  return cards.join('');
+}}
+
+function buildDistTab(){{
+  PCM_DIST_PANELS.forEach(function(panel,pn){{
+    var body=document.getElementById('distp'+pn+'-body');
+    if(!body||body.dataset.built)return;
+    body.dataset.built='1';
+    if(!_PDLY_H_P[pn])_PDLY_H_P[pn]=350;
+    if(!_PDLY_GBY_P[pn])_PDLY_GBY_P[pn]=[];
+    var ctrl=_buildDistCtrlBar(pn);
+    var cardsHtml=_buildDistCards(pn);
+    body.innerHTML=ctrl+'<div class="pdly-cards" style="padding:8px;display:flex;flex-wrap:wrap;gap:6px">'+cardsHtml+'</div>';
+  }});
+}}
+
+/* ── XY / Vmin tabs ──────────────────────────────────────────────────────── */
+function toggleXYP(n){{
+  _XY_COLLAPSED[n]=!_XY_COLLAPSED[n];
+  var btn=document.getElementById('xyp'+n+'-toggle');
+  if(btn)btn.innerHTML=_XY_COLLAPSED[n]?'&#9654;':'&#9660;';
+  var body=document.getElementById('xyp'+n+'-body');
+  if(body)body.style.display=_XY_COLLAPSED[n]?'none':'flex';
+}}
+
+// Init XY state for each panel × side (a,b)
+PCM_XY_PANELS.forEach(function(cfg,xi3){{
+  ['a','b'].forEach(function(side){{
+    var pid='xyp'+xi3+side;
+    _FP_ST[pid]={{
+      x:cfg.params[0]||null, xgrp:'',
+      ys:cfg.params.length>1?cfg.params.slice(1):cfg.params.slice(0,1), ygrp:'',
+      logx:false, logy:false, perdie:false, trend:'none', gby:[],
+      h:cfg.height||400, xmin:'', xmax:'', ymin:'', ymax:''
+    }};
+  }});
+}});
+
+function buildXYTab(xi4){{
+  var cfg=PCM_XY_PANELS[xi4];
+  if(!cfg)return;
+  ['a','b'].forEach(function(side){{
+    fpBuild('xyp'+xi4+side);
+  }});
+}}
+
+/* toggleGbyFP: toggle group-by field for XY sub-panel */
+function toggleGbyFP(pid,field){{
+  var arr=_FP_ST[pid].gby||(_FP_ST[pid].gby=[]);
+  if(field==='none'){{arr.splice(0,arr.length);}}
+  else{{var idx=arr.indexOf(field);if(idx>=0)arr.splice(idx,1);else arr.push(field);}}
+  fpBuild(pid);
+  _syncGbyBtnsFP(pid);
+}}
+function _syncGbyBtnsFP(pid){{
+  var gby=_FP_ST[pid].gby||[];
+  ['none','lot','wafer','prog6248','progU1U5'].forEach(function(f){{
+    var el=document.getElementById(pid+'-gby-'+f);
+    if(!el)return;
+    if(f==='none')el.checked=(gby.length===0);
+    else el.checked=(gby.indexOf(f)>=0);
+  }});
+}}
+
+function _fpAllParams(pid){{
+  var xiN=parseInt(pid.replace(/[^0-9]/,''));
+  var cfg=PCM_XY_PANELS[xiN]; if(!cfg)return [];
+  return cfg.params||[];
+}}
+
+function _fpYDropToggle(pid){{
+  var d=document.getElementById(pid+'-y-drop');
+  if(d)d.style.display=(d.style.display==='none'?'block':'none');
+}}
+function _fpYSearch(pid,val){{
+  var list=document.getElementById(pid+'-y-list'); if(!list)return;
+  var q=(val||'').toLowerCase();
+  list.querySelectorAll('label').forEach(function(lbl){{
+    var txt=(lbl.textContent||'').toLowerCase();
+    lbl.style.display=(q&&txt.indexOf(q)<0)?'none':'';
+  }});
+}}
+function _fpYSelAll(pid){{
+  var list=document.getElementById(pid+'-y-list'); if(!list)return;
+  var st=_FP_ST[pid];
+  list.querySelectorAll('label').forEach(function(lbl){{
+    if(lbl.style.display==='none')return;
+    var cb=lbl.querySelector('input[type=checkbox]'); if(!cb)return;
+    var p=cb.value;
+    if(!st.ys)st.ys=[];
+    if(st.ys.indexOf(p)<0)st.ys.push(p);
+    cb.checked=true;
+  }});
+  _fpUpdateYBtn(pid); fpBuild(pid);
+}}
+function _fpYClrAll(pid){{
+  var list=document.getElementById(pid+'-y-list'); if(!list)return;
+  var st=_FP_ST[pid];
+  list.querySelectorAll('label').forEach(function(lbl){{
+    if(lbl.style.display==='none')return;
+    var cb=lbl.querySelector('input[type=checkbox]'); if(!cb)return;
+    var p=cb.value;
+    if(st.ys){{var idx=st.ys.indexOf(p);if(idx>=0)st.ys.splice(idx,1);}}
+    cb.checked=false;
+  }});
+  _fpUpdateYBtn(pid); fpBuild(pid);
+}}
+function _fpToggleY(pid,p,checked){{
+  var st=_FP_ST[pid];
+  if(!st.ys)st.ys=[];
+  if(checked&&st.ys.indexOf(p)<0)st.ys.push(p);
+  else if(!checked){{var idx=st.ys.indexOf(p);if(idx>=0)st.ys.splice(idx,1);}}
+  _fpUpdateYBtn(pid); fpBuild(pid);
+}}
+function _fpUpdateYBtn(pid){{
+  var btn=document.getElementById(pid+'-y-btn'); if(!btn)return;
+  var ys=_FP_ST[pid].ys||[];
+  btn.textContent=ys.length===0?'Select Y\u2026':ys.length===1?ys[0]:ys.length+' Y params \u25bc';
+}}
+
+function _fpDownloadCSV(pid){{
+  var st=_FP_ST[pid]; if(!st||!st.x||!st.ys||!st.ys.length)return;
+  var ak=activeKeys();
+  var xVals={{}};
+  PCM_ROWS.forEach(function(r){{
+    if(r.param!==st.x||!ak.has(_rKey(r)))return;
+    var key=_rKey(r);
+    var vals=st.perdie?r.die_values:[r.median];
+    xVals[key]=(vals||[]).filter(function(v){{return v!=null&&isFinite(v);}});
+  }});
+  var rows=['lot,wafer,'+st.x+','+st.ys.join(',')];
+  PCM_ROWS.forEach(function(r){{
+    if(st.ys.indexOf(r.param)<0||!ak.has(_rKey(r)))return;
+    var key=_rKey(r); var xs=xVals[key]||[];
+    var yvs=st.perdie?r.die_values:[r.median];
+    var n=Math.min(xs.length,yvs.length);
+    for(var i=0;i<n;i++){{
+      var rowVals=[r.lot,r.wafer,xs[i]];
+      st.ys.forEach(function(yp){{if(yp===r.param)rowVals.push(yvs[i]);else rowVals.push('');}});
+      rows.push(rowVals.join(','));
+    }}
+  }});
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.join('\n'));
+  a.download='xy_'+st.x+'_vs_'+st.ys.join('_')+'.csv';
+  a.click();
+}}
+
+/* tooltip shared div */
+var _TT_EL=null;
+function _getTT(){{
+  if(!_TT_EL){{
+    _TT_EL=document.createElement('div');
+    _TT_EL.style.cssText='position:fixed;background:rgba(20,28,40,.93);color:#ecf0f1;font-size:12px;'
+      +'padding:5px 11px;border-radius:5px;pointer-events:none;z-index:9999;display:none;'
+      +'white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.4);border:1px solid #4a6278';
+    document.body.appendChild(_TT_EL);
+  }}
+  return _TT_EL;
+}}
+
+/* Crosshair drag cursors */
+function _initDragCursorsXY(svgEl,pid,ML,MT,plotW,plotH,xlo,xhi,ylo,yhi,fmtX,fmtY){{
+  var ns='http://www.w3.org/2000/svg';
+  var hLine=document.createElementNS(ns,'line');
+  var vLine=document.createElementNS(ns,'line');
+  var xText=document.createElementNS(ns,'text');
+  var yText=document.createElementNS(ns,'text');
+  [hLine,vLine].forEach(function(l){{
+    l.setAttribute('stroke','#e74c3c');
+    l.setAttribute('stroke-width','1');
+    l.setAttribute('stroke-dasharray','3,3');
+    l.setAttribute('pointer-events','none');
+    l.setAttribute('visibility','hidden');
+    svgEl.appendChild(l);
+  }});
+  [xText,yText].forEach(function(t){{
+    t.setAttribute('font-size','10');
+    t.setAttribute('fill','#e74c3c');
+    t.setAttribute('pointer-events','none');
+    t.setAttribute('visibility','hidden');
+    svgEl.appendChild(t);
+  }});
+  function showAt(cx,cy){{
+    if(cx<ML||cx>ML+plotW||cy<MT||cy>MT+plotH){{
+      [hLine,vLine,xText,yText].forEach(function(e){{e.setAttribute('visibility','hidden');}});
+      return;
+    }}
+    var xv=xlo+(cx-ML)/(plotW)*(xhi-xlo);
+    var yv=yhi-(cy-MT)/(plotH)*(yhi-ylo);
+    hLine.setAttribute('x1',ML); hLine.setAttribute('y1',cy);
+    hLine.setAttribute('x2',ML+plotW); hLine.setAttribute('y2',cy);
+    vLine.setAttribute('x1',cx); vLine.setAttribute('y1',MT);
+    vLine.setAttribute('x2',cx); vLine.setAttribute('y2',MT+plotH);
+    xText.setAttribute('x',cx+2); xText.setAttribute('y',MT+plotH-2);
+    xText.textContent=fmtX(xv);
+    yText.setAttribute('x',ML+2); yText.setAttribute('y',cy-3);
+    yText.textContent=fmtY(yv);
+    [hLine,vLine,xText,yText].forEach(function(e){{e.setAttribute('visibility','visible');}});
+  }}
+  function getSVGCoords(e){{
+    var rect=svgEl.getBoundingClientRect();
+    var vb=svgEl.viewBox.baseVal;
+    return [
+      (e.clientX-rect.left)/rect.width*vb.width,
+      (e.clientY-rect.top)/rect.height*vb.height
+    ];
+  }}
+  var dragging=false;
+  svgEl.addEventListener('mousedown',function(e){{
+    dragging=true;
+    var xy=getSVGCoords(e);
+    showAt(xy[0],xy[1]);
+  }});
+  svgEl.addEventListener('mousemove',function(e){{
+    if(!dragging)return;
+    var xy=getSVGCoords(e);
+    showAt(xy[0],xy[1]);
+  }});
+  document.addEventListener('mouseup',function(){{
+    if(dragging){{
+      dragging=false;
+      [hLine,vLine,xText,yText].forEach(function(el){{el.setAttribute('visibility','hidden');}});
+    }}
+  }});
+}}
+
+/* Main XY sub-panel builder */
+function fpBuild(pid){{
+  var wrap=document.getElementById(pid+'-wrap');
+  if(!wrap)return;
+  var xiN=parseInt(pid.replace(/[^0-9]/,''));
+  var cfg=PCM_XY_PANELS[xiN]; if(!cfg)return;
+  var st=_FP_ST[pid];
+  var allParams=cfg.params||[];
+  var gby=st.gby||[];
+
+  // Row 1 – X/Y selectors
+  var xOpts=allParams.map(function(p){{
+    return '<option value="'+_escH(p)+'"'+(st.x===p?' selected':'')+'>'+_escH(p)+'</option>';
+  }}).join('');
+  var yBtnLabel=(!st.ys||!st.ys.length)?'Select Y\u2026':st.ys.length===1?st.ys[0]:st.ys.length+' Y params \u25bc';
+  var yListHtml=allParams.map(function(p){{
+    var chk=(st.ys&&st.ys.indexOf(p)>=0)?'checked':'';
+    return '<label style="display:flex;align-items:center;gap:5px;padding:2px 6px;cursor:pointer;font-size:11px;white-space:nowrap"'
+      +' onmouseover="this.style.background=\\'#e8f0fe\\'" onmouseout="this.style.background=\\'\\'">'
+      +'<input type="checkbox" value="'+_escH(p)+'" '+chk+' onchange="_fpToggleY(\\''+pid+'\\'',\\''+_escH(p)+'\\'',this.checked)">'
+      +_escH(p)+'</label>';
+  }}).join('');
+  var xMetaU=(PCM_PARAM_META[st.x]||{{}}).unit||'';
+  var xLabel=st.x?('&#10799; '+_escH(st.x)+(xMetaU?' ('+_escH(xMetaU)+')':'')):'Select X parameter\u2026';
+
+  var row1='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+    +'<span style="font-size:12px;font-weight:bold;color:#2c3e50">'+xLabel+'</span>'
+    +'<span style="font-size:11px;color:#555">X:</span>'
+    +'<select style="font-size:11px;padding:1px 3px;border-radius:3px;border:1px solid #ccc;max-width:180px"'
+    +' onchange="_FP_ST[\\''+pid+'\\''].x=this.value||null;fpBuild(\\''+pid+'\\'')">'+xOpts+'</select>'
+    +'<span style="width:1px;background:#ccc;align-self:stretch;margin:0 1px"></span>'
+    +'<span style="font-size:11px;color:#555">Y:</span>'
+    +'<span style="position:relative;display:inline-block">'
+      +'<button id="'+pid+'-y-btn" onclick="_fpYDropToggle(\\''+pid+'\\'')"'
+      +' style="font-size:11px;padding:1px 6px;border-radius:3px;border:1px solid #ccc;background:#fff;cursor:pointer;min-width:90px;max-width:200px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_escH(yBtnLabel)+'</button>'
+      +'<div id="'+pid+'-y-drop" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:260px;max-width:400px">'
+        +'<div style="display:flex;align-items:center;gap:4px;padding:4px 5px;border-bottom:1px solid #e8e8e8;background:#f5f5f5">'
+          +'<input id="'+pid+'-y-srch" placeholder="Search\u2026" oninput="_fpYSearch(\\''+pid+'\\'',this.value)"'
+          +' style="flex:1;font-size:11px;padding:2px 5px;border:1px solid #ccc;border-radius:3px">'
+          +'<button onclick="_fpYSelAll(\\''+pid+'\\'')" style="font-size:10px;padding:1px 5px;border-radius:3px;border:1px solid #bbb;background:#e8f0fe;cursor:pointer">All</button>'
+          +'<button onclick="_fpYClrAll(\\''+pid+'\\'')" style="font-size:10px;padding:1px 5px;border-radius:3px;border:1px solid #bbb;background:#fef0e8;cursor:pointer">Clr</button>'
+        +'</div>'
+        +'<div id="'+pid+'-y-list" style="max-height:240px;overflow-y:auto;padding:3px 0">'+yListHtml+'</div>'
+      +'</div>'
+    +'</span>'
+    +'</div>';
+
+  // Row 2 – logX/logY/perdie + trend + gby
+  var trendOpts=[['none','None'],['ols','OLS'],['theilsen','T-S']].map(function(tv){{
+    return '<label style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:2px">'
+      +'<input type="radio" name="'+pid+'-trend" value="'+tv[0]+'"'+(st.trend===tv[0]?' checked':'')
+      +' onchange="_FP_ST[\\''+pid+'\\''].trend=this.value;fpBuild(\\''+pid+'\\'')">'+tv[1]+'</label>';
+  }}).join('');
+  var gbyDefs=[['none','None'],['lot','Lot'],['wafer','Wfr'],['prog6248','P6248'],['progU1U5','PU1U5']];
+  var gbyCbs=gbyDefs.map(function(gd){{
+    var chk=(gd[0]==='none')?(gby.length===0):(gby.indexOf(gd[0])>=0);
+    return '<label style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:2px">'
+      +'<input type="checkbox" id="'+pid+'-gby-'+gd[0]+'"'+(chk?' checked':'')
+      +' onchange="toggleGbyFP(\\''+pid+'\\'',\\''+gd[0]+'\\'')">'+gd[1]+'</label>';
+  }}).join('');
+  var row2='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+    +'<label style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:2px">'
+      +'<input type="checkbox"'+(st.logx?' checked':'')+' onchange="_FP_ST[\\''+pid+'\\''].logx=this.checked;fpBuild(\\''+pid+'\\'')">logX</label>'
+    +'<label style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:2px">'
+      +'<input type="checkbox"'+(st.logy?' checked':'')+' onchange="_FP_ST[\\''+pid+'\\''].logy=this.checked;fpBuild(\\''+pid+'\\'')">logY</label>'
+    +'<label style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:2px">'
+      +'<input type="checkbox"'+(st.perdie?' checked':'')+' onchange="_FP_ST[\\''+pid+'\\''].perdie=this.checked;fpBuild(\\''+pid+'\\'')">Per die</label>'
+    +'<span style="width:1px;background:#ccc;align-self:stretch;margin:0 2px"></span>'
+    +'<span style="font-size:11px;color:#555">Trend:</span>'+trendOpts
+    +'<span style="width:1px;background:#ccc;align-self:stretch;margin:0 2px"></span>'
+    +'<b style="font-size:11px;color:#555">Gby:</b>'+gbyCbs
+    +'</div>';
+
+  // Row 3 – ranges, H slider, CSV
+  var h=st.h||400;
+  var row3='<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">'
+    +'<span style="font-size:11px;color:#555">X:</span>'
+    +'<input type="number" placeholder="auto" title="X min" value="'+(st.xmin||'')+'"'
+    +' oninput="_FP_ST[\\''+pid+'\\''].xmin=this.value;fpBuild(\\''+pid+'\\'')" style="width:60px;font-size:11px;padding:1px 3px">'
+    +'<span style="font-size:10px;color:#aaa">&ndash;</span>'
+    +'<input type="number" placeholder="auto" title="X max" value="'+(st.xmax||'')+'"'
+    +' oninput="_FP_ST[\\''+pid+'\\''].xmax=this.value;fpBuild(\\''+pid+'\\'')" style="width:60px;font-size:11px;padding:1px 3px">'
+    +'<span style="width:1px;background:#ccc;align-self:stretch;margin:0 2px"></span>'
+    +'<span style="font-size:11px;color:#555">Y:</span>'
+    +'<input type="number" placeholder="auto" title="Y min" value="'+(st.ymin||'')+'"'
+    +' oninput="_FP_ST[\\''+pid+'\\''].ymin=this.value;fpBuild(\\''+pid+'\\'')" style="width:60px;font-size:11px;padding:1px 3px">'
+    +'<span style="font-size:10px;color:#aaa">&ndash;</span>'
+    +'<input type="number" placeholder="auto" title="Y max" value="'+(st.ymax||'')+'"'
+    +' oninput="_FP_ST[\\''+pid+'\\''].ymax=this.value;fpBuild(\\''+pid+'\\'')" style="width:60px;font-size:11px;padding:1px 3px">'
+    +'<span style="width:1px;background:#ccc;align-self:stretch;margin:0 3px"></span>'
+    +'<span style="font-size:11px;display:flex;align-items:center;gap:3px">H'
+      +'<input type="range" min="200" max="1000" step="25" value="'+h+'"'
+      +' oninput="_FP_ST[\\''+pid+'\\''].h=+this.value;document.getElementById(\\''+pid+'-h-val\\'').textContent=this.value+\\'px\\';fpBuild(\\''+pid+'\\'')"'
+      +' style="width:70px;accent-color:#3498db">'
+      +'<span id="'+pid+'-h-val" style="min-width:30px;font-size:10px;color:#555">'+h+'px</span>'
+    +'</span>'
+    +'<span style="width:1px;background:#ccc;align-self:stretch;margin:0 2px"></span>'
+    +'<button onclick="_fpDownloadCSV(\\''+pid+'\\'')" title="Download CSV"'
+    +' style="padding:2px 8px;font-size:10px;font-weight:bold;border:none;border-radius:3px;background:#27ae60;color:#fff;cursor:pointer"'
+    +' onmouseover="this.style.background=\\'#1e8449\\'" onmouseout="this.style.background=\\'#27ae60\\'">&#11015; CSV</button>'
+    +'</div>';
+
+  wrap.innerHTML=
+    '<div style="display:flex;flex-direction:column;flex-shrink:0;background:#f8f9fa;border-bottom:1px solid #dde;padding:5px 10px;gap:4px">'
+    +row1+row2+row3
+    +'</div>'
+    +'<div id="'+pid+'-cont" style="flex:1;overflow-y:auto;padding:0 8px 8px"></div>';
+
+  _fpRenderChart(pid);
+}}
+
+function _fpRenderChart(pid){{
+  var cont=document.getElementById(pid+'-cont');
+  if(!cont)return;
+  var st=_FP_ST[pid];
+  if(!st||!st.x||!st.ys||!st.ys.length){{
+    cont.innerHTML='<p style="padding:12px;color:#999;font-size:12px">Select X and Y parameters.</p>';
+    return;
+  }}
+  var ak=activeKeys();
+  var svgW=820, ML=90, MR=30, MT=40;
+  var MB=st.ys.length>1?88:65;
+  var svgH=st.h||400;
+  var plotW=svgW-ML-MR, plotH=svgH-MT-MB;
+  var gby=st.gby||[];
+
+  // Gather X values by (lot/wafer) key
+  var xByKey={{}};
+  PCM_ROWS.forEach(function(r){{
+    if(r.param!==st.x||!ak.has(_rKey(r)))return;
+    var key=_rKey(r);
+    if(!xByKey[key])xByKey[key]=[];
+    var vals=st.perdie?r.die_values:[r.median];
+    (vals||[]).forEach(function(v,i){{if(v!=null&&isFinite(v))xByKey[key].push({{v:v,i:i,lot:r.lot,wafer:r.wafer}});}});
+  }});
+
+  // Build points per Y param
+  var ptsByY={{}};
+  st.ys.forEach(function(yp){{ptsByY[yp]=[];}});
+  var allX=[],allY=[];
+
+  st.ys.forEach(function(yp){{
+    PCM_ROWS.forEach(function(r){{
+      if(r.param!==yp||!ak.has(_rKey(r)))return;
+      var key=_rKey(r);
+      var xs=xByKey[key]||[];
+      var yvs=st.perdie?(r.die_values||[]):[r.median];
+      var n2=Math.min(xs.length,yvs.length);
+      for(var ki=0;ki<n2;ki++){{
+        var xv=xs[ki].v, yv=yvs[ki];
+        if(xv==null||yv==null||!isFinite(xv)||!isFinite(yv))continue;
+        ptsByY[yp].push({{x:xv,y:yv,lot:r.lot,wafer:r.wafer}});
+        allX.push(xv); allY.push(yv);
+      }}
+    }});
+  }});
+
+  if(!allX.length){{
+    cont.innerHTML='<p style="padding:12px;color:#999;font-size:12px">No data for selected parameters.</p>';
+    return;
+  }}
+
+  // Determine ranges
+  function p1p99(arr){{
+    var s=arr.slice().sort(function(a,b){{return a-b;}});
+    return [s[Math.floor(s.length*.01)],s[Math.min(s.length-1,Math.ceil(s.length*.99))]];
+  }}
+  var xr=p1p99(allX),yr=p1p99(allY);
+  var xlo=(st.xmin!==''&&st.xmin!=null)?+st.xmin:xr[0];
+  var xhi=(st.xmax!==''&&st.xmax!=null)?+st.xmax:xr[1];
+  var ylo=(st.ymin!==''&&st.ymin!=null)?+st.ymin:yr[0];
+  var yhi=(st.ymax!==''&&st.ymax!=null)?+st.ymax:yr[1];
+  if(xlo===xhi){{xlo-=0.5;xhi+=0.5;}}
+  if(ylo===yhi){{ylo-=0.5;yhi+=0.5;}}
+  var xrng=xhi-xlo, yrng=yhi-ylo;
+  var xpad=xrng*.08, ypad=yrng*.08;
+  xlo-=xpad; xhi+=xpad; ylo-=ypad; yhi+=ypad;
+  xrng=xhi-xlo; yrng=yhi-ylo;
+
+  function px(xv){{return +(ML+(xv-xlo)/xrng*plotW).toFixed(1);}}
+  function py(yv){{return +(MT+(1-(yv-ylo)/yrng)*plotH).toFixed(1);}}
+  function fmtX(v){{return _fmt(v,3);}}
+  function fmtY(v){{return _fmt(v,3);}}
+
+  // Build colour map: if gby, colour by group; if multi-Y, colour by Y param; else single colour
+  var colByPt=function(pt,yp,ypi){{
+    if(gby.length>0){{
+      var fakeRow={{lot:pt.lot,wafer:pt.wafer}};
+      var k=_grpKeyWith(fakeRow,gby);
+      return _PALETTE[_grpKey2idx(k,gby,allX)%_PALETTE.length];
+    }}
+    return _PALETTE[ypi%_PALETTE.length];
+  }};
+  // Build group colour map for gby legend
+  var gbyCm=null;
+  if(gby.length>0){{
+    var allRows=[];
+    PCM_ROWS.forEach(function(r){{if(ak.has(_rKey(r)))allRows.push(r);}});
+    gbyCm=_cMapWith(allRows,gby);
+  }}
+
+  var psvg=['<svg id="'+pid+'-svg" width="100%" height="'+svgH+'" viewBox="0 0 '+svgW+' '+svgH+'" style="display:block;cursor:crosshair;font-family:sans-serif">'];
+  psvg.push('<rect width="'+svgW+'" height="'+svgH+'" fill="#f8f9fa"/>');
+  psvg.push('<rect x="'+ML+'" y="'+MT+'" width="'+plotW+'" height="'+plotH+'" fill="white" stroke="#ccc" stroke-width="1"/>');
+
+  // X grid + ticks
+  for(var xi6=0;xi6<=6;xi6++){{
+    var xv5=xlo+xrng*xi6/6;
+    var xp5=+(ML+xi6/6*plotW).toFixed(1);
+    psvg.push('<line x1="'+xp5+'" y1="'+MT+'" x2="'+xp5+'" y2="'+(MT+plotH)+'" stroke="rgba(0,0,0,.08)" stroke-width=".8"/>');
+    psvg.push('<text x="'+xp5+'" y="'+(MT+plotH+20)+'" text-anchor="middle" font-size="13" fill="#333">'+fmtX(xv5)+'</text>');
+  }}
+  // Y grid + ticks
+  for(var yi5=0;yi5<=5;yi5++){{
+    var yv5=ylo+yrng*yi5/5;
+    var yp6=+(MT+plotH*(1-yi5/5)).toFixed(1);
+    psvg.push('<line x1="'+ML+'" y1="'+yp6+'" x2="'+(ML+plotW)+'" y2="'+yp6+'" stroke="rgba(0,0,0,.08)" stroke-width=".8"/>');
+    psvg.push('<text x="'+(ML-6)+'" y="'+yp6+'" text-anchor="end" dominant-baseline="middle" font-size="13" fill="#333">'+fmtY(yv5)+'</text>');
+  }}
+
+  // Scatter dots batched by colour
+  // Collect points with colours
+  var colBatches={{}};
+  st.ys.forEach(function(yp,ypi){{
+    (ptsByY[yp]||[]).forEach(function(pt){{
+      var col;
+      if(gby.length>0&&gbyCm){{
+        var fakeRow={{lot:pt.lot,wafer:pt.wafer}};
+        var gk=_grpKeyWith(fakeRow,gby);
+        col=gbyCm.map[gk]||_PALETTE[0];
+      }} else {{
+        col=_PALETTE[ypi%_PALETTE.length];
+      }}
+      if(!colBatches[col])colBatches[col]='';
+      var cx=px(pt.x), cy=py(pt.y);
+      if(+cx<ML-3||+cx>ML+plotW+3||+cy<MT-3||+cy>MT+plotH+3)return;
+      colBatches[col]+='M'+cx+','+cy+'m-3,0a3,3,0,1,0,6,0a3,3,0,1,0,-6,0';
+    }});
+  }});
+  Object.keys(colBatches).forEach(function(col){{
+    if(colBatches[col])psvg.push('<path d="'+colBatches[col]+'" fill="'+col+'" fill-opacity=".55" stroke="none"/>');
+  }});
+
+  // Trend lines
+  if(st.trend&&st.trend!=='none'){{
+    st.ys.forEach(function(yp,ypi){{
+      var pts2=(ptsByY[yp]||[]).filter(function(p){{return +px(p.x)>=ML&&+px(p.x)<=ML+plotW&&+py(p.y)>=MT&&+py(p.y)<=MT+plotH;}});
+      var fitPts=pts2.slice(0,300).map(function(p){{return [p.x,p.y];}});
+      var fit=st.trend==='ols'?_olsFit(fitPts):_theilsenFit(fitPts);
+      if(!fit)return;
+      var col=_PALETTE[ypi%_PALETTE.length];
+      // Clip to plot bounds
+      var y1=fit.m*xlo+fit.b, y2=fit.m*xhi+fit.b;
+      var x1=xlo,x2=xhi;
+      // Simple clamp to data range
+      psvg.push('<line x1="'+px(x1)+'" y1="'+py(y1)+'" x2="'+px(x2)+'" y2="'+py(y2)+'"'
+        +' stroke="'+col+'" stroke-width="2" stroke-dasharray="7,3" opacity=".75"/>');
+    }});
+  }}
+
+  // N label
+  var totalPts=allX.length;
+  psvg.push('<text x="'+(ML+4)+'" y="'+(MT-6)+'" font-size="10" fill="#999">n='+totalPts+'</text>');
+
+  // X axis label
+  var xMeta=PCM_PARAM_META[st.x]||{{}};
+  psvg.push('<text x="'+(ML+plotW/2)+'" y="'+(MT+plotH+36)+'" text-anchor="middle" font-size="13" fill="#333">'+_escH(st.x)+(xMeta.unit?' ('+_escH(xMeta.unit)+')':'')+'</text>');
+
+  // Y axis label (single Y) or multi-Y legend
+  if(st.ys.length===1){{
+    var yMeta=PCM_PARAM_META[st.ys[0]]||{{}};
+    psvg.push('<text transform="rotate(-90)" x="'+(-(MT+plotH/2))+'" y="16" text-anchor="middle" font-size="13" fill="#333">'+_escH(st.ys[0])+(yMeta.unit?' ('+_escH(yMeta.unit)+')':'')+'</text>');
+  }} else {{
+    var legY3=MT+plotH+20+34;
+    var itemW3=Math.min(180,Math.floor(plotW/st.ys.length));
+    st.ys.forEach(function(yp8,ypi3){{
+      var col3=_PALETTE[ypi3%_PALETTE.length];
+      var lx3=ML+ypi3*itemW3;
+      psvg.push('<rect x="'+lx3+'" y="'+(legY3-8)+'" width="10" height="10" rx="2" fill="'+col3+'"/>');
+      psvg.push('<text x="'+(lx3+14)+'" y="'+legY3+'" dominant-baseline="middle" font-size="11" fill="#333">'+_escH(yp8)+'</text>');
+    }});
+  }}
+
+  // Group-by legend (when gby active)
+  if(gby.length>0&&gbyCm){{
+    var gbLegY=MT+plotH+20+56;
+    var gbLegX=ML;
+    gbyCm.keys.forEach(function(k,ki){{
+      psvg.push('<rect x="'+(gbLegX+ki*100)+'" y="'+(gbLegY-8)+'" width="10" height="10" rx="2" fill="'+gbyCm.map[k]+'"/>');
+      psvg.push('<text x="'+(gbLegX+ki*100+14)+'" y="'+gbLegY+'" dominant-baseline="middle" font-size="10" fill="#333">'+_escH(k)+'</text>');
+    }});
+  }}
+
+  psvg.push('</svg>');
+  cont.innerHTML=psvg.join('');
+
+  // Attach crosshair and tooltip after SVG is in DOM
+  var svgEl=document.getElementById(pid+'-svg');
+  if(svgEl){{
+    _initDragCursorsXY(svgEl,pid,ML,MT,plotW,plotH,xlo,xhi,ylo,yhi,fmtX,fmtY);
+    // Tooltip
+    var tt=_getTT();
+    var allPts=[];
+    st.ys.forEach(function(yp){{(ptsByY[yp]||[]).forEach(function(pt){{allPts.push({{x:pt.x,y:pt.y,lot:pt.lot,wafer:pt.wafer,yp:yp}});}});}});
+    svgEl.addEventListener('mousemove',function(e){{
+      var rect=svgEl.getBoundingClientRect();
+      var vb=svgEl.viewBox.baseVal;
+      var sx=(e.clientX-rect.left)/rect.width*vb.width;
+      var sy=(e.clientY-rect.top)/rect.height*vb.height;
+      var best=null,bestD=22*22;
+      allPts.forEach(function(pt){{
+        var cx2=+px(pt.x),cy2=+py(pt.y);
+        var d=(sx-cx2)*(sx-cx2)+(sy-cy2)*(sy-cy2);
+        if(d<bestD){{bestD=d;best=pt;}}
+      }});
+      if(best){{
+        tt.innerHTML='<b>'+_escH(best.lot)+' / '+_escH(String(best.wafer))+'</b><br>X: '+_fmt(best.x,4)+(xMeta.unit?' '+_escH(xMeta.unit):'')+' <br>'+_escH(best.yp)+': '+_fmt(best.y,4);
+        tt.style.left=(e.clientX+14)+'px';
+        tt.style.top=(e.clientY-48)+'px';
+        tt.style.display='block';
+      }} else {{
+        tt.style.display='none';
+      }}
+    }});
+    svgEl.addEventListener('mouseleave',function(){{tt.style.display='none';}});
+  }}
+}}
+
+/* Helper: map group key -> palette index deterministically */
+var _GBY_IDX_CACHE={{}};
+function _grpKey2idx(k,gby,_){{
+  var cacheKey=gby.join('|')+'__'+k;
+  if(_GBY_IDX_CACHE[cacheKey]!=null)return _GBY_IDX_CACHE[cacheKey];
+  var seen=Object.keys(_GBY_IDX_CACHE).filter(function(ck){{return ck.indexOf(gby.join('|'))===0;}}).length;
+  _GBY_IDX_CACHE[cacheKey]=seen;
+  return seen;
+}}
+
+/* ── Init ───────────────────────────────────────────────────────────────── */
+buildWfrList();
+rerender();
+// Activate first XY tab for render (lazy — only when user clicks)
+</script>
+</body>
+</html>"""
+
+
+_TH_ST = "background:#34495e;color:#ecf0f1;padding:3px 7px;text-align:left;white-space:nowrap"

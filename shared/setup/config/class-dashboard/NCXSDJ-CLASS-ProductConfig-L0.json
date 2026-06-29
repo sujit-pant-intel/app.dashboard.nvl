@@ -1,0 +1,181 @@
+{
+  "_comment": "CLASS Dashboard Product Config – NCXSDJ NVL816 L0 (package/class test)",
+
+  "title": "Package Test Analysis \u2013 NCXSDJ L0",
+  "subtitle": "",
+  "devrevstep_prefix": "NCXSDJ",
+
+  "_comment_sicc_targets": "SICC current targets (A) per domain. core/atom/ccf apply to each individual core (CORE0-3, ATOM0-3, RING/CCF).",
+  "sicc_targets": {
+    "sort":  { "core": 0.491, "atom": 0.256, "ccf": 0.825 },
+    "class": { "core": 5.486, "atom": 2.634, "ccf": 8.108 }
+  },
+  "sicc_unit": "A",
+
+  "_comment_id_cols": "Die-identifier columns in the AQUA class CSV",
+  "visual_id_col":    "VISUAL_ID",
+  "sort_lot_col":     "SORT_LOT_U1.U5",
+  "sort_wafer_col":   "SORT_WAFER_U1.U5",
+  "sort_x_col":       "SORT_X_U1.U5",
+  "sort_y_col":       "SORT_Y_U1.U5",
+  "devrevstep_col":   "DevRevStep_119325_U1.U5",
+
+  "_comment_sort_upm": "UPM measured at sort. Keys become short column names in normalized df.",
+  "sort_upm": {
+    "UPM 107_950":  "UPM_0107_DPMH156P48ULVTINVD4_FULLDIE_0950_MED_119325_U1.U5",
+    "UPM 107_1200": "UPM_0107_DPMH156P48ULVTINVD4_FULLDIE_1200_MED_119325_U1.U5",
+    "UPM 704_950":  "UPM_0704_TPMH156P48ULVTNPPND6_FULLDIE_0950_MED_119325_U1.U5"
+  },
+
+  "_comment_sort_upm_ref": "Reference values for UPM % calculation. 100% = ref value. Remove a key to show raw values.",
+  "sort_upm_ref": {
+    "UPM 107_950": 9154,
+	"UPM 107_1200": 10320,
+	"UPM 704_950": 8731
+
+  },
+
+  "_comment_sort_upm_labels": "Human-readable labels for each UPM short key",
+  "sort_upm_labels": {
+    "UPM 107_950":  "UPM 0107 950mV (SORT)",
+    "UPM 107_1200": "UPM 0107 1200mV (SORT)",
+    "UPM 704_950":  "UPM 0704 950mV (SORT)"
+  },
+
+  "_comment_sort_sicc": "SICC measured at sort (singulated die, 20 °C). Keys become short column names.",
+  "sort_sicc": {
+    "SORT SICC ATOM0": "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCATOM0|HC01_02_0P85_VCCATOM0|PC_119325_U1.U5",
+    "SORT SICC ATOM1": "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCATOM1|HC02_02_0P85_VCCATOM1|PC_119325_U1.U5",
+    "SORT SICC ATOM2": "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCATOM2|HC03_02_0P85_VCCATOM2|PC_119325_U1.U5",
+    "SORT SICC ATOM3": "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCATOM3|HC04_02_0P85_VCCATOM3|PC_119325_U1.U5",
+    "SORT SICC CORE0": "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCCORE0|HC05_03_0P85_VCCCORE0|PC_119325_U1.U5",
+    "SORT SICC CORE1": "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCCORE1|HC06_03_0P85_VCCCORE1|PC_119325_U1.U5",
+    "SORT SICC CORE2": "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCCORE2|HC07_03_0P85_VCCCORE2|PC_119325_U1.U5",
+    "SORT SICC CORE3": "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCCORE3|HC08_03_0P85_VCCCORE3|PC_119325_U1.U5",
+    "SORT SICC RING":  "PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCR|HV01_08_0P85_VCCR|PC_119325_U1.U5"
+  },
+
+  "_comment_sort_sicc_labels": "Human-readable labels (ss_ = sort SICC)",
+  "sort_sicc_labels": {
+    "SORT SICC ATOM0": "SICC ATOM0 (SORT)", "SORT SICC ATOM1": "SICC ATOM1 (SORT)",
+    "SORT SICC ATOM2": "SICC ATOM2 (SORT)", "SORT SICC ATOM3": "SICC ATOM3 (SORT)",
+    "SORT SICC CORE0": "SICC CORE0 (SORT)", "SORT SICC CORE1": "SICC CORE1 (SORT)",
+    "SORT SICC CORE2": "SICC CORE2 (SORT)", "SORT SICC CORE3": "SICC CORE3 (SORT)",
+    "SORT SICC RING":  "SICC RING (SORT)",
+    "SORT SICC FULLCHIP": "SICC Fullchip (SORT)"
+  },
+
+  "_comment_class_sicc": "SICC measured at package/class test (100 °C). IA=Core, AT=Atom, CCF=Ring.",
+  "class_sicc": {
+    "CLASS SICC CORE0": "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_IA00-V2_Value",
+    "CLASS SICC CORE1": "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_IA01-V2_Value",
+    "CLASS SICC CORE2": "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_IA02-V2_Value",
+    "CLASS SICC CORE3": "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_IA03-V2_Value",
+    "CLASS SICC ATOM0": "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_AT00-V2_Value",
+    "CLASS SICC ATOM1": "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_AT01-V2_Value",
+    "CLASS SICC ATOM2": "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_AT02-V2_Value",
+    "CLASS SICC ATOM3": "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_AT03-V2_Value",
+    "CLASS SICC RING":  "VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5_6248_CLASSHOT_CCF-V2_Value"
+  },
+
+  "_comment_class_sicc_labels": "Human-readable labels (sc_ = class SICC)",
+  "class_sicc_labels": {
+    "CLASS SICC CORE0": "SICC CORE0 (CLASS)", "CLASS SICC CORE1": "SICC CORE1 (CLASS)",
+    "CLASS SICC CORE2": "SICC CORE2 (CLASS)", "CLASS SICC CORE3": "SICC CORE3 (CLASS)",
+    "CLASS SICC ATOM0": "SICC ATOM0 (CLASS)", "CLASS SICC ATOM1": "SICC ATOM1 (CLASS)",
+    "CLASS SICC ATOM2": "SICC ATOM2 (CLASS)", "CLASS SICC ATOM3": "SICC ATOM3 (CLASS)",
+    "CLASS SICC RING":  "SICC RING (CLASS)",
+    "CLASS SICC FULL CHIP": "SICC Fullchip (CLASS)"
+  },
+
+  "_comment_vmin_freq": "Patterns used to auto-discover PASSFLOW Vmin columns. Module tags: CR=Core, AT=Atom, CCF=CCF/Ring.",
+  "vmin_freq_search": {
+    "CORE": [
+      "UPSVFPASSFLOW_U1PU5_6248_CLASSHOT_CR_",
+      "UPSVFPASSFLOW_U1PU5_6248_CLASSHOT_CRFCT_"
+    ],
+    "ATOM": "UPSVFPASSFLOW_U1PU5_6248_CLASSHOT_AT_",
+    "CCF":  "UPSVFPASSFLOW_U1PU5_6248_CLASSHOT_CCF_"
+  },
+
+  "_comment_xy_plots": "Static XY-plot tabs. Each tab has one or more sub-panels with x and ys using normalized short keys.",
+  "xy_plots": {
+    "core": {
+      "label": "UPM vs SICC - CORE",
+      "panels": [
+        {
+          "label": "CORE 0",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC CORE0", "CLASS SICC CORE0"]
+        },
+        {
+          "label": "CORE 1",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC CORE1", "CLASS SICC CORE1"]
+        },
+        {
+          "label": "CORE 2",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC CORE2", "CLASS SICC CORE2"]
+        },
+        {
+          "label": "CORE 3",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC CORE3", "CLASS SICC CORE3"]
+        }
+      ]
+    },
+    "atom": {
+      "label": "UPM vs SICC - ATOM",
+      "panels": [
+        {
+          "label": "ATOM 0",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC ATOM0", "CLASS SICC ATOM0"]
+        },
+        {
+          "label": "ATOM 1",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC ATOM1", "CLASS SICC ATOM1"]
+        },
+        {
+          "label": "ATOM 2",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC ATOM2", "CLASS SICC ATOM2"]
+        },
+        {
+          "label": "ATOM 3",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC ATOM3", "CLASS SICC ATOM3"]
+        }
+      ]
+    },
+    "ring": {
+      "label": "UPM vs SICC - RING",
+      "panels": [
+        {
+          "label": "RING",
+          "x": "UPM 107_950",
+          "ys": ["SORT SICC RING", "CLASS SICC RING"]
+        }
+      ]
+    }
+  },
+
+  "_comment_bin_matrix": "Bin Matrix / BinSplitAnalysis input columns. DLCP and ProgramName are sub-objects; material/speed/ibin come from existing keys above.",
+  "bin_matrix": {
+    "DLCP": {
+      "devRevStepPattern": "DevRevStep_*_CLASSHOT",
+      "dlcpExtractStart":  4,
+      "dlcpExtractLength": 2,
+      "dlcpMap":           {"2V": "UH", "3V": "UL", "4V": "UV"}
+    },
+    "passingQdfPattern": "VA-NA-UNIT-PASSING_QDFS_*_CLASSHOT",
+    "wwPattern":         "LOTS End WW_*_CLASSHOT",
+    "ProgramName": {
+      "programNamePattern": "Program Name_*_CLASSHOT",
+      "tpRevStart":         7,
+      "tpRevLength":        8
+    }
+  }
+}
