@@ -70,8 +70,8 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE        = Path(__file__).resolve().parent
-_REPO_ROOT   = _HERE.parent.parent.parent.parent.parent   # app.yield.nvl/
-_PIPELINE    = _REPO_ROOT / "code" / "dashboard" / "yield-dashboard" / "yld" / "src" / "pipeline.py"
+_REPO_ROOT   = _HERE.parent.parent          # app.dashboard.nvl/
+_PIPELINE    = _REPO_ROOT / "yield-dashboard" / "yld" / "src" / "pipeline.py"
 _COMPARE_RUNS = _HERE / "compare_runs.py"
 _AQUA_CFG   = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard" / "NVL_Sort_Yield - AutoPull.txt"
 
@@ -87,7 +87,7 @@ _AQUA_EXE_AMR = r"\\FMSAPP3301.amr.corp.intel.com\Installer\AquaHbase\AquaCMDCli
 
 _TP_FOLDER    = r"I:\program\1001\prod\hdmtprogs\nvl_ncx_sds"
 _PROD_CFG_DIR = _REPO_ROOT / "shared" / "setup" / "config" / "yield-dashboard"
-_EMAIL_CFG    = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard" / "email_config.json"
+_EMAIL_CFG    = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard" / "yield_setup_config.json"
 _7Z_EXE       = Path(r"C:\Program Files\7-Zip\7z.exe")
 
 

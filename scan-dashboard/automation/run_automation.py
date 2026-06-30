@@ -76,8 +76,8 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE        = Path(__file__).resolve().parent
-_REPO_ROOT   = _HERE.parent.parent.parent.parent.parent   # app.yield.nvl/
-_PIPELINE    = _REPO_ROOT / "code" / "dashboard" / "scan-dashboard" / "src" / "pipeline.py"
+_REPO_ROOT   = _HERE.parent.parent          # app.dashboard.nvl/
+_PIPELINE    = _REPO_ROOT / "scan-dashboard" / "src" / "pipeline.py"
 _AQUA_CFG    = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard" / "NVL_Sort_Scan - Dashboard.txt"
 _YIELD_TGT   = _REPO_ROOT / "shared" / "setup" / "config" / "scan-dashboard" / "yield-estimate-per-fault-count.csv"
 
@@ -91,7 +91,7 @@ _DEFAULT_DAYS = 7
 _AQUA_EXE_GAR = r"\\PGSAPP3301.gar.corp.intel.com\Installer\AquaHbase\AquaCMDClient\Client\AquaCmdLine.exe"
 _AQUA_EXE_AMR = r"\\amr.corp.intel.com\ec\proj\fm\MPD\AQUA\AquaHbase\AquaCMDClient\Client\AquaCmdLine.exe"
 
-_EMAIL_CFG    = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard" / "email_config.json"
+_EMAIL_CFG    = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard" / "scan_setup_config.json"
 _7Z_EXE       = Path(r"C:\Program Files\7-Zip\7z.exe")
 
 _SMTP_SERVER  = "smtpauth.intel.com"

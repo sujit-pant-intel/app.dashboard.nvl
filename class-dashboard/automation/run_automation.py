@@ -63,9 +63,9 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE          = Path(__file__).resolve().parent
-_REPO_ROOT     = _HERE.parent.parent.parent.parent.parent   # app.yield.nvl/
-_DASHBOARD_PY  = _REPO_ROOT / "code" / "dashboard" / "class-dashboard" / "dashboard.py"
-_DASHBOARD_SRC = _REPO_ROOT / "code" / "dashboard" / "class-dashboard" / "src"
+_REPO_ROOT     = _HERE.parent.parent          # app.dashboard.nvl/
+_DASHBOARD_PY  = _REPO_ROOT / "class-dashboard" / "dashboard.py"
+_DASHBOARD_SRC = _REPO_ROOT / "class-dashboard" / "src"
 _AQUA_CFG      = (
     _REPO_ROOT / "shared" / "setup" / "automation" / "class-dashboard"
     / "NVL816-BLLC_Class_forReport.txt"
@@ -73,7 +73,7 @@ _AQUA_CFG      = (
 _PROD_CFG_DIR  = _REPO_ROOT / "shared" / "setup" / "config" / "class-dashboard"
 _EMAIL_CFG     = (
     _REPO_ROOT / "shared" / "setup" / "automation" / "class-dashboard"
-    / "email_config.json"
+    / "class_setup_config.json"
 )
 _7Z_EXE        = Path(r"C:\Program Files\7-Zip\7z.exe")
 
@@ -82,9 +82,8 @@ _BASE_DIR    = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\s
 _EMAIL_TO    = "sujit.n.pant@intel.com"
 _DEFAULT_DAYS = 7
 _DEFAULT_TP_PATTERNS = [
-    "NVLSB63A0H54A0ACX22",
-    "NVLSB63A0H54A0BS622",
-    "NVLSB63A0H54A0CCX22",
+    "NVLSB63A0H54*S*",
+    "NVLS763C0H03*S*",
 ]
 
 _AQUA_EXE_AMR = r"\\amr.corp.intel.com\ec\proj\fm\MPD\AQUA\AquaHbase\AquaCMDClient\Client\AquaCmdLine.exe"
