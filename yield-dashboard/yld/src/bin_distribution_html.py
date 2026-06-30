@@ -1358,12 +1358,16 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '.dlcp-drag{cursor:move;background:#1f618d;color:#fff;padding:8px 14px;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:space-between;user-select:none;flex-shrink:0}\n'
         '.dlcp-body{display:flex;flex-direction:column;flex:1;padding:8px;gap:6px;min-height:0;overflow:hidden}\n'
         '.dlcp-ctrl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;padding:7px 12px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.1);flex-shrink:0}\n'
-        '.dlcp-sumbox{background:#fff;border-radius:6px;padding:6px 14px;box-shadow:0 1px 4px rgba(0,0,0,.1);flex-shrink:0;display:flex;flex-direction:column;gap:4px}\n'
-        '.dlcp-sumrow{display:flex;gap:14px;flex-wrap:wrap;align-items:center}\n'
+        '.dlcp-sumbox{background:transparent;border-radius:0;padding:0;box-shadow:none;flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:stretch}\n'
+        '.dlcp-sum-panel{background:#fff;border-radius:6px;padding:8px 14px;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;flex-direction:column;gap:4px;min-width:0}\n'
+        '.dlcp-sum-panel-ttl{font-size:15px;font-weight:bold;text-transform:uppercase;letter-spacing:.7px;color:#fff;background:#5d6d7e;border-radius:3px;padding:1px 8px;margin-bottom:4px;align-self:flex-start}\n'
+        '.dlcp-sumrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}\n'
         '.dlcp-sum-grp{display:flex;flex-direction:column;padding:4px 14px;border-left:3px solid #dde;min-width:110px}\n'
         '.dlcp-sum-grp.pass{border-color:#2980b9}.dlcp-sum-grp.marg{border-color:#d4ac0d}.dlcp-sum-grp.fail{border-color:#c0392b}\n'
-        '.dlcp-sum-lbl{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}\n'
-        '.dlcp-sum-val{font-size:17px;font-weight:bold;color:#2c3e50}.dlcp-sum-pct{font-size:11px;color:#666;margin-left:4px}\n'
+        '.dlcp-sum-lbl{font-size:17px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}\n'
+        '.dlcp-sum-val{font-size:26px;font-weight:bold;color:#2c3e50}.dlcp-sum-pct{font-size:17px;color:#666;margin-left:4px}\n'
+        '.dlcp-sum-pct-big{font-size:33px;font-weight:bold;line-height:1.1}\n'
+        '.dlcp-sum-sub{font-size:15px;color:#aaa;margin-top:1px}\n'
         '.dlcp-inner{display:flex;gap:0;flex:1;min-height:0}\n'
         '.dlcp-left{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;overflow:hidden}\n'
         '.dlcp-panel-hdr{display:flex;align-items:center;gap:5px;flex-shrink:0}\n'
@@ -4984,21 +4988,30 @@ function _dlcpRenderSummary(tA,tB,tC,tN,medAll,tFF,tDF34,tDF3,tDF4){
   var mTxt=medAll!=null?medAll.toFixed(2)+'%':'\u2014';
   var tIB14=tFF+(tDF3||0)+(tDF4||0); // IB1-4 total for denominator
   // Row 1: totals + HP/LP/Fail
-  var row1='<div class="dlcp-sumrow">'
+  // Panel 1: Overview
+  var row1='<div class="dlcp-sum-panel">'
+    +'<div class="dlcp-sum-panel-ttl" style="background:#34495e">Overview</div>'
+    +'<div class="dlcp-sumrow">'
     +'<div class="dlcp-sum-grp"><div class="dlcp-sum-lbl">Total Die</div><div class="dlcp-sum-val">'+tN+'</div></div>'
     +'<div class="dlcp-sum-grp"><div class="dlcp-sum-lbl">Med UPM%</div><div class="dlcp-sum-val">'+mTxt+'</div></div>'
-    +'<div class="dlcp-sum-grp pass"><div class="dlcp-sum-lbl">HP (IB1/2, UPM\u2265thr)</div><div class="dlcp-sum-val" style="color:#1a5276">'+tA+'<span class="dlcp-sum-pct">'+(tA+tB>0?(tA/(tA+tB)*100).toFixed(1):0)+'% of IB1-4)</span></div></div>'
-    +'<div class="dlcp-sum-grp marg"><div class="dlcp-sum-lbl">LP (IB1-4, below thr)</div><div class="dlcp-sum-val" style="color:#ba6b0a">'+tB+'<span class="dlcp-sum-pct">'+(tA+tB>0?(tB/(tA+tB)*100).toFixed(1):0)+'% of IB1-4)</span></div></div>'
-    +'<div class="dlcp-sum-grp fail"><div class="dlcp-sum-lbl">Fail (IB&gt;4)</div><div class="dlcp-sum-val" style="color:#c0392b">'+tC+'<span class="dlcp-sum-pct">'+(tN>0?(tC/tN*100).toFixed(1):0)+'% of total)</span></div></div>'
-    +'</div>';
-  // Row 2: FF/DF breakdown — FF+DF and FF % denominator = total all dies (tN); others = IB1-4
-  var row2='<div class="dlcp-sumrow">'
-    +'<div class="dlcp-sum-grp" style="border-color:#1a7a4a"><div class="dlcp-sum-lbl">FF+DF (IB1-4)</div><div class="dlcp-sum-val" style="color:#1a7a4a">'+(tIB14||0)+'<span class="dlcp-sum-pct">'+(tN>0?((tIB14||0)/tN*100).toFixed(1):0)+'% of total)</span></div></div>'
-    +'<div class="dlcp-sum-grp" style="border-color:#1e8449"><div class="dlcp-sum-lbl">FF (IB 1,2)</div><div class="dlcp-sum-val" style="color:#1e8449">'+(tFF||0)+'<span class="dlcp-sum-pct">'+(tIB14>0?((tFF||0)/tIB14*100).toFixed(1):0)+'% of IB1-4)</span></div></div>'
-    +'<div class="dlcp-sum-grp" style="border-color:#117a65"><div class="dlcp-sum-lbl">DF (IB 3-4)</div><div class="dlcp-sum-val" style="color:#117a65">'+(tDF34||0)+'<span class="dlcp-sum-pct">'+(tIB14>0?((tDF34||0)/tIB14*100).toFixed(1):0)+'% of IB1-4)</span></div></div>'
-    +'<div class="dlcp-sum-grp" style="border-color:#7d3c98"><div class="dlcp-sum-lbl">ATOM DF (IB 3)</div><div class="dlcp-sum-val" style="color:#7d3c98">'+(tDF3||0)+'<span class="dlcp-sum-pct">'+(tIB14>0?((tDF3||0)/tIB14*100).toFixed(1):0)+'% of IB1-4)</span></div></div>'
-    +'<div class="dlcp-sum-grp" style="border-color:#a04000"><div class="dlcp-sum-lbl">CORE DF (IB 4)</div><div class="dlcp-sum-val" style="color:#a04000">'+(tDF4||0)+'<span class="dlcp-sum-pct">'+(tIB14>0?((tDF4||0)/tIB14*100).toFixed(1):0)+'% of IB1-4)</span></div></div>'
-    +'</div>';
+    +'<div class="dlcp-sum-grp" style="border-color:#1a7a4a"><div class="dlcp-sum-lbl">FF+DF (IB1-4) Yield</div><div class="dlcp-sum-pct-big" style="color:#1a7a4a">'+(tN>0?((tIB14||0)/tN*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+(tIB14||0)+' \u00b7 of total</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#1e8449"><div class="dlcp-sum-lbl">FF (IB 1,2) Yield</div><div class="dlcp-sum-pct-big" style="color:#1e8449">'+(tN>0?((tFF||0)/tN*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+(tFF||0)+' \u00b7 of total</div></div>'
+    +'<div class="dlcp-sum-grp fail"><div class="dlcp-sum-lbl">Fail (IB&gt;4)</div><div class="dlcp-sum-pct-big" style="color:#c0392b">'+(tN>0?(tC/tN*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+tC+' \u00b7 of total</div></div>'
+    +'</div></div>';
+  // Panel 2: DLCP Split + FF/DF rows
+  var row2='<div class="dlcp-sum-panel">'
+    +'<div class="dlcp-sum-panel-ttl" style="background:#1a5276">DLCP Split</div>'
+    +'<div class="dlcp-sumrow">'
+    +'<div class="dlcp-sum-grp pass"><div class="dlcp-sum-lbl">HP (IB1/2, UPM\u2265thr)</div><div class="dlcp-sum-pct-big" style="color:#1a5276">'+(tA+tB>0?(tA/(tA+tB)*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+tA+' \u00b7 of IB1-4</div></div>'
+    +'<div class="dlcp-sum-grp marg"><div class="dlcp-sum-lbl">LP (IB1-4, below thr)</div><div class="dlcp-sum-pct-big" style="color:#ba6b0a">'+(tA+tB>0?(tB/(tA+tB)*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+tB+' \u00b7 of IB1-4</div></div>'
+    +'</div>'
+    +'<div style="font-size:13px;font-weight:bold;color:#555;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 3px 4px;border-bottom:1px solid #e0e0e0;padding-bottom:3px">FF/DF Breakdown</div>'
+    +'<div class="dlcp-sumrow">'
+    +'<div class="dlcp-sum-grp" style="border-color:#1e8449"><div class="dlcp-sum-lbl" style="font-size:13px">FF (IB 1,2)</div><div class="dlcp-sum-pct-big" style="color:#1e8449;font-size:26px">'+(tIB14>0?((tFF||0)/tIB14*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub" style="font-size:12px">N='+(tFF||0)+' \u00b7 of IB1-4</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#117a65"><div class="dlcp-sum-lbl" style="font-size:13px">DF (IB 3-4)</div><div class="dlcp-sum-pct-big" style="color:#117a65;font-size:26px">'+(tIB14>0?((tDF34||0)/tIB14*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub" style="font-size:12px">N='+(tDF34||0)+' \u00b7 of IB1-4</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#7d3c98"><div class="dlcp-sum-lbl" style="font-size:13px">ATOM DF (IB 3)</div><div class="dlcp-sum-pct-big" style="color:#7d3c98;font-size:26px">'+(tIB14>0?((tDF3||0)/tIB14*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub" style="font-size:12px">N='+(tDF3||0)+' \u00b7 of IB1-4</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#a04000"><div class="dlcp-sum-lbl" style="font-size:13px">CORE DF (IB 4)</div><div class="dlcp-sum-pct-big" style="color:#a04000;font-size:26px">'+(tIB14>0?((tDF4||0)/tIB14*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub" style="font-size:12px">N='+(tDF4||0)+' \u00b7 of IB1-4</div></div>'
+    +'</div></div>';
   sb.innerHTML=row1+row2;
 }
 var _dlcpFltVals={}; // {colIdx: filterText}
@@ -5449,14 +5462,13 @@ function _dlcpRenderCdf(){
   var ly=MT+8;
   var ib14=ff.length+df.length,tot=hp.length+lp.length;
   function lgPct(n,d){return d>0?(n/d*100).toFixed(1)+'%':'0%';}
-  ctx.fillStyle='#2980b9';ctx.fillRect(ML,ly,22,3);ctx.fillStyle='#2c3e50';ctx.font='11px Arial';ctx.textAlign='left';ctx.fillText('HP n='+hp.length+' ('+lgPct(hp.length,ib14)+' of IB1-4)',ML+26,ly+4);
-  ctx.fillStyle='#e67e22';ctx.fillRect(ML+210,ly,22,3);ctx.fillText('LP n='+lp.length+' ('+lgPct(lp.length,ib14)+' of IB1-4)',ML+236,ly+4);
+  function drawLgEntry(x,y,lineCol,lineDash,pctTxt,nTxt,pctCol){if(lineDash){ctx.save();ctx.strokeStyle=lineCol;ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.beginPath();ctx.moveTo(x,y+2);ctx.lineTo(x+22,y+2);ctx.stroke();ctx.restore();}else{ctx.fillStyle=lineCol;ctx.fillRect(x,y+1,22,3);}ctx.font='bold 12px Arial';ctx.fillStyle=pctCol||lineCol;ctx.textAlign='left';ctx.fillText(pctTxt,x+26,y+8);var pw=ctx.measureText(pctTxt).width;ctx.font='10px Arial';ctx.fillStyle='#aaa';ctx.fillText(' '+nTxt,x+26+pw,y+8);}
+  drawLgEntry(ML,ly,'#2980b9',false,lgPct(hp.length,ib14),'HP  n='+hp.length,'#2980b9');
+  drawLgEntry(ML+210,ly,'#e67e22',false,lgPct(lp.length,ib14),'LP  n='+lp.length,'#e67e22');
   // Legend row 2: FF, DF (dashed)
-  var ly2=ly+14;
-  ctx.save();ctx.strokeStyle='#27ae60';ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.beginPath();ctx.moveTo(ML,ly2+1);ctx.lineTo(ML+22,ly2+1);ctx.stroke();ctx.restore();
-  ctx.fillStyle='#2c3e50';ctx.font='11px Arial';ctx.textAlign='left';ctx.fillText('FF IB1,2 n='+ff.length+' ('+lgPct(ff.length,ib14)+' of IB1-4)',ML+26,ly2+4);
-  ctx.save();ctx.strokeStyle='#8e44ad';ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.beginPath();ctx.moveTo(ML+210,ly2+1);ctx.lineTo(ML+232,ly2+1);ctx.stroke();ctx.restore();
-  ctx.fillText('DF IB3,4 n='+df.length+' ('+lgPct(df.length,ib14)+' of IB1-4)',ML+236,ly2+4);
+  var ly2=ly+16;
+  drawLgEntry(ML,ly2,'#27ae60',true,lgPct(ff.length,ib14),'FF IB1,2  n='+ff.length,'#27ae60');
+  drawLgEntry(ML+210,ly2,'#8e44ad',true,lgPct(df.length,ib14),'DF IB3,4  n='+df.length,'#8e44ad');
 }
 function _dlcpRender(){
   _dlcpRenderTable();
