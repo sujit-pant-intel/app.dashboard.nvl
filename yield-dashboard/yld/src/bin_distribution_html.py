@@ -5389,11 +5389,15 @@ function _dlcpRenderTable(){
   tb.innerHTML=html;
   _dlcpBuildFilterRow();
   // do NOT re-apply text filter here; dropdown filter applied during render
+  // Build set of visible+selected row keys from rendered table (respects ALL filters)
+  var visKeys=new Set();
+  var tbEl=document.getElementById('dlcp-tb');
+  if(tbEl){var trs=tbEl.getElementsByTagName('tr');for(var vi=0;vi<trs.length;vi++){if(trs[vi].style.display!=='none'){var vk=trs[vi].getAttribute('data-key');if(vk&&!_dlcpDesel.has(vk))visKeys.add(vk);}}}
   var uI=(DATA.upmStart||5)+_dlcpUi;
   sR.forEach(function(ri){
     var row=DATA.rows[ri];if(!row||!row.dies)return;
     var k=_dlcpRowKey(row.lot||'',row.wafer||'');
-    if(!_dlcpIsRowSel(k))return;
+    if(!visKeys.has(k))return;
     row.dies.forEach(function(d){var up=d.length>uI?d[uI]:null;if(up!=null)allUv.push(up);});
   });
   allUv.sort(function(a,b){return a-b;});

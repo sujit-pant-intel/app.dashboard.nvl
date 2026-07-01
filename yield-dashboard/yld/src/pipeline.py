@@ -487,11 +487,11 @@ if __name__ == '__main__':
 
                     if _mat_frames:
                         _mat_lookup = (_mpd_mat.concat(_mat_frames, ignore_index=True)
-                                       .drop_duplicates(subset=['_m_lot7', '_m_wafer'], keep='last'))
+                                       .drop_duplicates(subset=['_m_lot7', '_m_wafer'], keep='first'))
                         # Split into precise (lot+wafer) and wildcard (lot-only, no WaferID) rows
                         _lkp_w  = _mat_lookup[_mat_lookup['_m_wafer'].notna()]
                         _lkp_lo = (_mat_lookup[_mat_lookup['_m_wafer'].isna()]
-                                   .drop_duplicates(subset=['_m_lot7'], keep='last'))
+                                   .drop_duplicates(subset=['_m_lot7'], keep='first'))
                         # Save existing material values to restore after merge
                         _orig_mat = _mdf['Material'].copy() if 'Material' in _mdf.columns else None
                         # Drop the stale Material column before merging
