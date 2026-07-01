@@ -614,18 +614,25 @@ def _build_vmin_pass_table(
               else:
                 continue
 
-              meta  = unit_meta.get(ukey, [None, None, None, None, None])
-              avg_v = round(sum(dcm_vals.values()) / n, 3)
-              row = [unit_pkg.get(ukey, ukey), meta[0], meta[1], meta[2], meta[3], avg_v, meta[4], unit_mat.get(ukey), unit_prog.get(ukey)]
-              # row format: [pkg, lot, wafer, x, y, avg_vmin, upm_pct, mat, prog6248]
-              _priority_bins[bucket].append(row)
+              meta     = unit_meta.get(ukey, [None, None, None, None, None])
+              _sorted_v = sorted(dcm_vals.values())  # ascending: [best, ..., worst]
+              _pfx  = [unit_pkg.get(ukey, ukey), meta[0], meta[1], meta[2], meta[3]]
+              _sfx  = [meta[4], unit_mat.get(ukey), unit_prog.get(ukey)]
+              # row[5] = Nth-smallest DCM vmin for bucket N:
+              #   nKey=4 → sorted[3] = max (ALL 4 DCMs must pass threshold)
+              #   nKey=2 → sorted[1] = 2nd-smallest (AT LEAST 2 DCMs must pass)
+              #   nKey=1 → sorted[0] = min
+              def _nth_v(target_n, sv=_sorted_v):
+                  return round(sv[min(target_n - 1, len(sv) - 1)], 3)
+              # row format: [pkg, lot, wafer, x, y, nth_vmin, upm_pct, mat, prog6248]
+              _priority_bins[bucket].append(_pfx + [_nth_v(bucket)] + _sfx)
               if bucket == 4 and not is_atom:
-                _priority_bins[2].append(row)
+                _priority_bins[2].append(_pfx + [_nth_v(2)] + _sfx)
               elif is_atom and bucket == 4:
-                _priority_bins[3].append(row)
-                _priority_bins[2].append(row)
+                _priority_bins[3].append(_pfx + [_nth_v(3)] + _sfx)
+                _priority_bins[2].append(_pfx + [_nth_v(2)] + _sfx)
               elif is_atom and bucket == 3:
-                _priority_bins[2].append(row)
+                _priority_bins[2].append(_pfx + [_nth_v(2)] + _sfx)
 
             freq_groups: dict = {}
             dcm_order = [4, 3, 2, 1] if is_atom else [4, 2, 1]
@@ -633,7 +640,7 @@ def _build_vmin_pass_table(
                 g = _priority_bins[n_dcm]
                 if not g:
                     continue
-                vmins = [r[5] for r in g]  # r[5] = avg_vmin
+                vmins = [r[5] for r in g]  # r[5] = max_vmin (worst-case DCM)
                 sv    = sorted(vmins)
                 mid   = len(sv) // 2
                 med   = sv[mid] if len(sv) % 2 == 1 else (sv[mid - 1] + sv[mid]) / 2
@@ -3142,6 +3149,7 @@ var _FLOW_UPM_PCT_RANGE = {{}};
 var _FLOW_UPM_PCT_MIN = 75;
 var _FLOW_UPM_PCT_MAX = 110;
 var _FLOW_PASS_VMIN_RULE = {{}};
+var _FLOW_PASS_AUTODOWNFLOW = {{}};  // per-module: {{mod: true/false}}
 var _FLOW_SUMMARY_SHOW_TABLE = true;
 var _FLOW_SUMMARY_OVERLAY_ALL = false;
 var _FLOW_SUMMARY_PLOT_SEL = {{}};
@@ -3149,9 +3157,11 @@ var _FLOW_SUMMARY_CARD_VIS = {{}};
 var _FLOW_SUMMARY_GROUP_MODE = 'module';
 var _FLOW_SUMMARY_NORMALIZE_UPM = false;
 var _FLOW_SUMMARY_NORMALIZE_UPM_PCT = 94.0;
+var _FLOW_SUMMARY_PLOT_COLLAPSED = true;
+var _FLOW_SUMMARY_PLOT_COLLAPSED = true;  // default minimized
 var _FLOW_VF_FAM = {{}};
 var _FLOW_VF_SER = {{}};
-var _FLOW_CARDS_H = 500;
+var _FLOW_CARDS_H = Math.round(window.innerHeight * 0.85);
 var _FLOW_SUMMARY_W = 310;
 var _FLOW_SUMMARY_H = 310;
 var _FLOW_CARD_MIN_W = 440;
@@ -3566,11 +3576,13 @@ function _flowAdjustedPassTable(mod){{
           // Key by prog+lot+wafer+pkg so each program's unit is tracked
           // independently — prevents cross-program merging that inflates counts.
           var unitKey=String(row[8]||'')+'\x7c'+String(row[1]||'')+'\x7c'+String(row[2]||'')+'\x7c'+String(pkg);
-          if(!_pkgD[unitKey]) _pkgD[unitKey]={{pkg:pkg,nKeys:{{}},hIdx:idx,vmins:{{}},rows:{{}}}};
+          if(!_pkgD[unitKey]) _pkgD[unitKey]={{pkg:pkg,nKeys:{{}},hIdx:idx,vmins:{{}},vmins_nk:{{}},rows:{{}}}};
           if(!_pkgD[unitKey].rows[nKey]) _pkgD[unitKey].rows[nKey]={{}};
           _pkgD[unitKey].rows[nKey][fmhz]=row;
           _pkgD[unitKey].nKeys[nKey]=1;
-          if(_pkgD[unitKey].vmins[fmhz]===undefined) _pkgD[unitKey].vmins[fmhz]=row[5]; // prefer high nKey
+          if(_pkgD[unitKey].vmins[fmhz]===undefined) _pkgD[unitKey].vmins[fmhz]=row[5]; // prefer high nKey (population median)
+          if(!_pkgD[unitKey].vmins_nk[nKey]) _pkgD[unitKey].vmins_nk[nKey]={{}};
+          _pkgD[unitKey].vmins_nk[nKey][fmhz]=row[5]; // per-nKey vmin for independent rolldown
           if(idx<_pkgD[unitKey].hIdx) _pkgD[unitKey].hIdx=idx;
         }});
       }});
@@ -3617,24 +3629,44 @@ function _flowAdjustedPassTable(mod){{
         var _hRow=_nkRows[hFmhz];
         if(!_hRow){{var _fks=Object.keys(_nkRows);_hRow=_fks.length?_nkRows[_fks[0]]:null;}}
         if(!_hRow) return; // no row for this nKey at all — skip
-        for(var fi=destIdx;fi<freqKeys.length;fi++){{
+        // Use per-nKey vmin for rolldown: nKey=2 uses 2nd-smallest DCM vmin,
+        // nKey=4 uses max — so each nKey group rolls down independently.
+        var _vminsNK = (ud.vmins_nk&&ud.vmins_nk[nKey]) || ud.vmins;
+        var hVminNK = _vminsNK[hFmhz];
+        var destIdxNK=hIdx, srcLblNK=null, destVminNK=hVminNK;
+        if(hVminNK!==null&&hVminNK!==undefined&&hVminNK===hVminNK&&hVminNK>st.thresh){{
+          srcLblNK=(srcFreq[String(hFmhz)]&&srcFreq[String(hFmhz)].freq_label)||(hFmhz/1000+'G');
+          var _mH2=_medByFreq[hFmhz];
+          for(var ti2=hIdx+1;ti2<freqKeys.length;ti2++){{
+            var lv2=_vminsNK[freqKeys[ti2]];
+            if((lv2===undefined||lv2===null||lv2!==lv2)&&_mH2!==undefined){{
+              var _mT2=_medByFreq[freqKeys[ti2]];
+              if(_mT2!==undefined) lv2=hVminNK+(_mT2-_mH2);
+            }}
+            if(lv2!==undefined&&lv2!==null&&lv2===lv2&&lv2<=st.thresh){{destIdxNK=ti2;destVminNK=lv2;break;}}
+          }}
+          if(destIdxNK===hIdx) destIdxNK=freqKeys.length-1;
+        }}
+        // Passing units (destIdxNK===hIdx) carried to lower freqs only with auto-downflow.
+        // Rolled units (destIdxNK>hIdx) always carry from landing freq downward.
+        var _fiMax = (destIdxNK===hIdx && !_FLOW_PASS_AUTODOWNFLOW[mod]) ? hIdx+1 : freqKeys.length;
+        for(var fi=destIdxNK;fi<_fiMax;fi++){{
           var fmhz2=freqKeys[fi];
           var dst=out.freq_data[String(fmhz2)];
           if(!dst.groups[nKey]) dst.groups[nKey]={{rows:[],rolledSrcs:{{}}}};
           if(!dst.groups[nKey].rolledSrcs) dst.groups[nKey].rolledSrcs={{}};
           var _rowToPush;
           if(_nkRows[fmhz2]){{
-            _rowToPush=_nkRows[fmhz2]; // real measured row for this nKey at this freq
-          }} else if(fi===destIdx&&srcLbl){{
-            // No real row at landing freq — clone best row with destVmin (≤ threshold)
+            _rowToPush=_nkRows[fmhz2];
+          }} else if(fi===destIdxNK&&srcLblNK){{
             _rowToPush=_hRow.slice();
-            _rowToPush[5]=Math.round(destVmin*1000)/1000;
+            _rowToPush[5]=Math.round(destVminNK*1000)/1000;
           }} else {{
-            _rowToPush=_hRow; // cumulative carry-down fallback
+            _rowToPush=_hRow;
           }}
           dst.groups[nKey].rows.push(_rowToPush);
-          if(fi===destIdx&&srcLbl&&destIdx!==hIdx){{
-            dst.groups[nKey].rolledSrcs[pkg]=srcLbl; // tag pkg → source freq label
+          if(fi===destIdxNK&&srcLblNK&&destIdxNK!==hIdx){{
+            dst.groups[nKey].rolledSrcs[pkg]=srcLblNK; // tag pkg → source freq label
           }}
         }}
       }});
@@ -3648,6 +3680,35 @@ function _flowAdjustedPassTable(mod){{
           if(!dst.groups[nKey]) dst.groups[nKey]={{rows:[],rolledSrcs:{{}}}};
           dst.groups[nKey].rows.push(row);
         }});
+      }});
+    }});
+  }}
+
+  // Auto-downflow: units that pass at a higher frequency are assumed to also
+  // pass at all lower frequencies. Walk from highest to lowest freq, carrying
+  // a cumulative union of rows (keyed by prog+pkg) into each lower freq group.
+  // Works regardless of whether roll-down is also enabled. Per-module toggle.
+  if(_FLOW_PASS_AUTODOWNFLOW[mod]){{
+    var _nKeySet = new Set();
+    freqKeys.forEach(function(fmhz){{
+      var fd_ = out.freq_data[String(fmhz)];
+      if(fd_) Object.keys(fd_.groups||{{}}).forEach(function(nk){{_nKeySet.add(nk);}});
+    }});
+    _nKeySet.forEach(function(nKey){{
+      // Build running accumulated rows (prog+pkg → row) from high→low
+      var accumulated = {{}};  // prog+pkg key → row
+      freqKeys.forEach(function(fmhz){{
+        var fd_ = out.freq_data[String(fmhz)];
+        if(!fd_) return;
+        if(!fd_.groups[nKey]) fd_.groups[nKey] = {{rows:[], rolledSrcs:{{}}}};
+        var grp_ = fd_.groups[nKey];
+        // Add new rows from this freq into the accumulator
+        (grp_.rows||[]).forEach(function(row){{
+          var k = String(row[8]||'')+'|'+String(row[0]||'');
+          if(!accumulated[k]) accumulated[k] = row;
+        }});
+        // Always rebuild rows as the full deduplicated union so far
+        grp_.rows = Object.keys(accumulated).map(function(k){{ return accumulated[k]; }});
       }});
     }});
   }}
@@ -3666,6 +3727,11 @@ function _flowAdjustedPassTable(mod){{
     }});
   }});
   return out;
+}}
+
+function _flowToggleAutoDownflow(mod, on){{
+  _FLOW_PASS_AUTODOWNFLOW[mod] = !!on;
+  buildFlowTab();
 }}
 
 function _renderFlowFreqMedianXY(mod){{
@@ -3970,9 +4036,18 @@ function _flowToggleTablesAll(on){{
   }});
 }}
 
+function _flowToggleSummaryPlot(){{
+  _FLOW_SUMMARY_PLOT_COLLAPSED = !_FLOW_SUMMARY_PLOT_COLLAPSED;
+  var body  = document.getElementById('flow-summary-plot-body');
+  var arrow = document.getElementById('flow-summary-plot-arrow');
+  if(body)  body.style.display  = _FLOW_SUMMARY_PLOT_COLLAPSED ? 'none' : 'block';
+  if(arrow) arrow.innerHTML     = _FLOW_SUMMARY_PLOT_COLLAPSED ? '&#9660;' : '&#9650;';
+  if(!_FLOW_SUMMARY_PLOT_COLLAPSED) _renderFlowSummaryPlot(Object.keys(FLOW_DATA||{{}}));
+}}
+
 function _flowToggleSummaryOverlay(on){{
   _FLOW_SUMMARY_OVERLAY_ALL = !!on;
-  _renderFlowSummaryPlot(_flowSortMods(Object.keys(FLOW_DATA||{{}})));
+  if(!_FLOW_SUMMARY_PLOT_COLLAPSED) _renderFlowSummaryPlot(_flowSortMods(Object.keys(FLOW_DATA||{{}})));
 }}
 
 function _flowToggleSummaryMod(mod,on){{
@@ -4184,6 +4259,7 @@ function buildFlowTab(){{
   }}
   html += '</div>';
 
+  if(!_FLOW_CARDS_H || _FLOW_CARDS_H < 200) _FLOW_CARDS_H = Math.round(window.innerHeight * 0.85);
   html += '<div id="flow-cards-section" style="height:'+_FLOW_CARDS_H+'px;overflow-y:auto;overflow-x:auto;border:1px solid #dbe7f4;border-radius:6px 6px 0 0;margin-top:0">';
   html += '<div id="flow-panels-wrap" style="padding:0;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">';
   mods.forEach(function(mod, mi){{
@@ -4308,10 +4384,11 @@ function buildFlowTab(){{
       var _isCcf = /ccf/i.test(mod) || /ring/i.test(mod);
       var _isAtom = /atom/i.test(mod);
       var _grpUnit = _isAtom ? 'ATOM' : (_isCcf ? 'CCF' : 'DCM');
-      var _dcmLabel=_isAtom ? {{4:'4 ATOM (all pass)',3:'3 ATOM (&#8805;3, incl 4)',2:'2 ATOM (&#8805;2, incl 3/4)',1:'Reset'}} : {{4:'4 '+_grpUnit+' (all pass)',2:'2 '+_grpUnit+' (&#8805;2, excl 4)',1:(_isCcf?'CCF pass':'Reset')}};
+      var _dcmLabel=_isAtom ? {{4:'4 ATOM (all pass)',3:'3 ATOM (&#8805;3, incl 4)',2:'2 ATOM (&#8805;2, incl 3/4)',1:'Reset'}} : {{4:'4 '+_grpUnit+' (all pass)',2:'2 '+_grpUnit+' (&#8805;2, incl 4)',1:(_isCcf?'CCF pass':'Reset')}};
       var _dcmColors=_isAtom ? {{4:'#1a4a7a',3:'#2563eb',2:'#2e7d32',1:'#c62828'}} : {{4:'#1a4a7a',2:'#2e7d32',1:'#c62828'}};
       var _passCols = _isCcf ? [1] : (_isAtom ? [4,3,2] : [4,2]);
-      html += '<div style="font-weight:bold;font-size:12px;color:#1a4a7a;margin-bottom:8px">'+_grpUnit+' Pass Summary <span style="font-weight:normal;font-size:10px;color:#888">(cumulative bins: higher-pass units also appear in lower qualifying bins)</span></div>';
+      html += '<div style="font-weight:bold;font-size:12px;color:#1a4a7a;margin-bottom:6px">'+_grpUnit+' Pass Summary <span style="font-weight:normal;font-size:10px;color:#888">(cumulative bins: higher-pass units also appear in lower qualifying bins)</span></div>';
+      html += '<div style="margin-bottom:8px"><label style="font-size:11px;color:#2c3e50;display:inline-flex;align-items:center;gap:5px;cursor:pointer" title="When enabled, units passing at a higher frequency are automatically counted as passing at all lower frequencies"><input id="flow-pass-autodownflow-cb-'+idSafe+'" type="checkbox" '+((_FLOW_PASS_AUTODOWNFLOW[mod])?'checked':'')+' onchange="_flowToggleAutoDownflow(\\''+modArg+'\\',this.checked)" style="width:13px;height:13px;accent-color:#27ae60"> Enable auto-downflow <span style="color:#888;font-size:10px">(pass high freq \u2192 assume pass lower freq)</span></label></div>';
       html += '<table style="border-collapse:collapse;font-size:12px;min-width:300px">';
       html += '<thead>';
       html += '<tr>';
@@ -4427,9 +4504,10 @@ function buildFlowTab(){{
   html += '<div data-flow-trh="1" style="height:8px;cursor:ns-resize;background:#d0deef;border-left:1px solid #dbe7f4;border-right:1px solid #dbe7f4;display:flex;align-items:center;justify-content:center;user-select:none">'+
           '<span style="font-size:9px;color:#90a4ae;pointer-events:none">&#9776;</span></div>';
   html += '<div style="padding:10px;border:1px solid #dbe7f4;border-radius:0 0 6px 6px;border-top:none;background:#fbfdff">'+
-          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">'+
+          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">'+
+          '<button onclick="_flowToggleSummaryPlot()" id="flow-summary-plot-arrow" title="Expand/collapse summary plot" style="border:none;background:#e8f0fa;cursor:pointer;font-size:11px;color:#1a4a7a;padding:2px 6px;border-radius:3px;line-height:1">'+(_FLOW_SUMMARY_PLOT_COLLAPSED?'&#9660;':'&#9650;')+'</button>'+
           '<span style="font-weight:bold;font-size:12px;color:#1a4a7a">Summary Frequency vs Vmin Median</span>'+
-          '<span style="font-size:11px;color:#5d6d7e;margin-left:8px">Plot modules:</span>'+
+          '<span style="font-size:11px;color:#5d6d7e;margin-left:4px">Plot modules:</span>'+
           '<span id="flow-mod-selectors" style="display:flex;gap:8px;flex-wrap:wrap"></span>'+
           '<span style="width:1px;background:#cfdced;align-self:stretch;margin:0 4px"></span>'+
           '<label style="font-size:11px;color:#2c3e50;display:flex;align-items:center;gap:4px"><input id="flow-group-by-mat-cb" type="checkbox" '+(_FLOW_SUMMARY_GROUP_MODE==='material'?'checked':'')+' onchange="_flowSetSummaryGroupMode(this.checked?\\'material\\':\\'module\\')" style="width:13px;height:13px;accent-color:#3498db">By material</label>'+
@@ -4437,10 +4515,12 @@ function buildFlowTab(){{
           '<label style="font-size:11px;color:#2c3e50;display:flex;align-items:center;gap:4px"><input id="flow-normalize-upm-cb" type="checkbox" '+(_FLOW_SUMMARY_NORMALIZE_UPM?'checked':'')+' onchange="_flowSetNormalizeUpm(this.checked,+document.getElementById(\\'flow-normalize-upm-pct\\').value)" style="width:13px;height:13px;accent-color:#8e44ad">Norm to UPM%</label>'+
           '<input id="flow-normalize-upm-pct" type="number" min="70" max="115" step="0.5" value="'+_FLOW_SUMMARY_NORMALIZE_UPM_PCT+'" '+(!_FLOW_SUMMARY_NORMALIZE_UPM?'disabled':'')+' onchange="_flowSetNormalizeUpm(document.getElementById(\\'flow-normalize-upm-cb\\').checked,+this.value)" style="width:62px;padding:1px 4px;font-size:11px;border:1px solid #c5d5ea;border-radius:3px">'+
           '</div>'+
+          '<div id="flow-summary-plot-body" style="display:'+(_FLOW_SUMMARY_PLOT_COLLAPSED?'none':'block')+'">'+
           '<div id="flow-vf-controls-row" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;padding:4px 0">'+
           _buildVfControlsHtml()+
           '</div>'+
           '<div id="flow-summary-plot-slot"></div>'+
+          '</div>'+
           '</div>';
   html += '</div>';
   _safeInnerHTML(body, html);
@@ -4471,7 +4551,7 @@ function buildFlowTab(){{
   }}
   _flowToggleTablesAll(_FLOW_SUMMARY_SHOW_TABLE);
   _flowToggleSummaryOverlay(_FLOW_SUMMARY_OVERLAY_ALL);
-  _renderFlowSummaryPlot(mods);
+  if(!_FLOW_SUMMARY_PLOT_COLLAPSED) _renderFlowSummaryPlot(mods);
 }}
 
 function _flowChartPassLabel(mod, nDcm){{
@@ -4486,7 +4566,7 @@ function _flowChartPassLabel(mod, nDcm){{
     return String(nDcm)+' CCF';
   }}
   if(nDcm===4) return 'Premium (4/4 DCM)';
-  if(nDcm===2) return '2 DCM (>=2, excl 4)';
+  if(nDcm===2) return '2 DCM (>=2, incl 4)';
   if(nDcm===1) return 'Reset';
   return String(nDcm)+' pass';
 }}

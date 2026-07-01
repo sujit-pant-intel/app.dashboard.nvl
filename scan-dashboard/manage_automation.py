@@ -1359,37 +1359,19 @@ class AutomationManager(tk.Frame):
             messagebox.showerror("Error", str(e))
 
     def _sched_run_now(self) -> None:
-        import subprocess as _sp
+        import sys as _sys, subprocess as _sp
         if not messagebox.askyesno("Run Now",
                                    f'Start "{_TASK_NAME}" immediately?\n\n'
-                                   "This kicks off a full AQUA pull + pipeline run."):
+                                   "This kicks off a full AQUA pull + pipeline run.\n"
+                                   "A console window will open showing live progress."):
             return
+        script = str(_HERE / "automation" / "run_automation.py")
         try:
-            r = _sp.run(["schtasks", "/run", "/tn", _TASK_NAME],
-                        capture_output=True, text=True, timeout=10)
-            if r.returncode == 0:
-                self._sched_status.set("Task started (running in background).")
-            else:
-                # Check if the task exists at all
-                q = _sp.run(["schtasks", "/query", "/tn", _TASK_NAME],
-                            capture_output=True, text=True, timeout=10)
-                if q.returncode != 0:
-                    if messagebox.askyesno(
-                        "Task not found",
-                        f'Scheduled task "{_TASK_NAME}" does not exist yet.\n\n'
-                        "Create it now using the current Python environment?",
-                    ):
-                        self._sched_create()
-                else:
-                    # Task exists but /run failed — stale executable path or permission issue
-                    raw = r.stderr.strip() or r.stdout.strip()
-                    if messagebox.askyesno(
-                        "schtasks /run failed",
-                        f"{raw}\n\n"
-                        "The task may have a stale Python path.\n"
-                        "Re-create it now to fix the executable path?",
-                    ):
-                        self._sched_create()
+            _sp.Popen(
+                [_sys.executable, script],
+                creationflags=_sp.CREATE_NEW_CONSOLE,
+            )
+            self._sched_status.set("Started in new console window.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 

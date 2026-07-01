@@ -1124,20 +1124,19 @@ class AutomationManager(tk.Frame):
         self._btn(top_bar, "✕ Close", dlg.destroy, fg=FG_DIM).pack(side="left")
 
     def _sched_run_now(self) -> None:
+        import sys as _sys
         if not messagebox.askyesno("Run Now",
                                    f'Start "{_TASK_NAME}" immediately?\n\n'
-                                   'This kicks off a full AQUA pull + pipeline run.'):
+                                   'This kicks off a full AQUA pull + pipeline run.\n'
+                                   'A console window will open showing live progress.'):
             return
+        script = str(_HERE / "automation" / "run_automation.py")
         try:
-            r = _sp.run(["schtasks", "/run", "/tn", _TASK_NAME],
-                        capture_output=True, text=True, timeout=10)
-            if r.returncode == 0:
-                self._sched_status.set("Task started (running in background).")
-            else:
-                msg = r.stderr.strip() or r.stdout.strip()
-                messagebox.showerror(
-                    "schtasks /run failed",
-                    msg or "Task not found — create it first.")
+            _sp.Popen(
+                [_sys.executable, script],
+                creationflags=_sp.CREATE_NEW_CONSOLE,
+            )
+            self._sched_status.set("Started in new console window.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
