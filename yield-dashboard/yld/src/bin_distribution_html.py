@@ -1364,7 +1364,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '.dlcp-sumrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}\n'
         '.dlcp-sum-grp{display:flex;flex-direction:column;padding:4px 14px;border-left:3px solid #dde;min-width:110px}\n'
         '.dlcp-sum-grp.pass{border-color:#2980b9}.dlcp-sum-grp.marg{border-color:#d4ac0d}.dlcp-sum-grp.fail{border-color:#c0392b}\n'
-        '.dlcp-sum-lbl{font-size:17px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}\n'
+        '.dlcp-sum-lbl{font-size:17px;color:#000;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}\n'
         '.dlcp-sum-val{font-size:26px;font-weight:bold;color:#2c3e50}.dlcp-sum-pct{font-size:17px;color:#666;margin-left:4px}\n'
         '.dlcp-sum-pct-big{font-size:33px;font-weight:bold;line-height:1.1}\n'
         '.dlcp-sum-sub{font-size:15px;color:#aaa;margin-top:1px}\n'
