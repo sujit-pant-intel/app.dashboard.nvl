@@ -1565,10 +1565,13 @@ function _renderFbChart(){
   /* Compute checked-FB total for title */
   var chkTotal=0;
   fbKeys.forEach(function(fb){if(_fbChecked.has(fb))chkTotal+=(fbTotals[fb]||0);});
-  var titleSuffix=(_fbChecked.size<fbKeys.length)?' \u2014 '+_fbChecked.size+'/'+fbKeys.length+' FBs selected':'';
+  var chkIbPct=ibTotal>0?chkTotal/ibTotal*100:0;
+  var chkFailPct=allTot>0?chkTotal/allTot*100:0;
+  var titleSuffix=(_fbChecked.size<fbKeys.length)?' \u2014 '+_fbChecked.size+'/'+fbKeys.length+' FBs':'';
+  var titlePcts=' \u2502 '+chkIbPct.toFixed(1)+'% of IB \u2502 '+chkFailPct.toFixed(2)+'% fail';
   document.getElementById('fb-modal-title').textContent=
     'Interface Bin '+_fbModalIb+(ibCat?' ['+ibCat+']':'')+
-    ' \u2014 Functional Bin Breakdown ('+chkTotal.toLocaleString()+' / '+ibTotal.toLocaleString()+' die)'+titleSuffix;
+    ' \u2014 Functional Bin Breakdown ('+chkTotal.toLocaleString()+' / '+ibTotal.toLocaleString()+' die'+titlePcts+')'+titleSuffix;
   /* Render SVG bar chart — only checked FBs, bars resize based on selection */
   var svg=document.getElementById('fb-chart');
   /* Filter to only checked FBs for chart (up to 30) */
@@ -1618,14 +1621,27 @@ function _renderFbChart(){
   /* Render table — unchecked rows dimmed */
   var tbody=document.getElementById('fb-modal-tbody');
   var html='';
+  var tblSelCount=0;
   fbKeys.forEach(function(fb){
     var cnt=fbTotals[fb];
     var pct=ibTotal>0?cnt/ibTotal*100:0;
     var fbi=fbDesc[fb]||{};
     var fbFP=allTot>0?cnt/allTot*100:0;
     var op=_fbChecked.has(fb)?'':'opacity:0.3;';
+    if(_fbChecked.has(fb))tblSelCount+=cnt;
     html+='<tr style="'+op+'"><td>FB'+fb+'</td><td>'+esc(ibCat)+'</td><td>'+esc(fbi.desc||'')+'</td><td class="num">'+cnt.toLocaleString()+'</td><td class="num">'+pct.toFixed(1)+'%</td><td class="num">'+fbFP.toFixed(2)+'%</td></tr>';
   });
+  /* Total row for selected FBs */
+  if(fbKeys.length>1){
+    var tblSelIbPct=ibTotal>0?tblSelCount/ibTotal*100:0;
+    var tblSelFailPct=allTot>0?tblSelCount/allTot*100:0;
+    html+='<tr style="background:#d6eaff;font-weight:bold;border-top:2px solid #2471a3">'
+      +'<td colspan="3" style="color:#1a3a5c">Total (selected '+_fbChecked.size+' / '+fbKeys.length+')</td>'
+      +'<td class="num" style="color:#1a3a5c">'+tblSelCount.toLocaleString()+'</td>'
+      +'<td class="num" style="color:#2471a3">'+tblSelIbPct.toFixed(1)+'%</td>'
+      +'<td class="num" style="color:#c0392b">'+tblSelFailPct.toFixed(2)+'%</td>'
+      +'</tr>';
+  }
   tbody.innerHTML=html;
   /* Refresh HW popup if open */
   if(_bhHwOpen)_renderHwSection();
@@ -1790,22 +1806,41 @@ function refreshUpm(){if(_upmOpen)_renderUpmMaps();}
 function _renderFbCb(){
   var el=document.getElementById('fb-cblist');if(!el)return;
   var fbDesc=DATA.fbDescriptions||{};
+  var ibTotal=_fbModalIbTotal,allTot=_fbModalAllTot;
   var html='';
+  var selCount=0,selIbPct=0,selFailPct=0;
   _fbModalFbKeys.forEach(function(fb){
     var chk=_fbChecked.has(fb)?' checked':'';
+    var cnt=_fbModalTotals[fb]||0;
+    var ibPct=ibTotal>0?cnt/ibTotal*100:0;
+    var failPct=allTot>0?cnt/allTot*100:0;
     var fbd=(fbDesc[fb]&&fbDesc[fb].desc)?fbDesc[fb].desc:'';
-    html+='<label class="fb-cbitem" title="FB'+fb+(fbd?' \u2014 '+fbd:'')+'">'
+    var pctLbl=' <span style="color:#2471a3;font-size:11px;white-space:nowrap">'+ibPct.toFixed(1)+'% IB</span>'
+      +' <span style="color:#888;font-size:11px;white-space:nowrap">'+failPct.toFixed(2)+'% fail</span>';
+    if(_fbChecked.has(fb)){selCount+=cnt;selIbPct+=ibPct;selFailPct+=failPct;}
+    html+='<label class="fb-cbitem" title="FB'+fb+': '+cnt.toLocaleString()+' ('+ibPct.toFixed(1)+'% IB | '+failPct.toFixed(2)+'% fail)'+(fbd?' \u2014 '+fbd:'')+'">'
       +'<input type="checkbox"'+chk+' data-fb="'+fb+'" onchange="IC.fbCbChange(this)"> FB'+fb
-      +(fbd?'<span style="color:#888;font-size:11px;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom"> '+esc(fbd.substring(0,18))+'</span>':'')
+      +pctLbl
+      +(fbd?'<span style="color:#888;font-size:11px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom"> \u2014 '+esc(fbd.substring(0,22))+'</span>':'')
       +'</label>';
   });
+  /* Total row for selected FBs */
+  if(_fbModalFbKeys.length>1){
+    var selFailActual=allTot>0?selCount/allTot*100:0;
+    html+='<div style="width:100%;margin-top:5px;padding:3px 8px;background:#eaf0fb;border:1px solid #aec6ef;border-radius:3px;font-size:11px;color:#1a3a5c;display:flex;gap:10px;align-items:center">'
+      +'<b>Selected total:</b>'
+      +' <span>'+selCount.toLocaleString()+' die</span>'
+      +' <span style="color:#2471a3">'+selIbPct.toFixed(1)+'% of IB</span>'
+      +' <span style="color:#c0392b">'+selFailActual.toFixed(2)+'% fail</span>'
+      +'</div>';
+  }
   el.innerHTML=html;
 }
 function legendClick(bin,event){
   if(event&&(event.ctrlKey||event.metaKey)){showFbModal(bin);}
   else{clickLegend(bin,event);}
 }
-function fbCbChange(cb){var fb=cb.dataset.fb;if(cb.checked)_fbChecked.add(fb);else _fbChecked.delete(fb);_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();}
+function fbCbChange(cb){var fb=cb.dataset.fb;if(cb.checked)_fbChecked.add(fb);else _fbChecked.delete(fb);_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();}
 function selectAllFbs(){_fbModalFbKeys.forEach(function(fb){_fbChecked.add(fb);});_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();}
 function clearFbs(){_fbChecked.clear();_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();}
 function showFbWaferMap(){
