@@ -421,7 +421,7 @@ def update_tp_gz(
     Returns (gz_path, changed).
     """
     prog_dir = data_dir / "programs"
-    _m = re.search(r'[05]H61([A-Za-z])', key)
+    _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', key)
     _letter_sub = f"0H61{_m.group(1).upper()}" if _m else "0H61X"
     letter_dir  = prog_dir / _letter_sub
     gz_path     = letter_dir / f"{key}.csv.gz"
@@ -1541,7 +1541,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
     _excluded = set(excluded_keys or [])
 
     run_pattern = re.compile(r'^NVL_0H(\d+)([A-Za-z])_(\d{8}_\d{6})$')
-    tp_pattern  = re.compile(r'0H(\d+)([A-Za-z]).*?_(\d{5,6})$')
+    tp_pattern  = re.compile(r'(?:0H)?(\d+)([A-Za-z]).*?_(\d{5,6})$')
     history: dict[str, list[dict]] = defaultdict(list)
 
     for rd in sorted(output_dir.iterdir()):
@@ -2070,7 +2070,7 @@ def main() -> None:
 
     _letter_rows: dict[str, tuple[list[dict], list[str]]] = {}
     for _key, (_krows, _khdrs) in groups.items():
-        _m = re.search(r'[05]H61([A-Za-z])', _key)
+        _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', _key)
         _letter = f"0H61{_m.group(1).upper()}" if _m else "0H61X"
         if _letter not in _letter_rows:
             _letter_rows[_letter] = ([], list(_khdrs))
@@ -2147,7 +2147,7 @@ def main() -> None:
     # ── 4. Group by letter and run ────────────────────────────────────────────
     _letter_groups: dict[str, list[str]] = {}
     for _k in sorted(keys_to_run):
-        _m = re.search(r'[05]H61([A-Za-z])', _k)
+        _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', _k)
         _letter_groups.setdefault(_m.group(1).upper() if _m else "X", []).append(_k)
     _log(f"\nProgram groups: {list(_letter_groups.keys())} ({len(_letter_groups)} run folder(s))")
 
@@ -2183,7 +2183,7 @@ def main() -> None:
         _exec_keys = [_primary_key]
 
         for tp_key in _exec_keys:
-            _m_key  = re.search(r'[05]H61([A-Za-z])', tp_key)
+            _m_key  = re.search(r'[0-9A-Za-z]H61([A-Za-z])', tp_key)
             _sub    = f"0H61{_m_key.group(1).upper()}" if _m_key else "0H61X"
             # Write temp gz from in-memory data (deleted after pipeline; raw_<ts>.7z is the archival copy)
             _tp_letter_dir = prog_dir / _sub

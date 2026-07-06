@@ -416,7 +416,7 @@ def update_tp_gz(
     Returns (gz_path, True) always (or (gz_path, False) in dry-run).
     """
     prog_dir = data_dir / "programs"
-    _m = re.search(r'[05]H61([A-Za-z])', key)
+    _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', key)
     _letter_sub = f"0H61{_m.group(1).upper()}" if _m else "0H61X"
     letter_dir  = prog_dir / _letter_sub
     gz_path     = letter_dir / f"{key}.csv.gz"
@@ -1251,7 +1251,7 @@ def _build_compare_section(sorted_groups: list, run_dir: Path) -> str:
             for _td in _td_list:
                 if not _td.is_dir() or _td.name.endswith("_R0"):
                     continue
-                _ml = re.search(r"[05]H61([A-Za-z])", _td.name)
+                _ml = re.search(r"[0-9A-Za-z]H61([A-Za-z])", _td.name)
                 if not _ml:
                     continue
                 _let = _ml.group(1).upper()
@@ -1861,7 +1861,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
     _excluded = set(excluded_keys or [])
 
     run_pattern = re.compile(r'^NVL_0H(\d+)([A-Za-z])_(\d{8}_\d{6})$')
-    tp_pattern  = re.compile(r'0H(\d+)([A-Za-z]).*?_(\d{5,6})$')
+    tp_pattern  = re.compile(r'(?:0H)?(\d+)([A-Za-z]).*?_(\d{5,6})$')
     history: dict[str, list[dict]] = defaultdict(list)
 
     for rd in sorted(output_dir.iterdir()):
@@ -2603,7 +2603,7 @@ def main() -> None:
     # Collect rows + union-headers per program letter
     _letter_rows: dict[str, tuple[list[dict], list[str]]] = {}
     for _key, (_krows, _khdrs) in groups.items():
-        _m = re.search(r'[05]H61([A-Za-z])', _key)
+        _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', _key)
         _letter = f"0H61{_m.group(1).upper()}" if _m else "0H61X"
         if _letter not in _letter_rows:
             _letter_rows[_letter] = ([], list(_khdrs))
@@ -2689,7 +2689,7 @@ def main() -> None:
     #    base_dir/Dashboard_{tp_key}.html           ← top-level latest pointer
     _letter_groups: dict[str, list[str]] = {}
     for _k in sorted(keys_to_run):
-        _m = re.search(r'[05]H61([A-Za-z])', _k)
+        _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', _k)
         _letter_groups.setdefault(_m.group(1).upper() if _m else 'X', []).append(_k)
     _log(f"\nProgram groups: {list(_letter_groups.keys())} ({len(_letter_groups)} run folder(s))")
 
@@ -2731,7 +2731,7 @@ def main() -> None:
         _exec_keys = [_primary_key]
 
         for tp_key in _exec_keys:
-            _m_key  = re.search(r'[05]H61([A-Za-z])', tp_key)
+            _m_key  = re.search(r'[0-9A-Za-z]H61([A-Za-z])', tp_key)
             _sub    = f"0H61{_m_key.group(1).upper()}" if _m_key else "0H61X"
             # Write temp gz from in-memory data (deleted after pipeline; raw_<ts>.7z is the archival copy)
             _tp_letter_dir = prog_dir / _sub
@@ -2750,7 +2750,7 @@ def main() -> None:
             dashboard     = str(_misc_dir / f"Dashboard_{tp_key}.html")  # top-level latest pointer
 
             # Detect program letter for R0 merge logic
-            _m_let    = re.search(r'[05]H61([A-Za-z])', tp_key)
+            _m_let    = re.search(r'[0-9A-Za-z]H61([A-Za-z])', tp_key)
             _tp_letter = _m_let.group(1).upper() if _m_let else ''
             _r0_gz    = base_dir / "data" / "NVL816-R0-Data.csv.gz"
             _use_r0   = _tp_letter in ('C', 'D') and _r0_gz.exists() and "119325" in tp_key
@@ -2864,7 +2864,7 @@ def main() -> None:
             for _prev in prev_run_dirs:
                 for _sub in _prev.iterdir():
                     if _sub.is_dir() and not _sub.name.endswith("_R0"):
-                        _sub_m = re.search(r'[05]H61([A-Za-z])', _sub.name)
+                        _sub_m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', _sub.name)
                         if (_sub_m.group(1).upper() if _sub_m else 'X') == _letter:
                             hist_keys.add(_sub.name)
 
