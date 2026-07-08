@@ -795,6 +795,84 @@ def generate(data_path, out_dir=None, tbl_path=None):
         print(f'Reticle map not loaded: {_e_ret}')
 
     _ic_fail_bins = [b for b in _ic_all_bins if b.isdigit() and int(b) > 4]
+
+    # ── Pre-compute wafer pattern scores (default: all bins, IB≥5 fail threshold) ──
+    import math as _math_ps
+    for _ps_row in _ic_rows:
+        _ps_dies = _ps_row.get('dies') or []
+        if not _ps_dies:
+            _ps_row['patScores'] = None
+            continue
+        _ps_xs = [d[0] for d in _ps_dies if d[0] is not None]
+        if not _ps_xs:
+            _ps_row['patScores'] = None
+            continue
+        _ps_ys = [d[1] for d in _ps_dies if d[0] is not None]
+        _ps_xctr = (min(_ps_xs) + max(_ps_xs)) / 2
+        _ps_yctr = (min(_ps_ys) + max(_ps_ys)) / 2
+        _ps_xrad = (max(_ps_xs) - min(_ps_xs)) / 2 or 1
+        _ps_yrad = (max(_ps_ys) - min(_ps_ys)) / 2 or 1
+        _ps_fxn, _ps_fyn, _ps_fax, _ps_fay = [], [], [], []
+        for _ps_d in _ps_dies:
+            _ps_x, _ps_y, _ps_ib = _ps_d[0], _ps_d[1], _ps_d[2]
+            if _ps_x is None or _ps_ib is None:
+                continue
+            if _ps_ib >= 5:
+                _ps_fxn.append((_ps_x - _ps_xctr) / _ps_xrad)
+                _ps_fyn.append((_ps_y - _ps_yctr) / _ps_yrad)
+                _ps_fax.append(_ps_x)
+                _ps_fay.append(_ps_y)
+        _ps_n = len(_ps_fxn)
+        if _ps_n == 0:
+            _ps_row['patScores'] = {'center': 0.0, 'edge': 0.0, 'donut': 0.0,
+                                    'systematic': 0.0, 'reticle': 0.0, 'random': 1.0, 'failDies': 0}
+            continue
+        _ps_radii = sorted(_math_ps.sqrt(x * x + y * y) for x, y in zip(_ps_fxn, _ps_fyn))
+        _ps_zI = sum(1 for r in _ps_radii if r < 0.4)
+        _ps_zM = sum(1 for r in _ps_radii if 0.4 <= r < 0.7)
+        _ps_zO = sum(1 for r in _ps_radii if r >= 0.7)
+        _ps_fI, _ps_fM, _ps_fO = _ps_zI / _ps_n, _ps_zM / _ps_n, _ps_zO / _ps_n
+        _ps_cen = round(max(0.0, min(1.0, (_ps_fI - 0.16) / 0.4 + 0.5)), 2)
+        _ps_edg = round(max(0.0, min(1.0, (_ps_fO - 0.51) / 0.3 + 0.5)), 2)
+        _ps_don = round(max(0.0, min(1.0, (_ps_fM - 0.33) / 0.25 + 0.5 - (_ps_fI + _ps_fO) * 0.3)), 2)
+        _ps_q = [0, 0, 0, 0]
+        for _ps_xn, _ps_yn in zip(_ps_fxn, _ps_fyn):
+            if _ps_xn >= 0 and _ps_yn >= 0: _ps_q[0] += 1
+            elif _ps_xn < 0 and _ps_yn >= 0: _ps_q[1] += 1
+            elif _ps_xn < 0 and _ps_yn < 0: _ps_q[2] += 1
+            else: _ps_q[3] += 1
+        _ps_syst = round(min(1.0, (max(_ps_q) - min(_ps_q)) / _ps_n * 2.5) * min(1.0, _ps_n / 20), 2)
+        _ps_ru = 1 - abs(_ps_fI / 0.16 - 1) * 0.3 - abs(_ps_fO / 0.51 - 1) * 0.3
+        _ps_rnd = round(max(0.0, min(1.0, _ps_ru * (1 - _ps_syst * 0.5))), 2)
+        _ps_ret = 0.0
+        if _ret_map and _ret_site_totals and _ps_fax:
+            _ps_ss, _ps_sc2 = {}, {}
+            for _ps_ax, _ps_ay in zip(_ps_fax, _ps_fay):
+                _ps_rk = f'{int(_ps_ax)},{int(_ps_ay)}'
+                _ps_info = _ret_map.get(_ps_rk)
+                if not _ps_info:
+                    continue
+                _ps_sk = f'{_ps_info[0]},{_ps_info[1]}'
+                _ps_ss.setdefault(_ps_sk, set()).add(str(_ps_info[2]))
+                _ps_sc2[_ps_sk] = _ps_sc2.get(_ps_sk, 0) + 1
+            if _ps_ss:
+                _ps_tm, _ps_ws, _ps_mx = 0, 0.0, 0.0
+                for _ps_sk, _ps_shots in _ps_ss.items():
+                    _ps_ts = _ret_site_totals.get(_ps_sk, 1)
+                    _ps_s = len(_ps_shots) / _ps_ts
+                    _ps_c = _ps_sc2[_ps_sk]
+                    _ps_tm += _ps_c
+                    _ps_ws += _ps_s * _ps_c
+                    if _ps_s > _ps_mx:
+                        _ps_mx = _ps_s
+                if _ps_tm:
+                    _ps_ret = round(min(1.0, (_ps_ws / _ps_tm * 0.4 + _ps_mx * 0.6) * min(1.0, _ps_n / 15)), 2)
+        _ps_row['patScores'] = {
+            'center': _ps_cen, 'edge': _ps_edg, 'donut': _ps_don,
+            'systematic': _ps_syst, 'reticle': _ps_ret, 'random': _ps_rnd,
+            'failDies': _ps_n,
+        }
+
     _ic_data_json = _json_ic.dumps({
         'bins': _ic_all_bins, 'total': int(total), 'rows': _ic_rows,
         'binColors': _ic_bin_colors, 'binBuckets': _ic_bin_buckets,
@@ -1632,6 +1710,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '<div class="wm-overlay" id="wm-overlay">\n'
         '  <div class="wm-box" id="wm-box">\n'
         '    <div class="wm-drag" id="wm-drag"><b>&#127759; Wafer Pattern Analysis</b>\n'
+        '      <button id="wm-mode-btn" onclick="IC._wmToggleCanvasMode()" title="Switch to Canvas for fast interactive debug" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#9889; Fast mode</button>\n'
         '      <button onclick="IC.closeWmModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">&times;</button>\n'
         '    </div>\n'
         '    <div class="wm-body">\n'
@@ -3756,6 +3835,7 @@ var _wmCriteriaMissOnly=false; /* when true, show only wafers that miss a yield 
 var _wmCriteriaDisabled=new Set(); /* indices of yieldDefs to skip in criteria check */
 var _wmSiteToShots=null; /* lazy cache: "rx,ry" -> Set of shot indices */
 var _wmOpen=false;
+var _wmCanvasMode=false,_wmObserver=null,_wmRenderedRis=new Set();
 var _wmdOpen=false,_wmdRi=-1;
 var _wmdDX=0,_wmdDY=0,_wmdDragging=false;
 
@@ -4233,20 +4313,16 @@ function _wmRender(){
     var failXn=[],failYn=[],failActX=[],failActY=[];
     var totalDies=0,failDies=0;
     var failShotIdx=new Set();
-    var rects=[];
     dies.forEach(function(d){
       var x=d[0],y=d[1],ib=d[2];
       if(x===null||x===undefined)return;
       totalDies++;
-      var px=(pad+(x-xMin)*cs).toFixed(1),py=(pad+(yMax-y)*csy).toFixed(1);
       var fill=_wmIbColor(ib);
       var xn=(x-xCtr)/xRad,yn=(y-yCtr)/yRad;
       var isFail=_wmIsFail(ib);
       var ibKey=ib!==null&&ib!==undefined?ib:null;
       ibSeen[ibKey]=fill;
-      /* opacity: fade if bin is unchecked */
       var binOn=(_wmBinChecked===null||_wmBinChecked.has(ibKey));
-      var opacity=binOn?'1':'0.08';
       if(isFail&&ibKey!==null){
         failIbsAll.add(ibKey);
         if(binOn){
@@ -4257,12 +4333,6 @@ function _wmRender(){
           ibCoords[ibKey].ax.push(x);ibCoords[ibKey].ay.push(y);
         }
       }
-      var clickable=isFail&&ibKey!==null&&binOn;
-      rects.push('<rect x="'+px+'" y="'+py+'" width="'+(cs*0.9).toFixed(1)+'"'
-        +' height="'+(csy*0.9).toFixed(1)+'" fill="'+fill+'" opacity="'+opacity+'"'
-        +' data-ib="'+(ibKey!==null?ibKey:'')+'" data-tip="('+x+','+y+') '+(ibKey!==null?'IB'+ibKey:'no IB')+'"'
-        +' style="cursor:'+(clickable?'pointer':'default')+'"'
-        +(isFail&&ibKey!==null&&cs>3&&binOn?' stroke="rgba(0,0,0,.25)" stroke-width="0.3"':'')+'/>');
     });
     /* accumulate per-bin pattern */
     Object.keys(ibCoords).forEach(function(ibk){
@@ -4298,40 +4368,6 @@ function _wmRender(){
     var lbl=_wmEsc((row.lot||'')+' W'+(row.wafer||''));
     allPrimary[primary]=(allPrimary[primary]||0)+1;
     var pCol=_pColors[primary]||'#555';
-    /* wafer circle clip: center and radii in SVG pixel space */
-    var cx=(pad+(xCtr-xMin)*cs+cs*0.45).toFixed(1);
-    var cy=(pad+(yMax-yCtr)*csy+csy*0.45).toFixed(1);
-    var rx=(xRad*cs+cs*0.5).toFixed(1);
-    var ry=(yRad*csy+csy*0.5).toFixed(1);
-    var clipId='wmc-'+ri;
-    var retOutlines='';
-    if(DATA.hasReticle&&DATA.retShots&&DATA.retShots.length){
-      var _hlShots=null;
-      if(_wmRetChecked&&_wmRetChecked.size>0){
-        var _s2s=_wmGetSiteShots();_hlShots=new Set();
-        _wmRetChecked.forEach(function(sk){if(_s2s[sk])_s2s[sk].forEach(function(si){_hlShots.add(si);});});
-      }
-      if(_hlShots){
-        DATA.retShots.forEach(function(shot,si){
-          var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1);
-          var sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
-          if(_hlShots.has(si)){retOutlines+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#f39c12" stroke-width="1.5" opacity="0.95"/>';}
-          else{retOutlines+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#ddd" stroke-width="0.5" opacity="0.2"/>';}
-        });
-      } else {
-        DATA.retShots.forEach(function(shot,si){
-          var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1);
-          var sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
-          retOutlines+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#2471a3" stroke-width="0.5" opacity="0.3"/>';
-        });
-        DATA.retShots.forEach(function(shot,si){
-          if(!failShotIdx.has(si))return;
-          var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1);
-          var sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
-          retOutlines+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#c0392b" stroke-width="1.2" opacity="0.9"/>';
-        });
-      }
-    }
     /* wafer map: clicking title opens detail popup; die click opens FB */
     var _cmBins=_wmGetCriteriaMissBins(row);
     var _cmInfo=_wmGetCriteriaMissInfo(row);
@@ -4350,9 +4386,9 @@ function _wmRender(){
     var _cmCardStyle='text-align:center'+(_cmBins.length?';border:2px solid rgba(192,57,43,0.4);border-radius:5px;padding:2px':'');
     var _cmWlblExtra=_cmBins.length?'<span style="color:#c0392b;margin-left:3px;font-size:11px">&#9888;</span>':'';
     var _cmTitle=_cmBins.length?_wmEsc('Miss: '+_cmInfo.join(' \u2502 ')):'Open wafer detail';
-    mapsHtml+='<div style="'+_cmCardStyle+'">'
+    mapsHtml+='<div class="wm-tile-ph" data-ri="'+ri+'" style="'+_cmCardStyle+'">'
       +'<div class="wm-wlbl" style="cursor:pointer;text-decoration:underline" onclick="IC._wmdOpen('+ri+')" title="'+_cmTitle+'">'+lbl+_cmWlblExtra+'</div>'
-      +'<svg width="'+W+'" height="'+H+'" style="display:block">'+clipDef+'<g clip-path="url(#'+clipId+')">'+rects.join('')+retOutlines+'</g>'+borderCircle+'</svg>'
+      +'<div class="wm-tile-content" style="width:'+W+'px;height:'+H+'px;background:#f0f4f8;border-radius:3px;display:inline-block"></div>'
       +'<div style="font-size:10px;color:'+pCol+';font-weight:bold;margin-top:2px">'+primary+'</div>'
       +_cmBadgeHtml
       +'</div>';
@@ -4373,6 +4409,19 @@ function _wmRender(){
   });
 
   maps.innerHTML=mapsHtml||'<span style="color:#999;font-size:12px">No wafers with die data</span>';
+  _wmRenderedRis=new Set();
+  if(_wmObserver){_wmObserver.disconnect();_wmObserver=null;}
+  var _wMapWrap=document.querySelector('.wm-maps-wrap');
+  _wmObserver=new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if(entry.isIntersecting){
+        var _phRi=parseInt(entry.target.dataset.ri,10);
+        var _phEl=entry.target.querySelector('.wm-tile-content');
+        if(_phEl)_wmRenderTile(_phRi,_phEl);
+      }
+    });
+  },{root:_wMapWrap,rootMargin:'300px 0px'});
+  maps.querySelectorAll('.wm-tile-ph[data-ri]').forEach(function(el){_wmObserver.observe(el);});
   tbody.innerHTML=tbHtml;
 
   /* --- Bin impact tab --- */
@@ -4467,6 +4516,113 @@ function _wmSetupClick(){
       }
     }
   });
+}
+/* ---- Canvas/SVG mode toggle ---- */
+function _wmToggleCanvasMode(){
+  _wmCanvasMode=!_wmCanvasMode;
+  var btn=document.getElementById('wm-mode-btn');
+  if(btn)btn.innerHTML=_wmCanvasMode?'&#128247; SVG mode':'&#9889; Fast mode';
+  var maps=document.getElementById('wm-maps');if(!maps)return;
+  maps.querySelectorAll('.wm-tile-ph[data-ri]').forEach(function(el){
+    var ri=parseInt(el.dataset.ri,10);
+    if(_wmRenderedRis.has(ri)){var tc=el.querySelector('.wm-tile-content');if(tc)_wmRenderTile(ri,tc);}
+  });
+}
+/* ---- Per-tile renderer (SVG or canvas) ---- */
+function _wmRenderTile(ri,container){
+  var row=DATA.rows[ri];
+  if(!row||!row.dies||!row.dies.length)return;
+  var dies=row.dies;
+  var xs=[],ys=[];
+  dies.forEach(function(d){if(d[0]!==null&&d[0]!==undefined){xs.push(d[0]);ys.push(d[1]);}});
+  if(!xs.length)return;
+  var FIXED_W=180,pad=2;
+  var xMin=Math.min.apply(null,xs),xMax=Math.max.apply(null,xs);
+  var yMin=Math.min.apply(null,ys),yMax=Math.max.apply(null,ys);
+  var xCnt=xMax-xMin+1,yCnt=yMax-yMin+1;
+  var cs=Math.max(1,(FIXED_W-pad*2)/xCnt);
+  var xSpan=xMax-xMin,ySpan=yMax-yMin;
+  var csy=(xSpan>0&&ySpan>0)?(cs*xSpan/ySpan):cs;
+  var W=FIXED_W,H=Math.round(yCnt*csy+pad*2);
+  var xCtr=(xMin+xMax)/2,yCtr=(yMin+yMax)/2;
+  var xRad=xSpan/2||1,yRad=ySpan/2||1;
+  var cxE=(pad+(xCtr-xMin)*cs+cs*0.45).toFixed(1);
+  var cyE=(pad+(yMax-yCtr)*csy+csy*0.45).toFixed(1);
+  var rxE=(xRad*cs+cs*0.5).toFixed(1);
+  var ryE=(yRad*csy+csy*0.5).toFixed(1);
+  var failShotIdx3=new Set();
+  container.style.width=W+'px';container.style.height=H+'px';
+  if(_wmCanvasMode){
+    var cv=document.createElement('canvas');
+    cv.width=W;cv.height=H;cv.style.display='block';
+    var ctx=cv.getContext('2d');
+    dies.forEach(function(d){
+      var x=d[0],y=d[1],ib=d[2];
+      if(x===null||x===undefined)return;
+      var ibKey=ib!==null&&ib!==undefined?ib:null;
+      var binOn=(_wmBinChecked===null||_wmBinChecked.has(ibKey));
+      ctx.globalAlpha=binOn?1:0.08;
+      ctx.fillStyle=_wmIbColor(ib);
+      ctx.fillRect(pad+(x-xMin)*cs,pad+(yMax-y)*csy,cs*0.9,csy*0.9);
+      if(_wmIsFail(ib)&&ibKey!==null&&binOn&&DATA.hasReticle&&DATA.retMap){var _rt=DATA.retMap[x+','+y];if(_rt)failShotIdx3.add(_rt[2]);}
+    });
+    ctx.globalAlpha=1;
+    if(DATA.hasReticle&&DATA.retShots&&DATA.retShots.length){
+      var _hlSC=null;
+      if(_wmRetChecked&&_wmRetChecked.size>0){var _sC=_wmGetSiteShots();_hlSC=new Set();_wmRetChecked.forEach(function(sk){if(_sC[sk])_sC[sk].forEach(function(si){_hlSC.add(si);});});}
+      DATA.retShots.forEach(function(shot,si){
+        var sx=pad+(shot[0]-xMin)*cs,sy=pad+(yMax-shot[3])*csy,sw=(shot[2]-shot[0]+1)*cs,sh=(shot[3]-shot[1]+1)*csy;
+        if(_hlSC){ctx.strokeStyle=_hlSC.has(si)?'#f39c12':'#ddd';ctx.lineWidth=_hlSC.has(si)?1.5:0.5;}
+        else{ctx.strokeStyle=failShotIdx3.has(si)?'#c0392b':'#2471a3';ctx.lineWidth=failShotIdx3.has(si)?1.2:0.5;ctx.globalAlpha=failShotIdx3.has(si)?0.9:0.3;}
+        ctx.strokeRect(sx,sy,sw,sh);ctx.globalAlpha=1;
+      });
+    }
+    ctx.strokeStyle='#bdc3c7';ctx.lineWidth=1;
+    ctx.beginPath();ctx.ellipse(parseFloat(cxE),parseFloat(cyE),parseFloat(rxE),parseFloat(ryE),0,0,2*Math.PI);ctx.stroke();
+    container.innerHTML='';container.appendChild(cv);
+  } else {
+    var clipIdT='wmc-'+ri;
+    var clipDefT='<defs><clipPath id="'+clipIdT+'"><ellipse cx="'+cxE+'" cy="'+cyE+'" rx="'+rxE+'" ry="'+ryE+'"/></clipPath></defs>';
+    var borderCircleT='<ellipse cx="'+cxE+'" cy="'+cyE+'" rx="'+rxE+'" ry="'+ryE+'" fill="none" stroke="#bdc3c7" stroke-width="1"/>';
+    var rectsT=[];
+    dies.forEach(function(d){
+      var x=d[0],y=d[1],ib=d[2];
+      if(x===null||x===undefined)return;
+      var px=(pad+(x-xMin)*cs).toFixed(1),py=(pad+(yMax-y)*csy).toFixed(1);
+      var fill=_wmIbColor(ib);
+      var ibKey=ib!==null&&ib!==undefined?ib:null;
+      var binOn=(_wmBinChecked===null||_wmBinChecked.has(ibKey));
+      var opacity=binOn?'1':'0.08';
+      var isFail=_wmIsFail(ib);
+      if(isFail&&ibKey!==null&&binOn&&DATA.hasReticle&&DATA.retMap){var _rt2=DATA.retMap[x+','+y];if(_rt2)failShotIdx3.add(_rt2[2]);}
+      var clickable=isFail&&ibKey!==null&&binOn;
+      rectsT.push('<rect x="'+px+'" y="'+py+'" width="'+(cs*0.9).toFixed(1)+'" height="'+(csy*0.9).toFixed(1)+'" fill="'+fill+'" opacity="'+opacity+'" data-ib="'+(ibKey!==null?ibKey:'')+'" data-tip="('+x+','+y+') '+(ibKey!==null?'IB'+ibKey:'no IB')+'" style="cursor:'+(clickable?'pointer':'default')+'"'+(isFail&&ibKey!==null&&cs>3&&binOn?' stroke="rgba(0,0,0,.25)" stroke-width="0.3"':'')+'/>');
+    });
+    var retOutlinesT='';
+    if(DATA.hasReticle&&DATA.retShots&&DATA.retShots.length){
+      var _hlST=null;
+      if(_wmRetChecked&&_wmRetChecked.size>0){var _sT=_wmGetSiteShots();_hlST=new Set();_wmRetChecked.forEach(function(sk){if(_sT[sk])_sT[sk].forEach(function(si){_hlST.add(si);});});}
+      if(_hlST){
+        DATA.retShots.forEach(function(shot,si){
+          var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1),sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
+          if(_hlST.has(si)){retOutlinesT+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#f39c12" stroke-width="1.5" opacity="0.95"/>';}
+          else{retOutlinesT+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#ddd" stroke-width="0.5" opacity="0.2"/>';}
+        });
+      } else {
+        DATA.retShots.forEach(function(shot,si){
+          var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1),sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
+          retOutlinesT+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#2471a3" stroke-width="0.5" opacity="0.3"/>';
+        });
+        DATA.retShots.forEach(function(shot,si){
+          if(!failShotIdx3.has(si))return;
+          var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1),sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
+          retOutlinesT+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#c0392b" stroke-width="1.2" opacity="0.9"/>';
+        });
+      }
+    }
+    container.innerHTML='<svg width="'+W+'" height="'+H+'" style="display:block">'+clipDefT+'<g clip-path="url(#'+clipIdT+')">'+rectsT.join('')+retOutlinesT+'</g>'+borderCircleT+'</svg>';
+  }
+  _wmRenderedRis.add(ri);
 }
 
 /* ============================================================
@@ -5648,7 +5804,7 @@ return{clickBar:clickBar,clickLegend:clickLegend,legendClick:legendClick,toggleB
   showRecovModal:showRecovModal,_recovCategory:_recovCategory,
   _recovGrpChk:_recovGrpChk,_recovGrpClrAll:_recovGrpClrAll,
   _recovGrpSetAll:_recovGrpSetAll,_recovGrpSetNone:_recovGrpSetNone,
-  _wmRetSiteToggle:_wmRetSiteToggle,_wmRetClear:_wmRetClear,_wmRenderReticle:_wmRenderReticle,setUpmMetric:setUpmMetric,
+  _wmRetSiteToggle:_wmRetSiteToggle,_wmRetClear:_wmRetClear,_wmRenderReticle:_wmRenderReticle,_wmToggleCanvasMode:_wmToggleCanvasMode,setUpmMetric:setUpmMetric,
   openDlcpModal:openDlcpModal,closeDlcpModal:closeDlcpModal,dlcpSlider:dlcpSlider,dlcpTxtInput:dlcpTxtInput,dlcpSetCol:dlcpSetCol,
   dlcpFltInput:dlcpFltInput,dlcpClearFilters:dlcpClearFilters,dlcpTogglePanel:dlcpTogglePanel,dlcpDownloadCsv:dlcpDownloadCsv,dlcpSavePng:dlcpSavePng,
   dlcpOpenHistModal:dlcpOpenHistModal,dlcpCloseHistModal:dlcpCloseHistModal,
