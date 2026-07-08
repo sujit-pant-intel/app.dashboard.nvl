@@ -1,4 +1,4 @@
-"""_pipeline_html.py - HTML generation mixins."""
+﻿"""_pipeline_html.py - HTML generation mixins."""
 import os
 from _pipeline_constants import _SRC_DIR, _ROOT_DIR, _FROZEN, _LOADER, SICC_UPM_SCRIPT, SICC_CDYN_UPM_SCRIPT, _wm_inject
 from _pipeline_constants import _SRC_DIR, _ROOT_DIR, _FROZEN, _LOADER, SICC_UPM_SCRIPT, SICC_CDYN_UPM_SCRIPT, _wm_inject
@@ -4455,9 +4455,7 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         '  var allKeys=Object.keys(WM_PAT.wafers).filter(function(k){return _wmPatMatchLots(k)&&_wmPatMatchProgs(k);});\n'
                         '  var keys=_wmPatSelWafers===null?allKeys:allKeys.filter(function(k){return _wmPatSelWafers.has(k);});\n'
                         '  var nWafers=keys.filter(function(pk){var w=WM_PAT.wafers[pk];return w&&w.dies&&w.dies.length;}).length;\n'
-                        '  var _retAllX=[],_retAllY=[];keys.forEach(function(pk){var _w=WM_PAT.wafers[pk];var _d=_w&&_w.dies?_w.dies:_w;if(_d)_d.forEach(function(d){if(d[0]!==null){_retAllX.push(d[0]);_retAllY.push(d[1]);}});});\n'
-                        '  var _retXMin=_retAllX.length?Math.min.apply(null,_retAllX):0,_retXMax=_retAllX.length?Math.max.apply(null,_retAllX):0;\n'
-                        '  var _retYMin=_retAllY.length?Math.min.apply(null,_retAllY):0,_retYMax=_retAllY.length?Math.max.apply(null,_retAllY):0;\n'
+                        '  var _retXMin=Infinity,_retXMax=-Infinity,_retYMin=Infinity,_retYMax=-Infinity;\n  keys.forEach(function(pk){var _w=WM_PAT.wafers[pk];var _d=_w&&_w.dies?_w.dies:_w;if(_d)_d.forEach(function(d){if(d[0]!==null){if(d[0]<_retXMin)_retXMin=d[0];if(d[0]>_retXMax)_retXMax=d[0];if(d[1]<_retYMin)_retYMin=d[1];if(d[1]>_retYMax)_retYMax=d[1];}});});\n  if(_retXMin===Infinity){_retXMin=0;_retXMax=0;_retYMin=0;_retYMax=0;}\n'
                         '  var siteFailShots={},siteFailCount={},grandTotalFail=0;\n'
                         '  var shotFailData={},shotWaferHits={};\n'
                         '  keys.forEach(function(pk){\n'
@@ -4580,7 +4578,7 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         '    var keys=Object.keys(WM_PAT.wafers).filter(function(k){return _wmPatMatchLots(k)&&_wmPatMatchProgs(k);});\n'
                         '    _wmPatSelWafers=new Set(keys);\n'
                         '  }\n'
-                        '  if(on)_wmPatSelWafers.add(pk);else _wmPatSelWafers.delete(pk);\n'
+                        '  if(on){_wmPatSelWafers.add(pk);if(_wmPatCurLots!==null&&_wmPatCurLots.indexOf(_wmPatGetLot(pk))<0)_wmPatCurLots.push(_wmPatGetLot(pk));}\n  else{_wmPatSelWafers.delete(pk);}\n'
                         '  _wmPatRender();wmPatRenderReticle();if(_wmPatBuildBinRow.lastMapKeys)_wmBuildModeMap(_wmPatBuildBinRow.lastMapKeys);\n'
                         '}\n'
                         'function _wmPatToggleCanvasMode(){\n'
@@ -4716,7 +4714,7 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         '      var _dieTag="";\n'
                         '      if(WM_PAT.hasReticle&&WM_PAT._retSiteNum){var _dtMap=_pkRetInfo.retMap;var _dtInf=_dtMap&&_dtMap[x+","+y];if(_dtInf){var _dtSk=_dtInf[0]+","+_dtInf[1];_dieTag=String(WM_PAT._retSiteNum[_dtSk]||"");}}\n'
                         '      var _tagFs=Math.max(4,Math.min(7,Math.round(cs*0.55)));\n'
-                        '      if(_dieTag&&cs>=4){rects.push(\'<text x="\'+(parseFloat(px)+cs-0.5).toFixed(1)+\'" y="\'+(parseFloat(py)+_tagFs+0.5).toFixed(1)+\'" text-anchor="end" font-size="\'+_tagFs+\'" fill="#000" font-weight="bold" opacity="\'+opacity+\'" data-ib="\'+ibKey+\'" data-op="\'+opacity+\'" pointer-events="none">\'+_dieTag+\'</text>\');}\n'
+                        '      if(_dieTag&&cs>=4){rects.push(\'<text x="\'+(parseFloat(px)+cs-0.5).toFixed(1)+\'" y="\'+(parseFloat(py)+_tagFs+0.5).toFixed(1)+\'" text-anchor="end" font-size="\'+_tagFs+\'" fill="#000" font-weight="bold" opacity="1" data-ib="\'+ibKey+\'" data-op="\'+opacity+\'" pointer-events="none">\'+_dieTag+\'</text>\');}\n'
                         '    });\n'
                         '    if(WM_PAT.hasReticle&&_pkShots&&_pkShots.length){\n'
                         '      _pkShots.forEach(function(s,si){\n'
