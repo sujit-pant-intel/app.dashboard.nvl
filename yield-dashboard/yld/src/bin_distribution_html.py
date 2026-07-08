@@ -1710,7 +1710,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '<div class="wm-overlay" id="wm-overlay">\n'
         '  <div class="wm-box" id="wm-box">\n'
         '    <div class="wm-drag" id="wm-drag"><b>&#127759; Wafer Pattern Analysis</b>\n'
-        '      <button id="wm-mode-btn" onclick="IC._wmToggleCanvasMode()" title="Switch to Canvas for fast interactive debug" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#9889; Fast mode</button>\n'
+        '      <button id="wm-mode-btn" onclick="IC._wmToggleCanvasMode()" title="Switch to Canvas for fast interactive debug" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#128247; SVG mode</button>\n'
         '      <button onclick="IC.closeWmModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">&times;</button>\n'
         '    </div>\n'
         '    <div class="wm-body">\n'
@@ -3835,7 +3835,7 @@ var _wmCriteriaMissOnly=false; /* when true, show only wafers that miss a yield 
 var _wmCriteriaDisabled=new Set(); /* indices of yieldDefs to skip in criteria check */
 var _wmSiteToShots=null; /* lazy cache: "rx,ry" -> Set of shot indices */
 var _wmOpen=false;
-var _wmCanvasMode=false,_wmObserver=null,_wmRenderedRis=new Set();
+var _wmCanvasMode=true,_wmObserver=null,_wmRenderedRis=new Set();
 var _wmdOpen=false,_wmdRi=-1;
 var _wmdDX=0,_wmdDY=0,_wmdDragging=false;
 
@@ -5205,13 +5205,23 @@ function _dlcpComputeRows(){
       if((ib===1||ib===2)&&up!=null&&up>=_dlcpT)nA++;
       else if(ib!=null&&ib>=1&&ib<=4)nB++;
       else nC++;
-      // IB-only counts (independent of UPM)
       if(ib===1||ib===2)nFF++;
       else if(ib===3)nDF3++;
       else if(ib===4)nDF4++;
     });
-    uv.sort(function(a,b){return a-b;});
-    var med=null;if(uv.length){var m=Math.floor(uv.length/2);med=uv.length%2===0?(uv[m-1]+uv[m])/2:uv[m];}
+    /* For median: sort sampled values if die count is large */
+    var med=null;
+    if(uv.length){
+      if(uv.length>20000){
+        /* reservoir-sample 20k for median estimation on large wafers */
+        var samp=new Array(20000);
+        for(var _si=0;_si<Math.min(uv.length,20000);_si++)samp[_si]=uv[_si];
+        for(var _si=20000;_si<uv.length;_si++){var _j=Math.floor((_si+1)*Math.random());if(_j<20000)samp[_j]=uv[_si];}
+        uv=samp;
+      }
+      uv.sort(function(a,b){return a-b;});
+      var m=Math.floor(uv.length/2);med=uv.length%2===0?(uv[m-1]+uv[m])/2:uv[m];
+    }
     res.push({lot:row.lot||'',wafer:row.wafer||'',mat:row.material||'',tot:row.dies.length,med:med,nA:nA,nB:nB,nC:nC,nFF:nFF,nDF34:nDF3+nDF4,nDF3:nDF3,nDF4:nDF4});
   });
   return{rows:res,noDies:!hasDie};
@@ -5512,11 +5522,18 @@ function _dlcpRenderHist(){
   cv.width=W;cv.height=H;
   var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   var uI=(DATA.upmStart||5)+_dlcpUi,hp=[],lp=[];
+  /* Systematic downsampling for large datasets */
+  var MAX_HIST=80000;
+  var _hTot=0;
+  sR.forEach(function(ri){var row=DATA.rows[ri];if(!row||!row.dies)return;var k=_dlcpRowKey(row.lot||'',row.wafer||'');if(!_dlcpIsRowSel(k))return;_hTot+=row.dies.length;});
+  var _hStep=_hTot>MAX_HIST?Math.ceil(_hTot/MAX_HIST):1;
+  var _hI=0;
   sR.forEach(function(ri){
     var row=DATA.rows[ri];if(!row||!row.dies)return;
     var k=_dlcpRowKey(row.lot||'',row.wafer||'');
     if(!_dlcpIsRowSel(k))return;
     row.dies.forEach(function(d){
+      _hI++;if(_hI%_hStep!==0)return;
       var ib=d[2],up=d.length>uI?d[uI]:null;if(up==null)return;
       if((ib===1||ib===2)&&up>=_dlcpT)hp.push(up);
       else if(ib!=null&&ib>=1&&ib<=4)lp.push(up);
@@ -5650,12 +5667,19 @@ function _dlcpRenderCdf(){
   }
   var uI=(DATA.upmStart||5)+_dlcpUi;
   var hp=[],lp=[],ff=[],df=[];
+  /* Systematic downsampling: cap at 80k points so large datasets don't stall the browser */
+  var MAX_CDF=80000;
+  var _cdfTot=0;
+  sR.forEach(function(ri){var row=DATA.rows[ri];if(!row||!row.dies)return;var k=_dlcpRowKey(row.lot||'',row.wafer||'');if(!_dlcpIsRowSel(k))return;_cdfTot+=row.dies.length;});
+  var _cdfStep=_cdfTot>MAX_CDF?Math.ceil(_cdfTot/MAX_CDF):1;
+  var _cdfI=0;
   sR.forEach(function(ri){
     var row=DATA.rows[ri];if(!row||!row.dies)return;
+    var k=_dlcpRowKey(row.lot||'',row.wafer||'');
+    if(!_dlcpIsRowSel(k))return;
     row.dies.forEach(function(d){
+      _cdfI++;if(_cdfI%_cdfStep!==0)return;
       var ib=d[2],up=d.length>uI?d[uI]:null;if(up==null)return;
-      var k=_dlcpRowKey(row.lot||'',row.wafer||'');
-      if(!_dlcpIsRowSel(k))return;
       if(ib===1||ib===2){ff.push(up);if(up>=_dlcpT)hp.push(up);else lp.push(up);}
       else if(ib===3||ib===4){df.push(up);lp.push(up);}
     });

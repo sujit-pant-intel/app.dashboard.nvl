@@ -3796,7 +3796,7 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         if _upm_labels_wm else '')
                         +'      </div>\n'
                         '      <span style="flex:1"></span>\n'
-                        '      <button id="wm-pat-mode-btn" onclick="_wmPatToggleCanvasMode()" title="Switch to Canvas for fast interactive debug" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#9889; Fast mode</button>\n'
+                        '      <button id="wm-pat-mode-btn" onclick="_wmPatToggleCanvasMode()" title="Switch to Canvas for fast interactive debug" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#128247; SVG mode</button>\n'
                         '      <div style="font-size:9px;color:rgba(255,255,255,0.75);font-family:Arial,sans-serif;pointer-events:none;user-select:none;letter-spacing:0.03em;white-space:nowrap">Pant, Sujit N \u2014 GEMS FTE</div>\n'
                         '      <button class="wm-pat-close" onclick="wmHidePat()">&times;</button>\n'
                         '    </div>\n'
@@ -4406,7 +4406,7 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         'function _wmRetInfoForLot(lot){var keys=Object.keys(WM_PAT.wafers).filter(function(k){return k.split("::")[0]===lot;});var _ri=keys.length?_wmRetInfoFor(keys[0]):{retMap:WM_PAT.retMap,retSiteTotals:WM_PAT.retSiteTotals};if(!_ri.retSiteLabels)_ri.retSiteLabels=WM_PAT.retSiteLabels||{};return _ri;}\n'
                         'var _wmPatIsPopup=false;\n'
                         'var _wmPatPopupWin=null;\n'
-                        'var _wmPatCanvasMode=false,_wmPatObserver=null,_wmPatRenderedKeys=new Set(),_wmPatLastKeys=[];\n'
+                        'var _wmPatCanvasMode=true,_wmPatObserver=null,_wmPatRenderedKeys=new Set(),_wmPatLastKeys=[];\n'
                         'function wmOpenPat(){\n'
                         '  var base=location.href.split("#")[0];\n'
                         '  var url=base+"#wpa";\n'
