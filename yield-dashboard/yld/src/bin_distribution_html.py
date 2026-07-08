@@ -4388,7 +4388,7 @@ function _wmRender(){
     var _cmTitle=_cmBins.length?_wmEsc('Miss: '+_cmInfo.join(' \u2502 ')):'Open wafer detail';
     mapsHtml+='<div class="wm-tile-ph" data-ri="'+ri+'" style="'+_cmCardStyle+'">'
       +'<div class="wm-wlbl" style="cursor:pointer;text-decoration:underline" onclick="IC._wmdOpen('+ri+')" title="'+_cmTitle+'">'+lbl+_cmWlblExtra+'</div>'
-      +'<div class="wm-tile-content" style="width:'+W+'px;height:'+H+'px;background:#f0f4f8;border-radius:3px;display:inline-block"></div>'
+      +'<div class="wm-tile-content" style="width:'+W+'px;height:'+H+'px;background:#e8ecf0;border-radius:3px;display:inline-block"></div>'
       +'<div style="font-size:10px;color:'+pCol+';font-weight:bold;margin-top:2px">'+primary+'</div>'
       +_cmBadgeHtml
       +'</div>';
@@ -4551,7 +4551,7 @@ function _wmRenderTile(ri,container){
   var rxE=(xRad*cs+cs*0.5).toFixed(1);
   var ryE=(yRad*csy+csy*0.5).toFixed(1);
   var failShotIdx3=new Set();
-  container.style.width=W+'px';container.style.height=H+'px';
+  container.style.width=W+'px';container.style.height=H+'px';container.style.background='';container.style.borderRadius='';
   if(_wmCanvasMode){
     var cv=document.createElement('canvas');
     cv.width=W;cv.height=H;cv.style.display='block';
