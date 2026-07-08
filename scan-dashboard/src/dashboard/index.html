@@ -1723,7 +1723,7 @@ function drawWaferMap(){
     }
   }
 
-  /* Per-wafer tiles (pane 2) */
+  /* Per-wafer tiles (pane 2) — lazy-rendered via IntersectionObserver */
   const tilesWrap=document.getElementById('rv-tiles-wrap');
   tilesWrap.innerHTML='';
   const wfrMap={};
@@ -1731,9 +1731,28 @@ function drawWaferMap(){
   const wfrList=Object.keys(wfrMap).sort();
   document.getElementById('rv-tiles-hdr').textContent='Per-Wafer ('+wfrList.length+')';
   const _dbinsTile=D.die_bins||{};
-  wfrList.forEach(wk=>{
+  const _wmrFn=typeof window.wmRender==='function'?window.wmRender:(typeof wmRender==='function'?wmRender:null);
+  /* Disconnect previous observer before rebuilding tiles */
+  if(window._wmTileObs){window._wmTileObs.disconnect();window._wmTileObs=null;}
+  window._wmTileCaches=[];
+  /* Capture filter state at render time so deferred closures use consistent values */
+  const _modeC=_mode,_allMipsOnC=_allMipsOn,_selMipSetC=_allMipsOn?null:_selMipSet;
+  wfrList.forEach(function(wk,_wIdx){
+    const tile=document.createElement('div');tile.className='svg-wm-tile';tile.dataset.idx=_wIdx;
+    const title=document.createElement('div');title.className='svg-wm-title';
     const wDies=wfrMap[wk].filter(d=>wmAllowXY.has(d.X+'|'+d.Y));
-    if(!wDies.length){const tile=document.createElement('div');tile.className='svg-wm-tile';const title=document.createElement('div');title.className='svg-wm-title';title.textContent=wk.replace('/',' · ')+' (filtered)';tile.appendChild(title);tilesWrap.appendChild(tile);return;}
+    if(!wDies.length){
+      title.textContent=wk.replace('/',' · ')+' (filtered)';tile.appendChild(title);
+      window._wmTileCaches.push(null);tilesWrap.appendChild(tile);return;
+    }
+    title.textContent=wk.replace('/',' · ');tile.appendChild(title);
+    /* Placeholder circle — same size as a rendered tile so IO threshold triggers at the right moment */
+    const _ph=document.createElement('div');
+    _ph.className='wm-tile-content';
+    _ph.style.cssText='width:190px;height:190px;background:#0d1b24;border-radius:50%;display:inline-block;margin-top:2px';
+    tile.appendChild(_ph);
+    tilesWrap.appendChild(tile);
+    /* Pre-compute all per-wafer data (fast: no DOM) */
     const wxyMap={};
     wDies.forEach(d=>{
       const k=d.X+','+d.Y;
@@ -1747,8 +1766,8 @@ function drawWaferMap(){
     });
     const wAgg=Object.values(wxyMap);
     wAgg.forEach(function(a){
-      if(_allMipsOn||!a._failPairs.size){a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0);}
-      else{var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var key=pts[0]+'|'+pts[1]+'|'+pts[2];if(key&&_selMipSet&&_selMipSet.has(key))fc++;});a._fc=fc;}
+      if(_allMipsOnC||!a._failPairs.size){a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0);}
+      else{var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var key=pts[0]+'|'+pts[1]+'|'+pts[2];if(key&&_selMipSetC&&_selMipSetC.has(key))fc++;});a._fc=fc;}
     });
     const wMaxFc=Math.max(1,...wAgg.map(d=>d._fc));
     const wComposMap={};
@@ -1758,13 +1777,12 @@ function drawWaferMap(){
     Object.keys(_wbins).forEach(function(xy){var ent=_wbins[xy];if(!wComposMap[xy]){var pts=xy.split(',');wComposMap[xy]={x:+pts[0],y:+pts[1],_fc:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set(),_apCr:{}};}if(ent.ib&&!wComposMap[xy]._ib)wComposMap[xy]._ib=ent.ib;if(ent.fb&&!wComposMap[xy]._fb)wComposMap[xy]._fb=ent.fb;if(ent.ap_cr){if(!wComposMap[xy]._apCr)wComposMap[xy]._apCr={};Object.keys(ent.ap_cr).forEach(function(g){if(!wComposMap[xy]._apCr[g])wComposMap[xy]._apCr[g]=ent.ap_cr[g];});}});
     const wCompos=Object.values(wComposMap);
     let wExtraDefs='';
-    if(_mode==='ib'||_mode==='fb'){const _wPats=new Set();const _wPfx=_mode==='ib'?'IB:':'FB:';const _wFil=_mode==='ib'?_rvIBFilter:_rvFBFilter;wCompos.forEach(function(d){if(!d._fc){var v=_mode==='ib'?(d._ibSet&&d._ibSet.size?[...d._ibSet].sort()[0]:d._ib):(d._fbSet&&d._fbSet.size?[...d._fbSet].sort()[0]:d._fb);if(v&&(_wFil.size===0||_wFil.has(v)))_wPats.add(mc(_wPfx+v));}});if(_wPats.size)wExtraDefs=_wmBuildPatterns([..._wPats]);}
-    const tile=document.createElement('div');tile.className='svg-wm-tile';
-    tilesWrap.appendChild(tile);
-    const _wmrFn=typeof window.wmRender==='function'?window.wmRender:(typeof wmRender==='function'?wmRender:null);
+    if(_modeC==='ib'||_modeC==='fb'){const _wPats=new Set();const _wPfx=_modeC==='ib'?'IB:':'FB:';const _wFil=_modeC==='ib'?_rvIBFilter:_rvFBFilter;wCompos.forEach(function(d){if(!d._fc){var v=_modeC==='ib'?(d._ibSet&&d._ibSet.size?[...d._ibSet].sort()[0]:d._ib):(d._fbSet&&d._fbSet.size?[...d._fbSet].sort()[0]:d._fb);if(v&&(_wFil.size===0||_wFil.has(v)))_wPats.add(mc(_wPfx+v));}});if(_wPats.size)wExtraDefs=_wmBuildPatterns([..._wPats]);}
+    /* Capture per-wafer computed values for the deferred render closure */
+    const _wComposC=wCompos,_wMaxFcC=wMaxFc,_wExtraDefsC=wExtraDefs;
     const wTipFn=function(d){
       if(!d._fc){
-        if(_mode!=='ib'&&_mode!=='fb')return null;
+        if(_modeC!=='ib'&&_modeC!=='fb')return null;
         var ibV=(d._ibSet&&d._ibSet.size)?[...d._ibSet].sort()[0]:(d._ib||null);
         var fbV=(d._fbSet&&d._fbSet.size)?[...d._fbSet].sort()[0]:(d._fb||null);
         if(!ibV&&!fbV)return null;
@@ -1798,32 +1816,45 @@ function drawWaferMap(){
       Object.keys(bri).slice(0,4).forEach(function(blk){
         Object.keys(bri[blk]).slice(0,4).forEach(function(reg){
           var ips=[...bri[blk][reg]].slice(0,5);
-          tip+='<br><span style="color:#8ab4d4">'+blk+'</span>→<span style="color:#c0ccd8">'+reg+'</span>→<span style="color:#f59e0b">'+ips.join(', ')+'</span>';
+          tip+='<br><span style="color:#8ab4d4">'+blk+'</span>\u2192<span style="color:#c0ccd8">'+reg+'</span>\u2192<span style="color:#f59e0b">'+ips.join(', ')+'</span>';
         });
       });
       tip+=_wmApCrTip(d._apCr);
       return tip;
     };
-    if(_wmrFn){
-      try{
-        _wmrFn(tile,{
-          dies:wCompos,colorFn:d=>_wmColor(d,_mode,wMaxFc,1,bg,_allMipsOn?null:_selMipSet),
-          tooltipFn:wTipFn,
-          retShots:bg&&bg.ret_shots?bg.ret_shots:[],
-          retMap:bg&&bg.ret_map?bg.ret_map:{},
-          retSiteNum:{},
-          retShotLabels:false,
-          extraDefs:wExtraDefs,
-          width:190,bgColor:'#0d1520',borderColor:'#5dade2',shotColor:'#2471a3',
-        });
-      }catch(e){tile.innerHTML='<div style="color:#f00;font-size:8px;padding:2px">ERR:'+e.message+'</div>';}
-    } else {
-      tile.innerHTML='<div style="color:#888;font-size:9px;padding:4px">map unavailable</div>';
-    }
-    const title=document.createElement('div');title.className='svg-wm-title';title.textContent=wk.replace('/',' · ');
-    tile.insertBefore(title,tile.firstChild);
+    window._wmTileCaches.push({
+      renderFn:function(tileEl){
+        var phEl=tileEl.querySelector('.wm-tile-content');if(!phEl)return;
+        phEl.style.cssText='';  /* clear placeholder styling */
+        if(!_wmrFn){phEl.innerHTML='<div style="color:#888;font-size:9px;padding:4px">map unavailable</div>';return;}
+        try{
+          _wmrFn(phEl,{
+            dies:_wComposC,colorFn:d=>_wmColor(d,_modeC,_wMaxFcC,1,bg,_allMipsOnC?null:_selMipSetC),
+            tooltipFn:wTipFn,
+            retShots:bg&&bg.ret_shots?bg.ret_shots:[],
+            retMap:bg&&bg.ret_map?bg.ret_map:{},
+            retSiteNum:{},retShotLabels:false,extraDefs:_wExtraDefsC,
+            width:190,bgColor:'#0d1520',borderColor:'#5dade2',shotColor:'#2471a3',
+          });
+        }catch(e){phEl.innerHTML='<div style="color:#f00;font-size:8px;padding:2px">ERR:'+e.message+'</div>';}
+      }
+    });
   });
-
+  /* IntersectionObserver — call renderFn only for tiles scrolling into view */
+  window._wmTileObs=new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if(!entry.isIntersecting)return;
+      var idx=parseInt(entry.target.dataset.idx,10);
+      var cache=window._wmTileCaches&&window._wmTileCaches[idx];
+      if(cache&&!entry.target._wmRendered){
+        entry.target._wmRendered=true;
+        cache.renderFn(entry.target);
+      }
+    });
+  },{root:tilesWrap,rootMargin:'400px 0px'});
+  tilesWrap.querySelectorAll('.svg-wm-tile[data-idx]').forEach(function(el){
+    window._wmTileObs.observe(el);
+  });
   /* Reticle site analysis (pane 3) - HRY style, focus on current prefix */
   const siteBody=document.getElementById('rv-site-body');
   if(siteBody){
