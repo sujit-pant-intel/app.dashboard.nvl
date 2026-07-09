@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>trend-report</title>
+  <style>
+    :root {
+      --bg: #1a252f; --bg2: #1e2e3d; --bg3: #263950;
+      --fg: #e8f0f7; --dim: #90a4ae; --acc: #4fc3f7; --amb: #ffa726;
+      --font: 'Segoe UI', sans-serif; --mono: 'Courier New', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--fg); font-family: var(--font);
+           min-height: 100vh; display: flex; flex-direction: column;
+           align-items: center; justify-content: center; padding: 32px; }
+    .card { background: var(--bg2); border-radius: 12px; padding: 40px 48px;
+            max-width: 600px; width: 100%; text-align: center; }
+    h1 { color: var(--acc); font-size: 24px; margin-bottom: 8px; }
+    .sub { color: var(--dim); font-size: 13px; margin-bottom: 32px; line-height: 1.6; }
+    .btn { display: inline-block; background: var(--acc); color: #0a1929;
+           font-family: var(--font); font-size: 16px; font-weight: 600;
+           padding: 14px 36px; border-radius: 8px; text-decoration: none;
+           margin-bottom: 16px; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+    .note { background: var(--bg3); border-radius: 8px; padding: 14px 18px;
+            margin-top: 24px; text-align: left; }
+    .note p { font-size: 12px; color: var(--dim); line-height: 1.7; }
+    .note strong { color: var(--amb); }
+    .path { font-family: var(--mono); font-size: 11px; color: var(--acc);
+            word-break: break-all; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>NVL816 Yield Trend Reports</h1>
+    <p class="sub">
+      Click below to open the live trend report index.<br>
+      The index is updated automatically after every report generation.
+    </p>
+
+    <a class="btn"
+       href="file:////samba.zsc10.intel.com/nfs/zsc10/disks/gsc_gwa011/users/snpant/auto/trend/reports/index.html">
+      📈 Open Trend Report Index
+    </a>
+
+    <div class="note">
+      <p>
+        <strong>Note:</strong> The link opens a file on the Intel shared drive.<br>
+        • Use <strong>Microsoft Edge</strong> — Chrome blocks UNC file links.<br>
+        • You must be on the Intel network or VPN.<br>
+        • If the link does not open, copy the path below into Windows Explorer:
+      </p>
+      <p class="path">\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend\reports\index.html</p>
+    </div>
+  </div>
+</body>
+</html>

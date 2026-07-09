@@ -460,33 +460,38 @@ class AutomationManager(tk.Frame):
     def _build_history_tab(self) -> None:
         p = self._tab_history
 
+        # Row 1 - navigation & selection
         tb = tk.Frame(p, bg=BG)
-        tb.pack(fill="x", padx=12, pady=(10, 4))
-        self._btn(tb, "↺ Refresh",         self._refresh_history).pack(side="left", padx=(0, 6))
-        self._btn(tb, "✔ Select All",      self._hist_select_all).pack(side="left", padx=(0, 6))
-        self._btn(tb, "✘ Clear",           self._hist_clear_sel).pack(side="left", padx=(0, 6))
-        self._btn(tb, "🏷 Tag",            self._hist_tag,
+        tb.pack(fill="x", padx=12, pady=(10, 2))
+        self._btn(tb, "Refresh",       self._refresh_history).pack(side="left", padx=(0, 6))
+        self._btn(tb, "Select All",    self._hist_select_all).pack(side="left", padx=(0, 6))
+        self._btn(tb, "Clear",         self._hist_clear_sel).pack(side="left", padx=(0, 6))
+        self._btn(tb, "Tag",           self._hist_tag,
                   bg="#2d3b2d", fg="#a5d6a7").pack(side="left", padx=(0, 6))
-        self._btn(tb, "🌐 Open Dashboard", self._hist_open_html,
+        self._btn(tb, "Open Dashboard", self._hist_open_html,
                   bg="#1a3550", fg="#80d8ff").pack(side="left", padx=(0, 6))
-        self._btn(tb, "✉ Send Report",    self._hist_send_email,
-                  bg="#1a3a5c", fg="#90caf9").pack(side="left", padx=(0, 6))
-        self._btn(tb, "💾 Save Report",   self._hist_save_report,
-                  bg="#1a3a3c", fg="#80deea").pack(side="left", padx=(0, 6))
-
-        # ── Auto-cleanup controls ─────────────────────────────────────────────
         tk.Label(tb, text="Keep:", bg=BG, fg=FG_DIM, font=FONT_UI).pack(side="left", padx=(16, 2))
         self._keep_runs_var = tk.IntVar(value=int(self.cfg.get("keep_runs", 10)))
         ttk.Spinbox(tb, from_=1, to=50, width=4,
                     textvariable=self._keep_runs_var, font=FONT_MONO).pack(side="left", padx=(0, 4))
         tk.Label(tb, text="runs", bg=BG, fg=FG_DIM, font=FONT_UI).pack(side="left", padx=(0, 8))
-        self._btn(tb, "🧹 Cleanup Now", self._hist_cleanup_auto,
+        self._btn(tb, "Cleanup Now", self._hist_cleanup_auto,
                   bg="#1a2e20", fg="#a5d6a7").pack(side="left", padx=(0, 6))
 
-        self._btn(tb, "⚠ Delete + Data",  lambda: self._hist_delete(include_data=True),
-                  bg="#6b3a00", fg="#ffd180").pack(side="right", padx=(16, 0))
-        self._btn(tb, "🗑 Delete Run",     lambda: self._hist_delete(include_data=False),
+        # Row 2 - report actions & delete
+        tb2 = tk.Frame(p, bg=BG)
+        tb2.pack(fill="x", padx=12, pady=(0, 4))
+        self._btn(tb2, "Send Report",    self._hist_send_email,
+                  bg="#1a3a5c", fg="#90caf9").pack(side="left", padx=(0, 6))
+        self._btn(tb2, "Save Report",    self._hist_save_report,
+                  bg="#1a3a3c", fg="#80deea").pack(side="left", padx=(0, 6))
+        self._btn(tb2, "Generate Index", self._hist_generate_index,
+                  bg="#1a3a2c", fg="#80deea").pack(side="left", padx=(0, 6))
+        self._btn(tb2, "Delete + Data",  lambda: self._hist_delete(include_data=True),
+                  bg="#6b3a00", fg="#ffd180").pack(side="right", padx=(6, 0))
+        self._btn(tb2, "Delete Run",     lambda: self._hist_delete(include_data=False),
                   bg="#5d1a1a", fg="#ffcdd2").pack(side="right", padx=(0, 6))
+
 
         cols = ("tag", "folder", "date", "tps", "size")
         self.hist_tree = ttk.Treeview(p, columns=cols, show="headings",
@@ -733,6 +738,19 @@ class AutomationManager(tk.Frame):
         self._btn(btn_row, "Apply",  _apply,      bg="#1b5e20", fg="#00ff7f").pack(side="left", padx=(0, 6))
         self._btn(btn_row, "Cancel", dlg.destroy, fg=FG_DIM).pack(side="left")
 
+    def _hist_generate_index(self) -> None:
+        """Generate reports/index.html listing all Scan_Report_*.html files."""
+        import sys as _sys
+        _sys.path.insert(0, str(_HERE / "automation"))
+        try:
+            from generate_index import build_index
+            out = build_index(self.base_dir)
+            self.hist_status.set(f"Index written \u2192 {out.name}")
+            import webbrowser
+            webbrowser.open(out.as_uri())
+        except Exception as e:
+            messagebox.showerror("Generate Index failed", str(e))
+
     def _hist_send_email(self) -> None:
         """Scan all output dirs, build sidebar+history report, send email."""
         out_dir = self.base_dir / "output"
@@ -815,6 +833,12 @@ class AutomationManager(tk.Frame):
                     _reports_dir.mkdir(parents=True, exist_ok=True)
                     _saved = _reports_dir / f"Scan_Report_{latest_ts}.html"
                     _saved.write_text(body_html, encoding="utf-8")
+                    # regenerate index.html
+                    try:
+                        from generate_index import build_index as _bi
+                        _bi(self.base_dir)
+                    except Exception:
+                        pass
                     n = len(sorted_keys)
                     self.after(0, lambda: self.hist_status.set(
                         f"Sent to {to}  ({'+'.join(sorted_keys)} — {n} program(s))  •  Saved → {_saved.name}"))
@@ -852,6 +876,12 @@ class AutomationManager(tk.Frame):
                 body    = _build_email_report_html(out_dir, run_ts, excluded_keys=_excl)
                 out_path = reports_dir / f"Scan_Report_{ts_file}.html"
                 out_path.write_text(body, encoding="utf-8")
+                # regenerate index.html
+                try:
+                    from generate_index import build_index as _bi
+                    _bi(self.base_dir)
+                except Exception:
+                    pass
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_path.name}")
                     import webbrowser

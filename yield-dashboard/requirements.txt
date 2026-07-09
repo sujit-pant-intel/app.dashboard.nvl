@@ -1,0 +1,24 @@
+# yield-dashboard — Python dependencies
+#
+# Install (Intel corporate network):
+#   pip install -r requirements.txt --proxy http://proxy-chain.intel.com:912
+#
+# Or set env var first, then plain install:
+#   $env:HTTPS_PROXY = "http://proxy-chain.intel.com:912"
+#   $env:NO_PROXY    = "intel.com,localhost,127.0.0.1"
+#   pip install -r requirements.txt
+
+# ── Core data / numerics ──────────────────────────────────────────────────────
+pandas>=1.5
+numpy>=1.24
+
+# ── Charting ──────────────────────────────────────────────────────────────────
+plotly>=5.18          # interactive Plotly charts embedded in HTML dashboards
+
+# ── Excel / file formats ──────────────────────────────────────────────────────
+openpyxl>=3.1         # read/write .xlsx (summaries, bin-def imports)
+py7zr>=0.20           # read/write .7z TP cache archives
+
+# ── SharePoint publishing (Graph API + MSAL device-code auth) ─────────────────
+msal>=1.28
+requests>=2.31

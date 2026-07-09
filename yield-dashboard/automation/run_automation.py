@@ -3087,6 +3087,17 @@ def main() -> None:
         _log(f"\nTip: run  python run_automation.py --serve  to enable the")
         _log(f"     'Resend Email' button in BinDistribution.html.")
 
+    # ── Auto-regenerate reports/index.html ────────────────────────────────
+    if not args.dry_run:
+        try:
+            _HERE_AUTO = Path(__file__).resolve().parent
+            sys.path.insert(0, str(_HERE_AUTO))
+            from generate_index import build_index  # noqa
+            idx = build_index(base_dir)
+            _log(f"\nIndex updated → {idx}")
+        except Exception as _idx_err:
+            _log(f"\nWARNING: could not update index.html: {_idx_err}")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Resend server  (python run_automation.py --serve [--port N] [--base-dir D])

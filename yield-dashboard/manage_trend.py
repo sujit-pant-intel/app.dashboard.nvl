@@ -655,6 +655,14 @@ class AutomationManager(tk.Frame):
                 if r.returncode != 0:
                     err = r.stderr.strip()[:400] or r.stdout.strip()[:400] or f"exit {r.returncode}"
                     raise RuntimeError(err)
+                # regenerate index.html
+                try:
+                    import sys as _sys2
+                    _sys2.path.insert(0, str(_HERE / "yld"))
+                    from generate_index import build_index as _bi
+                    _bi(self.base_dir)
+                except Exception:
+                    pass
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_html.name}")
                     self._refresh_history()

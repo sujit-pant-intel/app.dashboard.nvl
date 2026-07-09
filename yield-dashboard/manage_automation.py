@@ -475,25 +475,30 @@ class AutomationManager(tk.Frame):
     def _build_history_tab(self) -> None:
         p = self._tab_history
 
+        # Row 1 — navigation & selection
         tb = tk.Frame(p, bg=BG)
-        tb.pack(fill="x", padx=12, pady=(10, 4))
-        self._btn(tb, "↺ Refresh",         self._refresh_history).pack(side="left", padx=(0, 6))
-        self._btn(tb, "✔ Select All",      self._hist_select_all).pack(side="left", padx=(0, 6))
-        self._btn(tb, "✘ Clear",           self._hist_clear_sel).pack(side="left", padx=(0, 6))
-        self._btn(tb, "🏷 Tag",            self._hist_tag,
+        tb.pack(fill="x", padx=12, pady=(10, 2))
+        self._btn(tb, "↺ Refresh",    self._refresh_history).pack(side="left", padx=(0, 6))
+        self._btn(tb, "✔ Select All", self._hist_select_all).pack(side="left", padx=(0, 6))
+        self._btn(tb, "✘ Clear",      self._hist_clear_sel).pack(side="left", padx=(0, 6))
+        self._btn(tb, "🏷 Tag",       self._hist_tag,
                   bg="#2d3b2d", fg="#a5d6a7").pack(side="left", padx=(0, 6))
-        self._btn(tb, "🌐 Open HTML",      self._hist_open_html,
+        self._btn(tb, "🌐 Open HTML", self._hist_open_html,
                   bg="#1a3550", fg="#80d8ff").pack(side="left", padx=(0, 6))
-        self._btn(tb, "🧹 Cleanup",        self._hist_cleanup,
+        self._btn(tb, "🧹 Cleanup",   self._hist_cleanup,
                   bg="#1a3a2c", fg="#a5d6a7").pack(side="left", padx=(0, 6))
-        self._btn(tb, "⚠ Delete + Data", lambda: self._hist_delete(include_data=True),
-                  bg="#6b3a00", fg="#ffd180").pack(side="right", padx=(16, 0))
-        self._btn(tb, "🗑 Delete Run",     lambda: self._hist_delete(include_data=False),
+
+        # Row 2 — report actions & delete
+        tb2 = tk.Frame(p, bg=BG)
+        tb2.pack(fill="x", padx=12, pady=(0, 4))
+        self._btn(tb2, "💾 Save Report",   self._hist_save_report,
+                  bg="#1a3a3c", fg="#80deea").pack(side="left", padx=(0, 6))
+        self._btn(tb2, "✉ Send Report",   self._hist_send_email,
+                  bg="#1a3a5c", fg="#90caf9").pack(side="left", padx=(0, 6))
+        self._btn(tb2, "⚠ Delete + Data", lambda: self._hist_delete(include_data=True),
+                  bg="#6b3a00", fg="#ffd180").pack(side="right", padx=(6, 0))
+        self._btn(tb2, "🗑 Delete Run",    lambda: self._hist_delete(include_data=False),
                   bg="#5d1a1a", fg="#ffcdd2").pack(side="right", padx=(0, 6))
-        self._btn(tb, "💾 Save Report", self._hist_save_report,
-                  bg="#1a3a3c", fg="#80deea").pack(side="right", padx=(0, 6))
-        self._btn(tb, "✉ Send Report", self._hist_send_email,
-                  bg="#1a3a5c", fg="#90caf9").pack(side="right", padx=(0, 6))
 
         cols = ("tag", "folder", "date", "tps", "size")
         self.hist_tree = ttk.Treeview(p, columns=cols, show="headings",
@@ -856,6 +861,12 @@ class AutomationManager(tk.Frame):
                 body    = _build_email_report_html(out_dir, run_ts, excluded_keys=_excl)
                 out_path = reports_dir / f"Yield_Report_{ts_file}.html"
                 out_path.write_text(body, encoding="utf-8")
+                # regenerate index.html so SharePoint landing page stays current
+                try:
+                    from generate_index import build_index
+                    build_index(self.base_dir)
+                except Exception:
+                    pass
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_path.name}")
                     import webbrowser
@@ -866,6 +877,19 @@ class AutomationManager(tk.Frame):
                 self.after(0, lambda: self.hist_status.set("Save failed."))
 
         threading.Thread(target=_save, daemon=True).start()
+
+    def _hist_generate_index(self) -> None:
+        """Generate reports/index.html listing all Yield_Report_*.html files."""
+        import sys as _sys
+        _sys.path.insert(0, str(_HERE / "automation"))
+        try:
+            from generate_index import build_index
+            out = build_index(self.base_dir)
+            self.hist_status.set(f"Index written → {out.name}")
+            import webbrowser
+            webbrowser.open(out.as_uri())
+        except Exception as e:
+            messagebox.showerror("Generate Index failed", str(e))
 
     def _hist_cleanup(self) -> None:
         """Open a dialog to delete old run folders, keeping the N most-recent
@@ -1652,6 +1676,205 @@ class AutomationManager(tk.Frame):
             self._sched_refresh()
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # TAB 5 — Report Server
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _build_server_tab(self) -> None:
+        import subprocess as _sp, sys as _sys
+        import tkinter.scrolledtext as _st
+
+        p   = self._tab_server
+        pad = dict(padx=14, pady=6)
+
+        _TASK_SRV = "NVL-BLLC Report Server"
+        _script   = str(_HERE / "automation" / "serve_reports.py")
+        _python   = _sys.executable
+        _base     = str(self.base_dir)
+
+        # ── define refresh early so buttons can reference it ──────────────────
+        def _server_refresh_inner():
+            rc, out = _sp.run(
+                ["schtasks", "/query", "/tn", _TASK_SRV, "/fo", "list"],
+                capture_output=True, text=True, timeout=15
+            ).returncode, _sp.run(
+                ["schtasks", "/query", "/tn", _TASK_SRV, "/fo", "list"],
+                capture_output=True, text=True, timeout=15
+            ).stdout.strip()
+            # re-run cleanly
+            r = _sp.run(["schtasks", "/query", "/tn", _TASK_SRV, "/fo", "list"],
+                        capture_output=True, text=True, timeout=15)
+            if r.returncode == 0:
+                status = "Scheduled"
+                for line in r.stdout.splitlines():
+                    if line.startswith("Status:"):
+                        status = line.split(":", 1)[1].strip()
+                    elif line.startswith("Next Run Time:"):
+                        self._srv_next.config(text=line.split(":", 1)[1].strip())
+                    elif line.startswith("Last Run Time:"):
+                        self._srv_last.config(text=line.split(":", 1)[1].strip())
+                    elif line.startswith("Last Result:"):
+                        res = line.split(":", 1)[1].strip()
+                        self._srv_result.config(
+                            text=res,
+                            fg=GREEN if res in ("0", "0x0") else RED)
+                colour = GREEN if status in ("Ready", "Running") else \
+                         AMBER if status == "Disabled" else FG_DIM
+                self._srv_dot.config(fg=colour)
+                self._srv_state.config(text=status, fg=colour)
+                self._srv_status.set(f"Task '{_TASK_SRV}': {status}")
+            else:
+                self._srv_dot.config(fg=FG_DIM)
+                self._srv_state.config(text="Not scheduled", fg=FG_DIM)
+                for attr in ("_srv_next", "_srv_last", "_srv_result"):
+                    getattr(self, attr).config(text="—", fg=FG)
+                self._srv_status.set(f"Task '{_TASK_SRV}': not scheduled")
+
+        self._server_refresh = _server_refresh_inner
+
+        # ── Header ───────────────────────────────────────────────────────────
+        tk.Label(p, text="Report Server", font=FONT_TITLE,
+                 bg=BG, fg=ACCENT).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(p,
+                 text="Serves reports/ over HTTP so SharePoint index.html can "
+                      "fetch the live report list from any browser.",
+                 font=("Segoe UI", 9), bg=BG, fg=FG_DIM).pack(anchor="w", padx=14)
+
+        # ── Status card ───────────────────────────────────────────────────────
+        frm_st = tk.LabelFrame(p, text="  Task Status  ", font=FONT_UI,
+                               bg=BG, fg=ACCENT, bd=1, relief="groove")
+        frm_st.pack(fill="x", **pad)
+
+        self._srv_dot   = tk.Label(frm_st, text="●", font=("Segoe UI", 14),
+                                   bg=BG, fg=FG_DIM)
+        self._srv_dot.grid(row=0, column=0, padx=(10, 4), pady=6, sticky="w")
+        self._srv_state = tk.Label(frm_st, text="Checking…",
+                                   font=FONT_GROUP, bg=BG, fg=FG_DIM)
+        self._srv_state.grid(row=0, column=1, sticky="w", pady=6)
+        self._btn(frm_st, "↺ Refresh", self._server_refresh
+                  ).grid(row=0, column=5, padx=10, pady=4, sticky="e")
+        frm_st.columnconfigure(5, weight=1)
+
+        for col, lbl, attr in [
+            (0, "Next Run:",    "_srv_next"),
+            (1, "Last Run:",    "_srv_last"),
+            (2, "Last Result:", "_srv_result"),
+        ]:
+            tk.Label(frm_st, text=lbl, font=("Segoe UI", 8), bg=BG, fg=FG_DIM
+                     ).grid(row=1, column=col * 2,
+                            sticky="w", padx=(10 if col == 0 else 4, 0), pady=(0, 6))
+            lv = tk.Label(frm_st, text="—", font=FONT_MONO, bg=BG, fg=FG)
+            lv.grid(row=1, column=col * 2 + 1, sticky="w", padx=(4, 14), pady=(0, 6))
+            setattr(self, attr, lv)
+
+        # ── Config card ───────────────────────────────────────────────────────
+        frm_cfg = tk.LabelFrame(p, text="  Configuration  ", font=FONT_UI,
+                                bg=BG, fg=ACCENT, bd=1, relief="groove")
+        frm_cfg.pack(fill="x", **pad)
+
+        for row, lbl, val in [
+            (0, "Task name:", _TASK_SRV),
+            (1, "Script:",    _script),
+            (2, "Python:",    _python),
+            (3, "Base dir:",  _base),
+            (4, "URL:",       "http://localhost:8765/api/reports"),
+        ]:
+            tk.Label(frm_cfg, text=lbl, font=FONT_UI, bg=BG, fg=FG_DIM
+                     ).grid(row=row, column=0, sticky="w", padx=(10, 4), pady=3)
+            tk.Label(frm_cfg, text=val, font=FONT_MONO, bg=BG, fg=FG,
+                     anchor="w", wraplength=500
+                     ).grid(row=row, column=1, sticky="w", padx=(0, 10), pady=3)
+        frm_cfg.columnconfigure(1, weight=1)
+
+        # ── Log area ──────────────────────────────────────────────────────────
+        log_txt = _st.ScrolledText(p, height=8, font=FONT_MONO,
+                                   bg="#0d1b2a", fg="#c8e6c9",
+                                   relief="flat", state="disabled", wrap="word")
+        log_txt.tag_config("ok",  foreground=GREEN)
+        log_txt.tag_config("err", foreground="#ef9a9a")
+        log_txt.pack(fill="both", expand=True, padx=14, pady=(4, 4))
+
+        self._srv_status = tk.StringVar(value="")
+        tk.Label(p, textvariable=self._srv_status, font=("Segoe UI", 9),
+                 bg=BG, fg=FG_DIM).pack(anchor="w", padx=14)
+
+        def _log(msg, tag=""):
+            log_txt.config(state="normal")
+            log_txt.insert("end", msg + "\n", tag)
+            log_txt.see("end")
+            log_txt.config(state="disabled")
+
+        def _schtask(*args):
+            r = _sp.run(list(args), capture_output=True, text=True, timeout=15)
+            return r.returncode, r.stdout.strip() or r.stderr.strip()
+
+        # store so _on_tab_change can call it  (already assigned above)
+
+        def _run_now():
+            try:
+                _sp.Popen(
+                    [_python, _script, "--base-dir", _base],
+                    creationflags=_sp.CREATE_NEW_CONSOLE,
+                )
+                _log("Server started in a new console window.", "ok")
+                _log("  API : http://localhost:8765/api/reports", "ok")
+                _log("  Close that console window to stop the server.")
+                self._srv_status.set("Running in console window.")
+            except Exception as e:
+                _log(f"ERROR: {e}", "err")
+
+        def _schedule():
+            tr = f'"{_python}" "{_script}" --base-dir "{_base}"'
+            cmd = ["schtasks", "/create",
+                   "/tn", _TASK_SRV, "/tr", tr,
+                   "/sc", "onstart",
+                   "/ru", __import__('os').environ.get("USERNAME", "SYSTEM"),
+                   "/rl", "HIGHEST", "/f"]
+            rc, out = _schtask(*cmd)
+            if rc == 0:
+                _log(f"✔ Task '{_TASK_SRV}' created — starts automatically at every boot.", "ok")
+                _log("  Triggering it now so you don't need to reboot…")
+                try:
+                    _sp.run(["schtasks", "/run", "/tn", _TASK_SRV], timeout=10)
+                    _log("  Server is starting.", "ok")
+                except Exception:
+                    pass
+            else:
+                _log(f"schtasks failed: {out}", "err")
+                _log("  Tip: run manage_automation.py as Administrator.", "err")
+            _server_refresh_inner()
+
+        def _remove():
+            if not messagebox.askyesno(
+                "Remove Task", f'Delete scheduled task "{_TASK_SRV}"?', parent=p
+            ):
+                return
+            rc, out = _schtask("schtasks", "/delete", "/tn", _TASK_SRV, "/f")
+            if rc == 0:
+                _log(f"Task '{_TASK_SRV}' removed.", "ok")
+            else:
+                msg = out.lower()
+                _log("Task was not scheduled." if "cannot find" in msg
+                     else f"Error: {out}", "err")
+            _server_refresh_inner()
+
+        # ── Action buttons ────────────────────────────────────────────────────
+        btn_row = tk.Frame(p, bg=BG)
+        btn_row.pack(fill="x", padx=14, pady=(2, 10))
+        self._btn(btn_row, "▶ Run Now",
+                  _run_now, bg="#1a3a5c", fg="#90caf9").pack(side="left", padx=(0, 8))
+        self._btn(btn_row, "✔ Schedule at Startup",
+                  _schedule, bg="#1b5e20", fg="#c8e6c9").pack(side="left", padx=(0, 8))
+        self._btn(btn_row, "↺ Check Status",
+                  _server_refresh_inner, bg=BG3, fg=FG).pack(side="left", padx=(0, 8))
+        self._btn(btn_row, "🗑 Remove Task",
+                  _remove, bg="#7b1c1c", fg="#ffcdd2").pack(side="left")
+
+        _server_refresh_inner()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
