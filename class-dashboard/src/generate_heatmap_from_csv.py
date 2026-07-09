@@ -2527,6 +2527,40 @@ function wpaTab(t){{
     <div class="ibin-hw-body" id="ibin-hw-modal-body"></div>
   </div>
 </div>
+<div id="wpa-die-tip" style="display:none;position:fixed;z-index:30000;background:#1a1a2e;color:#fff;font-size:12px;font-family:Arial,sans-serif;padding:4px 9px;border-radius:4px;pointer-events:none;white-space:nowrap;max-width:300px;box-shadow:0 2px 8px rgba(0,0,0,.45)"></div>
+<script>
+(function(){{
+  var tip=document.getElementById('wpa-die-tip');
+  function _showTip(text,x,y){{tip.textContent=text;tip.style.display='block';_moveTip(x,y);}}
+  function _moveTip(x,y){{var ox=x+14,oy=y-32;if(ox+tip.offsetWidth>window.innerWidth-6)ox=x-tip.offsetWidth-10;if(oy<4)oy=y+16;tip.style.left=ox+'px';tip.style.top=oy+'px';}}
+  function _hideTip(){{tip.style.display='none';}}
+  function _initWpaTip(){{
+    document.querySelectorAll('#wpa-pane-modemap svg').forEach(function(svg){{
+      svg.querySelectorAll('g[data-bin] > title').forEach(function(t){{t.remove();}});
+      svg.addEventListener('mousemove',function(e){{
+        var el=e.target;
+        while(el&&el!==svg){{
+          if(el.tagName&&el.tagName.toLowerCase()==='g'&&el.getAttribute('data-bin')){{
+            var txt=el.getAttribute('data-bin');
+            var fb=el.getAttribute('data-fb');
+            if(fb&&fb!=='0')txt+=' (FB '+fb+')';
+            _showTip(txt,e.clientX,e.clientY);
+            return;
+          }}
+          el=el.parentElement;
+        }}
+        _hideTip();
+      }});
+      svg.addEventListener('mouseleave',_hideTip);
+    }});
+  }}
+  var _origWpaOpen=window.wpaOpen;
+  window.wpaOpen=function(){{if(_origWpaOpen)_origWpaOpen();setTimeout(_initWpaTip,60);}};
+  var _origWpaTab=window.wpaTab;
+  window.wpaTab=function(t){{if(_origWpaTab)_origWpaTab(t);if(t==='modemap')setTimeout(_initWpaTip,60);}};
+  window.addEventListener('load',_initWpaTip);
+}})();
+</script>
 </body></html>"""
 
             out_html = heat_dir / f'{csvp.stem}_IBIN_WaferMap_{lot_safe}.html'
