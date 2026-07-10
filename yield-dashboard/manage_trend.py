@@ -1024,7 +1024,6 @@ class AutomationManager(tk.Frame):
             return
         # Save current Email & Filter settings first
         self._save_email_config()
-        # Wrapper script keeps /tr short (avoids 261-char Windows limit)
         tr = f'"{sys.executable}" "{_HERE / "automation" / "run_trend.py"}"'
         selected_days = [d for d, v in self._day_vars.items() if v.get()]
         if selected_days:

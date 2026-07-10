@@ -4,11 +4,11 @@ Generated list is baked in at run time; no server required.
 Regenerated automatically after every scheduled run, Save Report, Send Report.
 
 Usage:
-    python generate_index.py --base-dir "\\\\server\\share\\auto\\scan"
-    from generate_index import build_index; build_index(base_dir)
+    python generate_index.py
+    from generate_index import build_index; build_index()
 """
 from __future__ import annotations
-import argparse, datetime, re
+import datetime, re
 from pathlib import Path
 
 _UNC_REPORTS = r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan\reports"
@@ -25,16 +25,12 @@ def build_index(base_dir: Path) -> Path:
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    files = []
-    for f in reports_dir.glob("Scan_Report_*.html"):
-        if f.name.startswith("index"):
-            continue
-        try:
-            f.stat()   # force fresh NFS/SMB lookup; raises if deleted
-            files.append(f)
-        except (FileNotFoundError, OSError):
-            pass  # file was deleted; skip stale cache entry
-    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    files = sorted(
+        (f for f in reports_dir.glob("Scan_Report_*.html")
+         if not f.name.startswith("index")),
+        key=lambda f: f.name,   # YYYYMMDD_HHMMSS in name → lexicographic = chronological
+        reverse=True,
+    )
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     rows = ""
@@ -44,8 +40,13 @@ def build_index(base_dir: Path) -> Path:
         if m:
             d, t = m.group(1), m.group(2)
             ts = f"{d[:4]}-{d[4:6]}-{d[6:]}  {t[:2]}:{t[2:4]}:{t[4:]}"
-        sz    = _fmt_size(f.stat().st_size)
-        mtime = datetime.datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        try:
+            st   = f.stat()
+            sz   = _fmt_size(st.st_size)
+            mtime = datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
+        except OSError:
+            sz    = "–"
+            mtime = "–"
         unc   = "file:////" + _UNC_REPORTS.replace("\\", "/").lstrip("/") + "/" + f.name
         badge = '<span class="badge">latest</span>' if i == 0 else ""
         rows += (f'\n      <tr data-n="{f.name}">'
@@ -141,12 +142,11 @@ def build_index(base_dir: Path) -> Path:
 
 
 if __name__ == "__main__":
-    import webbrowser
+    import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-dir", default=None)
     args = ap.parse_args()
     _BASE = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan")
     base = Path(args.base_dir) if args.base_dir else _BASE
     out  = build_index(base)
-    print(f"Index written -> {out}")
-    webbrowser.open(out.as_uri())
+    print(f"Index written -> {out}  ({out.stat().st_size:,} bytes)")

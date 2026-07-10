@@ -70,6 +70,21 @@ def _save_config(cfg_path: Path, cfg: dict) -> None:
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
 
+def _open_html(path) -> None:
+    """Open an HTML file (local or UNC) in Edge with a proper file:// URI.
+
+    Chrome blocks UNC file:// links; Edge handles them correctly when the
+    URI uses four leading slashes (file:////server/share/...).
+    """
+    import subprocess
+    p = str(path).replace("\\", "/")
+    if p.startswith("//"):          # UNC  \\server\... → //server/...
+        uri = "file://" + p         # → file:////server/...  (4 slashes total)
+    else:
+        uri = "file:///" + p.lstrip("/")
+    subprocess.Popen(["cmd", "/c", "start", "msedge", uri])
+
+
 def _discover_keys(base_dir: Path) -> list[str]:
     """Discover TP keys from ALL NVL_0H61_* run folder subfolders."""
     keys: set[str] = set()
@@ -605,7 +620,7 @@ class AutomationManager(tk.Frame):
 
     def _hist_open_html(self, copy_only: bool = False) -> None:
         """Open dashboard/index.html in the default browser, or copy its file:// URL."""
-        import webbrowser
+        import os
         sel = self.hist_tree.selection()
         if not sel:
             self.hist_status.set("No run selected.")
@@ -619,12 +634,12 @@ class AutomationManager(tk.Frame):
                 if sub.is_dir() and re.search(r'61[A-Za-z]', sub.name):
                     dash = sub / "dashboard" / "index.html"
                     if dash.exists():
-                        links.append(dash.as_uri())
+                        links.append(str(dash))
                         break
             # Fallback: report.html
             rpt = run_dir / "report.html"
             if not links and rpt.exists():
-                links.append(rpt.as_uri())
+                links.append(str(rpt))
 
         if not links:
             self.hist_status.set("No dashboard HTML found in selected run(s).")
@@ -637,7 +652,7 @@ class AutomationManager(tk.Frame):
             return
 
         for link in links[:3]:   # open at most 3 at once
-            webbrowser.open(link)
+            _open_html(link)
         self.hist_status.set(f"Opened {len(links)} dashboard(s).")
 
     def _hist_tag_dblclick(self, event) -> None:
@@ -746,8 +761,7 @@ class AutomationManager(tk.Frame):
             from generate_index import build_index
             out = build_index(self.base_dir)
             self.hist_status.set(f"Index written \u2192 {out.name}")
-            import webbrowser
-            webbrowser.open(out.as_uri())
+            _open_html(out)
         except Exception as e:
             messagebox.showerror("Generate Index failed", str(e))
 
@@ -884,8 +898,7 @@ class AutomationManager(tk.Frame):
                     pass
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_path.name}")
-                    import webbrowser
-                    webbrowser.open(out_path.as_uri())
+                    _open_html(out_path)
                 self.after(0, _done)
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Save failed", str(e)))

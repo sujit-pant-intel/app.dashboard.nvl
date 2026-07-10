@@ -2267,6 +2267,12 @@ def main() -> None:
         _report_save = _reports_dir / f"Scan_Report_{ts_label}.html"
         _report_save.write_text(body, encoding="utf-8")
         _log(f"Report saved: {_report_save}")
+        try:
+            from generate_index import build_index as _build_index
+            _idx = _build_index(base_dir)
+            _log(f"Index regenerated: {_idx}")
+        except Exception as _ie:
+            _log(f"WARNING: could not regenerate index.html: {_ie}")
         _att_dir  = Path(tempfile.mkdtemp(prefix="nvl_scan_att_"))
         try:
             att_path = _att_dir / f"NVL816-BLLC Scan Report {ts_label}.html"
