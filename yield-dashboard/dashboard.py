@@ -446,16 +446,12 @@ class DashboardApp(tk.Tk):
         self._pipeline_tab = PipelineFrame(nb)
         self._compare_tab  = CompareFrame(nb)
         self._trend_tab    = TrendChartFrame(nb)
-        self._manage_tab   = ManageFrame(nb)
         self._portable_tab = PortableFrame(nb)
-        self._wafer_tab    = WaferHeatmapFrame(nb)
 
         nb.add(self._pipeline_tab, text='   Create   ')
         nb.add(self._compare_tab,  text='  Compare   ')
         nb.add(self._trend_tab,    text='Yield Trend ')
-        nb.add(self._manage_tab,   text='   Manage   ')
         nb.add(self._portable_tab, text='  Portable  ')
-        nb.add(self._wafer_tab,    text=' Wafer Map  ')
 
         # When switching to Manage or Compare, pre-fill Dashboard.html if known
 
