@@ -899,6 +899,58 @@ def _extract_yield_summary(tp_dir: Path, row_filter: "set | None" = None) -> dic
         return None
 
 
+def _extract_per_material_summaries(tp_dir: Path) -> list[tuple[str, dict | None]]:
+    """Read BinDistribution.html in *tp_dir*, group rows by material type field,
+    and return [(mat_type, summary_dict), ...] sorted by material type.
+    Returns an empty list if only one material type is found (no breakdown needed).
+    Falls back to empty list on any error."""
+    bd_files = sorted(tp_dir.glob("*_BinDistribution.html"))
+    dd = bd_files[0] if bd_files else tp_dir / "digital_dashboard.html"
+    if not dd.exists():
+        return []
+    try:
+        txt = dd.read_text(encoding="utf-8", errors="replace")
+        m_data = re.search(r'var DATA\s*=\s*', txt)
+        if not m_data:
+            return []
+        decoder = json.JSONDecoder()
+        data, _ = decoder.raw_decode(txt, m_data.end())
+        all_rows = data.get("rows", [])
+        if not all_rows:
+            return []
+
+        # Try "material" field first, then fall back to "lot"
+        mat_col = None
+        for candidate in ("material", "material_type", "materialType", "lot"):
+            if candidate in all_rows[0]:
+                mat_col = candidate
+                break
+        if not mat_col:
+            return []
+
+        # Group rows by material type
+        from collections import defaultdict as _dd
+        mat_rows: dict[str, list[str]] = _dd(list)
+        for row in all_rows:
+            mat_id = str(row.get(mat_col, "")).strip() or "UNKNOWN"
+            lot    = str(row.get("lot",   "")).strip()
+            wafer  = str(row.get("wafer", "")).strip()
+            mat_rows[mat_id].append(f"{lot}|{wafer}")
+
+        if len(mat_rows) <= 1:
+            # Only one material type — no sub-breakdown
+            return []
+
+        results = []
+        for mat_id in sorted(mat_rows):
+            rf   = set(mat_rows[mat_id])
+            smry = _extract_yield_summary(tp_dir, row_filter=rf)
+            results.append((mat_id, smry))
+        return results
+    except Exception:
+        return []
+
+
 def _build_compare_section(sorted_groups: list, run_dir: Path) -> str:
     """HTML for the two comparison cards shown at top of report.html."""
 
@@ -1931,6 +1983,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         return idx.as_uri() if idx.exists() else ""
 
     COL_HDR = (
+        "<th>Material</th>"
         "<th>Run Date</th>"
         "<th>Op</th>"
         "<th>Die</th>"
@@ -1943,10 +1996,10 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         "<th>DLCP<br><small>(LP)</small></th>"
         "<th>FB198<br><small>(Vmin Repair)</small></th>"
         "<th>FB201<br><small>(Vnom Repair)</small></th>"
-        "<th>FB202</th>"
+        "<th>FB202<br><small>(Vmax Repair)</small></th>"
     )
 
-    def _data_row(entry, is_latest=False, prog_prefix=""):
+    def _data_row(entry, is_latest=False, prog_prefix="", material="", sub=False):
         sm    = entry["summary"]
         ff    = _sum_bins(sm, [1, 2])
         ffdf  = _sum_bins(sm, [1, 2, 3, 4])
@@ -1962,12 +2015,22 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         ffdf_tgt = _get(sm, "ffdf_tgt")
         date_cell = (f'<a href="{link}" class="tl">{entry["dt_str"]}</a>'
                      if link else entry["dt_str"])
-        if is_latest:
+        if is_latest and not sub:
             date_cell += ' <span class="latest-badge">latest</span>'
-        row_cls = ' class="latest-row"' if is_latest else ""
+        if sub:
+            row_cls = ' class="mat-sub-row"'
+            mat_label = f'<span class="mat-sub-lbl">&#8627; {material}</span>'
+        elif is_latest:
+            row_cls = ' class="latest-row"'
+            mat_label = material
+        else:
+            row_cls = ""
+            mat_label = material
+        mat_cell = f'<td class="c-mat mono">{mat_label}</td>'
         return (
             f'<tr{row_cls}>'
             f'{prog_prefix}'
+            f'{mat_cell}'
             f'<td class="c-date">{date_cell}</td>'
             f'<td class="c-op mono">{entry["op"]}</td>'
             f'<td class="c-num">{die}</td>'
@@ -1984,6 +2047,23 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             f'</tr>\n'
         )
 
+    def _material_rows_for_entry(entry, is_latest=False, prog_prefix=""):
+        """Emit one aggregate row (ALL materials combined) then one indented
+        sub-row per material type (only when >1 material type is present)."""
+        rows_html = _data_row(entry, is_latest=is_latest,
+                              prog_prefix=prog_prefix, material="ALL")
+        mat_summaries = _extract_per_material_summaries(entry["tp_dir"])
+        for mat_id, mat_sm in mat_summaries:
+            mat_entry = dict(entry)
+            mat_entry["summary"] = mat_sm
+            rows_html += _data_row(
+                mat_entry, is_latest=False,
+                prog_prefix=f'<td class="c-prog c-prog-sub"></td>' if prog_prefix else "",
+                material=mat_id, sub=True,
+            )
+        return rows_html
+
+
     # ── Summary panel ─────────────────────────────────────────────────────────
     sum_rows = ""
     for letter in sorted_letters:
@@ -1997,11 +2077,13 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             if link else
             f'<td class="c-prog"><span class="prog-pill">0H{letter}</span></td>'
         )
-        sum_rows += _data_row(e, prog_prefix=prog_cell)
+        sum_rows += _material_rows_for_entry(e, is_latest=True, prog_prefix=prog_cell)
 
     summary_panel = (
         f'<div id="panel-summary" class="panel active">\n'
-        f'  <h2 class="panel-hdr">&#128200; Summary \u2014 Latest Run per Program</h2>\n'
+        f'  <h2 class="panel-hdr">&#128200; Summary \u2014 Latest Run per Program'
+        f'    <button class="csv-btn" onclick="downloadCSV(this)" title="Download visible rows as CSV">&#11123; CSV</button>'
+        f'  </h2>\n'
         f'  <p class="panel-sub">Generated: {run_ts}</p>\n'
         f'  <div class="tbl-wrap">\n'
         f'  <table class="data-tbl">\n'
@@ -2026,7 +2108,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
                 if link else f'<td class="c-prog">{pill}</td>'
             )
         hist_rows = "".join(
-            _data_row(e, i == 0, prog_prefix=_prog_cell(e, letter))
+            _material_rows_for_entry(e, i == 0, prog_prefix=_prog_cell(e, letter))
             for i, e in enumerate(entries)
         )
         latest_ff = _sum_bins(entries[0]["summary"], [1, 2])
@@ -2041,6 +2123,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             f'    <span class="prog-pill">0H{letter}</span>\n'
             f'    <span class="yld-badge" style="background:{badge_col}">{latest_ff} FF</span>\n'
             f'    <span class="panel-sub-inline">{len(entries)} run{"s" if len(entries)!=1 else ""}</span>\n'
+            f'    <button class="csv-btn" onclick="downloadCSV(this)" title="Download visible rows as CSV">&#11123; CSV</button>\n'
             f'  </h2>\n'
             f'  <div class="tbl-wrap">\n'
             f'  <table class="data-tbl">\n'
@@ -2118,16 +2201,80 @@ body {
 .latest-row td { background: #0f2233 !important; }
 .c-date { white-space: nowrap; color: #90a4ae; }
 .c-prog { }
+.c-prog-sub { }
+.c-mat  { white-space: nowrap; color: #ce93d8; font-size: 13px; }
+.mat-sub-row td { background: #111e2a !important; font-size: 13px; color: #a5d6e8; }
+.mat-sub-row .c-num { color: #80cbc4; }
+.mat-sub-row .c-tgt { color: #7986cb; }
+.mat-sub-row .c-date { color: #607d8b; }
+.mat-sub-row .c-op   { color: #4db6ac; }
+.mat-sub-row .c-mat { padding-left: 6px; }
+.mat-sub-lbl { color: #80deea; font-size: 13px; font-style: italic; font-weight: 500; }
 .c-op   { white-space: nowrap; color: #80cbc4; }
 .c-num  { white-space: nowrap; }
 .c-tgt  { color: #78909c; font-size: 13px; }
 .mono   { font-family: monospace; font-size: 13px; }
 .tl     { color: #4fc3f7; text-decoration: none; }
 .tl:hover { text-decoration: underline; }
+.sort-arrow { font-size: 11px; color: #4fc3f7; margin-left: 3px; }
+/* ── Column filter dropdown ──────────────────────────────────────────────── */
+.flt-btn {
+  display: inline-block; margin-left: 5px; cursor: pointer;
+  font-size: 10px; color: #607d8b; vertical-align: middle;
+  padding: 0 3px; border-radius: 3px; line-height: 1;
+  transition: color .15s;
+}
+.flt-btn:hover { color: #4fc3f7; }
+.flt-btn.flt-active { color: #ffa726; }
+.flt-drop {
+  position: absolute; z-index: 9999;
+  background: #1a2f45; border: 1px solid #263950;
+  border-radius: 6px; padding: 8px 0 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.6);
+  min-width: 220px; max-width: 320px;
+}
+.flt-search-row { padding: 0 10px 6px; }
+.flt-text {
+  width: 100%; box-sizing: border-box;
+  background: #0f1923; border: 1px solid #263950;
+  color: #dce9f5; border-radius: 4px; padding: 5px 8px;
+  font-size: 13px; outline: none;
+}
+.flt-text:focus { border-color: #4fc3f7; }
+.flt-cb-list {
+  max-height: 180px; overflow-y: auto; padding: 0 10px;
+  border-top: 1px solid #263950; border-bottom: 1px solid #263950;
+  margin-bottom: 4px;
+}
+.flt-cb-lbl {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 2px; font-size: 13px; color: #c8d8e8;
+  cursor: pointer; white-space: nowrap;
+}
+.flt-cb-lbl:hover { color: #fff; }
+.flt-cb-lbl input[type=checkbox] { accent-color: #4fc3f7; cursor: pointer; }
+.flt-footer { display: flex; gap: 6px; padding: 4px 10px 0; }
+.flt-footer button {
+  flex: 1; background: #263950; border: none; color: #90a4ae;
+  border-radius: 4px; padding: 4px 0; font-size: 12px; cursor: pointer;
+}
+.flt-footer button:hover { background: #2e4a6a; color: #dce9f5; }
+.flt-footer .flt-apply { background: #1b5e20; color: #a5d6a7; }
+.flt-footer .flt-apply:hover { background: #2e7d32; }
+.flt-footer .flt-clear { color: #ef9a9a; }
+/* ── CSV download button ─────────────────────────────────────────────────── */
+.csv-btn {
+  margin-left: auto; background: #1a3a2c; border: 1px solid #2e6b4a;
+  color: #80deea; border-radius: 5px; padding: 4px 12px;
+  font-size: 13px; cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.csv-btn:hover { background: #235c40; color: #b2ebf2; }
 """
 
     JS = """
 (function(){
+  /* ── Tab navigation ───────────────────────────────────────────────────── */
   var btns   = document.querySelectorAll('.tab-btn');
   var panels = document.querySelectorAll('.panel');
   btns.forEach(function(b){
@@ -2139,6 +2286,239 @@ body {
       if(p) p.classList.add('active');
     });
   });
+
+  /* ── Column sort + filter for .data-tbl ──────────────────────────────── */
+  var _sortState = {};   /* key: tableId+colIdx -> {asc:bool} */
+  var _filterState = {}; /* key: tableId+colIdx -> {text:'', checked:Set} */
+  var _activeDropdown = null;
+
+  function tableId(tbl){ return tbl.id || (tbl.id='tbl'+(Math.random()*1e9|0)); }
+
+  /* Build a unique key per table+column */
+  function fkey(tbl,ci){ return tableId(tbl)+':'+ci; }
+
+  /* Collect unique values for a column (ignores hidden rows) */
+  function colValues(tbl,ci){
+    var vals=new Set();
+    Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(r){
+      var c=r.cells[ci]; if(c) vals.add(c.innerText.trim());
+    });
+    return Array.from(vals).sort();
+  }
+
+  /* Apply all active filters to a table */
+  function applyFilters(tbl){
+    var tid=tableId(tbl);
+    Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(row){
+      var show=true;
+      Object.keys(_filterState).forEach(function(k){
+        if(k.split(':')[0]!==tid) return;
+        var ci=parseInt(k.split(':')[1]);
+        var st=_filterState[k];
+        var cell=row.cells[ci];
+        var val=cell ? cell.innerText.trim() : '';
+        if(st.text && val.toLowerCase().indexOf(st.text.toLowerCase())===-1){ show=false; }
+        if(st.checked && st.checked.size>0 && !st.checked.has(val)){ show=false; }
+      });
+      row.style.display = show ? '' : 'none';
+    });
+  }
+
+  /* Close any open dropdown */
+  function closeDropdown(){
+    if(_activeDropdown){ _activeDropdown.remove(); _activeDropdown=null; }
+  }
+  document.addEventListener('click', function(e){
+    if(_activeDropdown && !_activeDropdown.contains(e.target) && !e.target.classList.contains('flt-btn')){
+      closeDropdown();
+    }
+  });
+
+  /* Build and show the filter dropdown for a th */
+  function showDropdown(th, tbl, ci){
+    closeDropdown();
+    var k=fkey(tbl,ci);
+    if(!_filterState[k]) _filterState[k]={text:'',checked:new Set()};
+    var st=_filterState[k];
+
+    var dd=document.createElement('div');
+    dd.className='flt-drop';
+    dd.innerHTML=
+      '<div class="flt-search-row">'+
+        '<input class="flt-text" type="text" placeholder="Search..." value="'+st.text+'">'+
+      '</div>'+
+      '<div class="flt-cb-list"></div>'+
+      '<div class="flt-footer">'+
+        '<button class="flt-all">All</button>'+
+        '<button class="flt-none">None</button>'+
+        '<button class="flt-apply">Apply</button>'+
+        '<button class="flt-clear">Clear</button>'+
+      '</div>';
+
+    /* Position below th */
+    var rect=th.getBoundingClientRect();
+    dd.style.top=(rect.bottom+window.scrollY)+'px';
+    dd.style.left=(rect.left+window.scrollX)+'px';
+    document.body.appendChild(dd);
+    _activeDropdown=dd;
+
+    /* Populate checkboxes */
+    var cbList=dd.querySelector('.flt-cb-list');
+    var vals=colValues(tbl,ci);
+    vals.forEach(function(v){
+      var lbl=document.createElement('label');
+      lbl.className='flt-cb-lbl';
+      var chk=document.createElement('input');
+      chk.type='checkbox';
+      chk.value=v;
+      chk.checked = st.checked.size===0 || st.checked.has(v);
+      lbl.appendChild(chk);
+      lbl.appendChild(document.createTextNode(' '+v));
+      cbList.appendChild(lbl);
+    });
+
+    /* Text filter live preview */
+    dd.querySelector('.flt-text').addEventListener('input',function(){
+      var q=this.value.toLowerCase();
+      cbList.querySelectorAll('label').forEach(function(l){
+        l.style.display=l.textContent.toLowerCase().indexOf(q)>=0?'':'none';
+      });
+    });
+
+    dd.querySelector('.flt-all').addEventListener('click',function(e){
+      e.stopPropagation();
+      cbList.querySelectorAll('input').forEach(function(c){c.checked=true;});
+    });
+    dd.querySelector('.flt-none').addEventListener('click',function(e){
+      e.stopPropagation();
+      cbList.querySelectorAll('input').forEach(function(c){c.checked=false;});
+    });
+    dd.querySelector('.flt-apply').addEventListener('click',function(e){
+      e.stopPropagation();
+      st.text=dd.querySelector('.flt-text').value.trim();
+      st.checked=new Set();
+      var all=cbList.querySelectorAll('input');
+      var anyUnchecked=false;
+      all.forEach(function(c){ if(!c.checked) anyUnchecked=true; });
+      if(anyUnchecked) all.forEach(function(c){ if(c.checked) st.checked.add(c.value); });
+      applyFilters(tbl);
+      /* Update filter-active indicator */
+      var active=(st.text||st.checked.size>0);
+      th.querySelector('.flt-btn').classList.toggle('flt-active',active);
+      closeDropdown();
+    });
+    dd.querySelector('.flt-clear').addEventListener('click',function(e){
+      e.stopPropagation();
+      st.text=''; st.checked=new Set();
+      applyFilters(tbl);
+      th.querySelector('.flt-btn').classList.remove('flt-active');
+      closeDropdown();
+    });
+  }
+
+  /* Attach sort + filter controls to each filterable column header */
+  function initTable(tbl){
+    /* cols 0=Program, 1=Material (0-indexed) */
+    var filterCols=[0,1];
+    var ths=Array.from(tbl.querySelectorAll('thead th'));
+    ths.forEach(function(th,ci){
+      /* Sort on th text click */
+      th.style.cursor='pointer';
+      th.title='Click to sort';
+      th.addEventListener('click',function(e){
+        if(e.target.classList.contains('flt-btn')) return;
+        var tid=tableId(tbl);
+        var k=tid+':sort:'+ci;
+        _sortState[k]=!_sortState[k];
+        var asc=!_sortState[k];
+        var rows=Array.from(tbl.querySelectorAll('tbody tr'));
+        rows.sort(function(a,b){
+          var av=(a.cells[ci]||{}).innerText||'';
+          var bv=(b.cells[ci]||{}).innerText||'';
+          return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+        var tbody=tbl.querySelector('tbody');
+        rows.forEach(function(r){ tbody.appendChild(r); });
+        /* Update sort arrows */
+        ths.forEach(function(h){
+          var arrow=h.querySelector('.sort-arrow');
+          if(arrow) arrow.textContent='';
+        });
+        var arrow=th.querySelector('.sort-arrow');
+        if(arrow) arrow.textContent=asc?' ↑':' ↓';
+      });
+
+      /* Sort-arrow span */
+      var arrowSpan=document.createElement('span');
+      arrowSpan.className='sort-arrow';
+      th.appendChild(arrowSpan);
+
+      /* Filter button for Program and Material only */
+      if(filterCols.indexOf(ci)>=0){
+        var btn=document.createElement('span');
+        btn.className='flt-btn';
+        btn.title='Filter';
+        btn.innerHTML='&#9660;';
+        btn.addEventListener('click',function(e){
+          e.stopPropagation();
+          showDropdown(th,tbl,ci);
+        });
+        th.appendChild(btn);
+      }
+    });
+  }
+
+  /* Init all current tables */
+  document.querySelectorAll('.data-tbl').forEach(initTable);
+
+  /* Re-init when tab switches (panels reuse same DOM so only once needed) */
+
+  /* ── CSV download ─────────────────────────────────────────────────────── */
+  window.downloadCSV = function(btn){
+    var panel = btn.closest('.panel');
+    var tbl   = panel && panel.querySelector('.data-tbl');
+    if(!tbl) return;
+
+    /* Headers — strip HTML, sort-arrow spans and filter buttons */
+    var headers = Array.from(tbl.querySelectorAll('thead th')).map(function(th){
+      return th.cloneNode(true).innerText.replace(/[\u2191\u2193\u25bc\u25be]/g,'').trim();
+    });
+
+    /* Visible rows only */
+    var rows = Array.from(tbl.querySelectorAll('tbody tr')).filter(function(r){
+      return r.style.display !== 'none';
+    });
+
+    var LF = String.fromCharCode(10), CR = String.fromCharCode(13);
+    function escCSV(v){
+      v = v.split(LF).join(' ').split(CR).join('').trim();
+      if(v.indexOf(',')>=0 || v.indexOf('"')>=0)
+        return '"'+v.split('"').join('""')+'"';
+      return v;
+    }
+
+    var NL = CR+LF;
+    var lines = [headers.map(escCSV).join(',')];
+    rows.forEach(function(r){
+      lines.push(Array.from(r.cells).map(function(c){
+        return escCSV(c.innerText.trim());
+      }).join(','));
+    });
+
+    /* Build panel name for filename */
+    var panelId = panel.id || 'report';
+    var ts = new Date().toISOString().replace(/[T:]/g,'-').slice(0,19);
+    var filename = 'NVL_Yield_'+panelId+'_'+ts+'.csv';
+
+    var blob = new Blob([lines.join(NL)], {type:'text/csv;charset=utf-8;'});
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  };
 })();
 """
 

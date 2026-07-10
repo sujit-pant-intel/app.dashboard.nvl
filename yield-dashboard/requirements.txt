@@ -14,6 +14,7 @@ numpy>=1.24
 
 # ── Charting ──────────────────────────────────────────────────────────────────
 plotly>=5.18          # interactive Plotly charts embedded in HTML dashboards
+matplotlib>=3.7       # wafermap heatmap generation
 
 # ── Excel / file formats ──────────────────────────────────────────────────────
 openpyxl>=3.1         # read/write .xlsx (summaries, bin-def imports)

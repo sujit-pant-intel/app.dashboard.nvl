@@ -52,7 +52,7 @@
       "yield": 0.6
     },
     {
-      "bin": "7/8/9/10/15/18/43",
+      "bin": "7/8/9/10/15/18/43/80/89",
       "fail_bucket": "TPI (Foundry)",
       "yield": 2.4
     },
@@ -254,6 +254,10 @@
       "cat": "DC",
       "desc": "SHOPS/EDM"
     },
+	"80": {
+    "cat": "DC",
+    "desc": "VCC_CON-POSTSURGE"
+    },
     "20": {
       "cat": "Array",
       "desc": "ARR_CORE/ATOM_LSA"
@@ -291,10 +295,6 @@
       "desc": "Function"
     },
     "45": {
-      "cat": "Functional",
-      "desc": "Function"
-    },
-    "80": {
       "cat": "Functional",
       "desc": "Function"
     },

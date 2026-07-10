@@ -1357,7 +1357,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '.yt{font-size:15px;font-weight:bold;color:#2c3e50;margin-bottom:8px}\n'
         '.ytbl{border-collapse:collapse;font-size:13px;width:100%;table-layout:fixed}\n'
         '.ytbl th{background:#2c3e50;color:#ecf0f1;padding:6px 12px;text-align:left;position:sticky;top:0;z-index:1}\n'
-        '.ytbl td{padding:5px 12px;border-bottom:1px solid #dde;text-align:left}\n'
+        '.ytbl td{padding:5px 12px;border-bottom:1px solid #dde;text-align:left;vertical-align:middle}\n'
         '.ytbl th,.ytbl td{overflow-wrap:anywhere;word-break:break-word}\n'
         '.ytbl th:nth-child(1),.ytbl td:nth-child(1){width:14%}\n'
         '.ytbl th:nth-child(2),.ytbl td:nth-child(2){width:38%}\n'
@@ -1647,6 +1647,8 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '<div class="yp-bar" onclick="ypTgl(\'ys\')">'
         '<span class="yp-ttl">&#9654; Yield Summary (filtered)</span>'
         '<span class="yp-btns" onclick="event.stopPropagation()">'
+        '<label style="font-size:11px;font-weight:normal;color:rgba(255,255,255,.85);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-right:6px" title="Split Actual column by Material Type (L0=AIO, L5=AIO+BB)">'
+        '<input type="checkbox" id="ys-split" onchange="IC.rYield()" style="cursor:pointer"> Split by Material</label>'
         '<button class="yp-btn" onclick="IC.exportYieldCsv()" title="Export to CSV">&#8681; CSV</button>'
         '<button class="yp-btn" onclick="IC.openDlcpModal()">&#128202; DLCP</button>'
         '<button class="yp-btn" onclick="window.open(\'wafermap.html\',\'_blank\')">&#127759; Wafer Map</button>'
@@ -1660,6 +1662,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '      <th>BIN</th><th>FAIL BUCKET</th>\n'
         '      <th class="num">ACTUAL (%)</th><th class="num">EXPECTED (%)</th><th class="num">DIFF (%)</th><th></th>\n'
         '    </tr></thead>\n'
+        '    <!-- header updated dynamically by rYield() -->\n'
         '    <tbody id="yield-tbody"></tbody>\n'
         '  </table>\n'
         '</div>\n'
@@ -2337,12 +2340,60 @@ function _computeDlcpByFb(){
   });
   return out;
 }
+// Classify a material string into 'L0', 'L5', or '' (unknown/empty)
+function _matCat(m){
+  if(!m||!m.trim())return '';
+  var u=m.toUpperCase();
+  if(/\bL0\b/.test(u))return 'L0';
+  if(/\bL5\b/.test(u))return 'L5';
+  return '';
+}
 function rYield(){
   var fc=gFC(),cn=fc.counts,tot=fc.total;
   var tbody=document.getElementById('yield-tbody');
+  var thead=document.getElementById('yield-thead');
   var ysInfo=document.getElementById('ys-info');
   if(ysInfo)ysInfo.textContent='Total Wafers\u202f=\u202f'+sR.size+'\u2002\u2014\u2002n\u202f=\u202f'+tot.toLocaleString()+' dies';
   var _dlcpByFb=_computeDlcpByFb();
+  // Determine split mode
+  var _splitCb=document.getElementById('ys-split');
+  var doSplit=_splitCb?_splitCb.checked:false;
+  // Build per-category counts when splitting
+  // catCounts[cat] = {bin: count, ...}, catTotals[cat] = total dies
+  var _cats=[];
+  var _catCounts={},_catTotals={};
+  if(doSplit){
+    var _catSet={};
+    sR.forEach(function(ri){
+      var row=DATA.rows[ri];
+      var cat=_matCat(row.material||'');
+      _catSet[cat]=1;
+      if(!_catCounts[cat]){_catCounts[cat]={};_catTotals[cat]=0;}
+      _catTotals[cat]+=row.total||0;
+      var bc=row.binCounts||{};
+      Object.keys(bc).forEach(function(b){_catCounts[cat][b]=(_catCounts[cat][b]||0)+bc[b];});
+    });
+    // Order: L0, L5, empty — only those present
+    ['L0','L5',''].forEach(function(c){if(_catSet[c])_cats.push(c);});
+  }
+  var hasSplit=doSplit&&_cats.length>=1;
+  // Update table layout for Yield Summary: auto when split, fixed when not
+  var _ytbl=document.querySelector('.ytbl');
+  if(_ytbl){_ytbl.style.tableLayout=hasSplit?'auto':'fixed';}
+  // Update header
+  if(thead){
+    var thHtml='<tr><th>BIN</th><th>FAIL BUCKET</th>';
+    if(hasSplit){
+      _cats.forEach(function(c){
+        var lbl=c==='L0'?'AIO L0':c==='L5'?'AIO_BB L5':'other';
+        thHtml+='<th class="num" style="white-space:nowrap">ACTUAL ('+lbl+', %)</th>';
+      });
+    } else {
+      thHtml+='<th class="num">ACTUAL (%)</th>';
+    }
+    thHtml+='<th class="num">EXPECTED (%)</th><th class="num">DIFF (%)</th><th></th></tr>';
+    thead.innerHTML=thHtml;
+  }
   var html='';
   DATA.yieldDefs.forEach(function(def,di){
     var cnt=def.bins_list.reduce(function(s,b){return s+(cn[b]||0);},0);
@@ -2377,7 +2428,20 @@ function rYield(){
     }
     html+='<tr class="'+rowCls+'"'+rowClick+'>';
     html+='<td>'+esc(def.bins)+'</td><td>'+esc(def.bucket)+'</td>';
-    html+='<td'+(actualCls||'')+'>'+pct.toFixed(1)+'% <span style="color:#888;font-size:10px">(n\u202f=\u202f'+cnt.toLocaleString()+')</span>'+_dlcpTag+'</td>';
+    if(hasSplit){
+      _cats.forEach(function(c){
+        var cCn=_catCounts[c]||{},cTot=_catTotals[c]||0;
+        var cCnt=def.bins_list.reduce(function(s,b){return s+(cCn[b]||0);},0);
+        var cPct=cTot>0?cCnt/cTot*100:0;
+        var cDiff=!isNaN(exp)?(cPct-exp):null;
+        var cDiffCls='yn';
+        if(cDiff!==null){cDiffCls=hasBin1?(cDiff>0?'yg':cDiff<0?'yr':'yn'):(cDiff>0?'yr':cDiff<0?'yg':'yn');}
+        var cCls=((!isNaN(exp)&&cDiff!==null&&cDiff!==0)?' class="num '+cDiffCls+'"':' class="num"');
+        html+='<td'+cCls+'>'+cPct.toFixed(1)+'% <span style="color:#888;font-size:10px">(n\u202f=\u202f'+cCnt.toLocaleString()+')</span></td>';
+      });
+    } else {
+      html+='<td'+(actualCls||'')+'>'+pct.toFixed(1)+'% <span style="color:#888;font-size:10px">(n\u202f=\u202f'+cnt.toLocaleString()+')</span>'+_dlcpTag+'</td>';
+    }
     html+='<td>'+(def.expected?def.expected+'%':'')+'</td>';
     html+='<td class="'+diffCls+'">'+(diff===null?'\u2014':(diff>0?'+':'')+diff.toFixed(1)+'%')+'</td>';
     var _abjs='['+def.bins_list.join(',')+']';
@@ -5880,6 +5944,7 @@ return{clickBar:clickBar,clickLegend:clickLegend,legendClick:legendClick,toggleB
   dlcpSplitterToggle:dlcpSplitterToggle,
   openWmModal:openWmModal,closeWmModal:closeWmModal,
   exportCsv:exportCsv,exportYieldCsv:exportYieldCsv,exportSdtCsv:exportSdtCsv,
+  rYield:rYield,
   _wmToggleRow:_wmToggleRow,_wmToggleLot:_wmToggleLot,_wmSelectAll:_wmSelectAll,_wmSetThresh:_wmSetThresh,
   _wmTab:_wmTab,_wmToggleBin:_wmToggleBin,_wmToggleBinAll:_wmToggleBinAll,_wmToggleCriteriaMiss:_wmToggleCriteriaMiss,
   _wmShowCriteriaCfg:_wmShowCriteriaCfg,_wmCritCfgToggle:_wmCritCfgToggle,_wmCritCfgAll:_wmCritCfgAll,_wmCritLoadJson:_wmCritLoadJson,

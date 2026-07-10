@@ -25,10 +25,16 @@ def build_index(base_dir: Path) -> Path:
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    files = sorted(
-        [f for f in reports_dir.glob("Scan_Report_*.html") if f.name != "index.html"],
-        key=lambda f: f.stat().st_mtime, reverse=True,
-    )
+    files = []
+    for f in reports_dir.glob("Scan_Report_*.html"):
+        if f.name.startswith("index"):
+            continue
+        try:
+            f.stat()   # force fresh NFS/SMB lookup; raises if deleted
+            files.append(f)
+        except (FileNotFoundError, OSError):
+            pass  # file was deleted; skip stale cache entry
+    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     rows = ""
@@ -122,7 +128,15 @@ def build_index(base_dir: Path) -> Path:
 </html>"""
 
     out = reports_dir / "index.html"
-    out.write_text(html, encoding="utf-8")
+    import time as _time
+    for _attempt in range(3):
+        try:
+            out.unlink(missing_ok=True)
+            out.write_text(html, encoding="utf-8")
+            break
+        except (PermissionError, OSError):
+            if _attempt < 2:
+                _time.sleep(1)
     return out
 
 

@@ -434,7 +434,9 @@ class AutomationManager(tk.Frame):
                   bg="#1a3a1a", fg="#a5d6a7").pack(side="left", padx=(0, 6))
         self._btn(tb, "📂 Open Report",  self._hist_open_report,
                   bg="#1a3a3c", fg="#80deea").pack(side="left", padx=(0, 6))
-        self._btn(tb, "�🗑 Delete",       self._hist_delete,
+        self._btn(tb, "🔄 Rebuild Index", self._hist_generate_index,
+                  bg="#2d3b1a", fg="#c5e1a5").pack(side="left", padx=(0, 6))
+        self._btn(tb, "🗑 Delete",       self._hist_delete,
                   bg="#5d1a1a", fg="#ffcdd2").pack(side="right")
 
         cols = ("date", "size", "status")
@@ -535,6 +537,18 @@ class AutomationManager(tk.Frame):
         else:
             webbrowser.open(url)
             self.hist_status.set(f"Opened: {html.name}")
+
+    def _hist_generate_index(self) -> None:
+        """Scan reports/ on samba and rewrite index.html with only files that exist."""
+        try:
+            import importlib.util as _ilu
+            _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "generate_index.py")
+            _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
+            _gi.build_index(self.base_dir)
+            out = self.base_dir / "reports" / "index.html"
+            self.hist_status.set(f"Index rebuilt \u2192 {out}")
+        except Exception as e:
+            messagebox.showerror("Rebuild Index failed", str(e))
 
     def _hist_delete(self) -> None:
         sel = self.hist_tree.selection()
@@ -656,13 +670,10 @@ class AutomationManager(tk.Frame):
                     err = r.stderr.strip()[:400] or r.stdout.strip()[:400] or f"exit {r.returncode}"
                     raise RuntimeError(err)
                 # regenerate index.html
-                try:
-                    import sys as _sys2
-                    _sys2.path.insert(0, str(_HERE / "yld"))
-                    from generate_index import build_index as _bi
-                    _bi(self.base_dir)
-                except Exception:
-                    pass
+                import importlib.util as _ilu
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "generate_index.py")
+                _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
+                _gi.build_index(self.base_dir)
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_html.name}")
                     self._refresh_history()
@@ -1336,6 +1347,16 @@ class AutomationManager(tk.Frame):
                     _append(f"\n✖ {_failed} chart(s) failed.\n")
                     status_var.set(f"✖ {_failed} chart(s) failed")
 
+                # regenerate index.html
+                try:
+                    import importlib.util as _ilu
+                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "generate_index.py")
+                    _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
+                    _gi.build_index(self.base_dir)
+                    _append("Index updated → reports/index.html\n")
+                except Exception as _idx_e:
+                    _append(f"WARNING: index update failed: {_idx_e}\n")
+
                 self._refresh_task()
                 self._refresh_data()
 
@@ -1657,6 +1678,15 @@ class AutomationManager(tk.Frame):
             threading.Thread(target=_send_after_run, daemon=True).start()
 
             all_ok = all(rc == 0 for _, rc in generated)
+            # regenerate index.html
+            try:
+                import importlib.util as _ilu
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "generate_index.py")
+                _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
+                _gi.build_index(self.base_dir)
+                dlg.after(0, _append, "Index updated → reports/index.html")
+            except Exception as _idx_e:
+                dlg.after(0, _append, f"WARNING: index update failed: {_idx_e}")
             dlg.after(0, self._refresh_history)
             dlg.after(0, self._refresh_data)
             dlg.after(0, status_var.set,

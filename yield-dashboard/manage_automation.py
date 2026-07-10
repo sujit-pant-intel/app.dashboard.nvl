@@ -143,6 +143,7 @@ class AutomationManager(tk.Frame):
 
         self._apply_styles()
         self._build_ui()
+        self.after(500, self._auto_rebuild_index)
 
     # ── shared button helper ──────────────────────────────────────────────────
 
@@ -495,6 +496,8 @@ class AutomationManager(tk.Frame):
                   bg="#1a3a3c", fg="#80deea").pack(side="left", padx=(0, 6))
         self._btn(tb2, "✉ Send Report",   self._hist_send_email,
                   bg="#1a3a5c", fg="#90caf9").pack(side="left", padx=(0, 6))
+        self._btn(tb2, "🔄 Rebuild Index", self._hist_generate_index,
+                  bg="#2d3b1a", fg="#c5e1a5").pack(side="left", padx=(0, 6))
         self._btn(tb2, "⚠ Delete + Data", lambda: self._hist_delete(include_data=True),
                   bg="#6b3a00", fg="#ffd180").pack(side="right", padx=(6, 0))
         self._btn(tb2, "🗑 Delete Run",    lambda: self._hist_delete(include_data=False),
@@ -825,6 +828,11 @@ class AutomationManager(tk.Frame):
                     _reports_dir.mkdir(parents=True, exist_ok=True)
                     _saved = _reports_dir / f"Yield_Report_{latest_ts}.html"
                     _saved.write_text(body_html, encoding="utf-8")
+                    # regenerate index
+                    import importlib.util as _ilu
+                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "automation" / "generate_index.py")
+                    _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
+                    _gi.build_index(self.base_dir)
                     self.after(0, lambda: self.hist_status.set(
                         f"Sent to {to}  ({letters_str} — {len(found_prog_keys)} program(s))  •  Saved → {_saved.name}"))
                 finally:
@@ -861,12 +869,11 @@ class AutomationManager(tk.Frame):
                 body    = _build_email_report_html(out_dir, run_ts, excluded_keys=_excl)
                 out_path = reports_dir / f"Yield_Report_{ts_file}.html"
                 out_path.write_text(body, encoding="utf-8")
-                # regenerate index.html so SharePoint landing page stays current
-                try:
-                    from generate_index import build_index
-                    build_index(self.base_dir)
-                except Exception:
-                    pass
+                # regenerate index
+                import importlib.util as _ilu
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "automation" / "generate_index.py")
+                _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
+                _gi.build_index(self.base_dir)
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_path.name}")
                     import webbrowser
@@ -878,16 +885,27 @@ class AutomationManager(tk.Frame):
 
         threading.Thread(target=_save, daemon=True).start()
 
+    def _rebuild_index(self):
+        """Scan samba reports/ and rewrite index.html with only files that exist."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_gi", _HERE / "automation" / "generate_index.py")
+        mod  = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.build_index(self.base_dir)
+
+    def _auto_rebuild_index(self) -> None:
+        """Silently rebuild index.html on startup so deleted files are removed."""
+        try:
+            self._rebuild_index()
+        except Exception:
+            pass
+
     def _hist_generate_index(self) -> None:
         """Generate reports/index.html listing all Yield_Report_*.html files."""
-        import sys as _sys
-        _sys.path.insert(0, str(_HERE / "automation"))
         try:
-            from generate_index import build_index
-            out = build_index(self.base_dir)
-            self.hist_status.set(f"Index written → {out.name}")
-            import webbrowser
-            webbrowser.open(out.as_uri())
+            self._rebuild_index()
+            out = self.base_dir / "reports" / "index.html"
+            self.hist_status.set(f"Index written \u2192 {out}")
         except Exception as e:
             messagebox.showerror("Generate Index failed", str(e))
 

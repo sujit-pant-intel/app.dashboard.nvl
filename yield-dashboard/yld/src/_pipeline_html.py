@@ -1105,7 +1105,8 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
                     f'&#128202; Bin Fail Summary'
                     + (f' &mdash; {_esc(tag)}' if tag else '') +
                     (' <span style="font-size:10px;font-weight:normal;color:#666">(click row to view IBIN wafer map)</span>' if _wm_url else '') +
-                    ' <button onclick="exportTblCsv(\'bfs-thead\',\'bfs-tbody\',\'bin_fail_summary\')" style="font-size:11px;margin-left:8px;padding:2px 7px;cursor:pointer">&#8681; Export CSV</button>'
+                    ' <button onclick="exportTblCsv(\'bfs-thead\',\'bfs-tbody\',\'bin_fail_summary\'" style="font-size:11px;margin-left:8px;padding:2px 7px;cursor:pointer">&#8681; Export CSV</button>'
+                    ' <label style="font-size:11px;font-weight:normal;margin-left:10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px" title="Split Total/Count/Yield columns by Material Type (L0=AIO, L5=AIO+BB)"><input type="checkbox" id="bfs-mat-split" onchange="rBFS()" style="cursor:pointer"> Split by Material</label>'
                     '</h3>'
                     '<table class="pareto-tbl" id="bfs-tbl">'
                     '<thead id="bfs-thead">'
@@ -1345,6 +1346,7 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
                 + 'var DD_ROWS=' + _json_par.dumps(_dd_js_rows) + ';\n'
                 + 'var DD_WAFER_DATA=' + _dd_wafer_json + ';\n'
                 + r'''function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function _bfsMatCat(m){if(!m||!String(m).trim())return '';var u=String(m).toUpperCase();if(/\bL0\b/.test(u))return 'L0';if(/\bL5\b/.test(u))return 'L5';return '';}
 function paretoNav(url){try{var f=window.parent.document.getElementById('frame');if(f){f.src=url;return;}else{window.open(url,'_blank');return;}}catch(e){}try{window.parent.postMessage({navFrame:url},'*');}catch(e2){window.open(url,'_blank');}}
 function _ddGetSelWafers(){
   if(!window.IC||!IC.sR||!IC.DATA)return null;
@@ -1599,6 +1601,25 @@ function bfsFilterLive(r){
 function rBFS(){
   var keys=['bin','cat','desc','total','count','pct'];
   var rows;
+  // Determine split mode
+  var _matSplitCb=document.getElementById('bfs-mat-split');
+  var doMatSplit=_matSplitCb?_matSplitCb.checked:false;
+  // Build per-material-category counts when IC is available and split is on
+  var _matCats=[],_matCounts={},_matTotals={};
+  if(doMatSplit&&window.IC&&IC.sR&&IC.DATA){
+    var _mset={};
+    IC.sR.forEach(function(i){
+      var row=IC.DATA.rows[i];if(!row)return;
+      var mc=_bfsMatCat(row.material||'');
+      _mset[mc]=1;
+      if(!_matCounts[mc]){_matCounts[mc]={};_matTotals[mc]=0;}
+      _matTotals[mc]+=(row.total||0);
+      var bc=row.binCounts||{};
+      Object.keys(bc).forEach(function(b){_matCounts[mc][b]=(_matCounts[mc][b]||0)+bc[b];});
+    });
+    ['L0','L5',''].forEach(function(c){if(_mset[c])_matCats.push(c);});
+  }
+  var hasSplit=doMatSplit&&_matCats.length>=1;
   if(window.IC&&IC.gFC){
     var fc=IC.gFC();var cn=fc.counts,tot=fc.total;
     rows=BFS_DATA.map(function(r){
@@ -1611,11 +1632,54 @@ function rBFS(){
     rows=bfsGetFiltered();
   }
   if(bfsSort.col>=0){var k=keys[bfsSort.col];rows=rows.slice().sort(function(a,b){var av=a[k],bv=b[k];var cmp=(typeof av==='number'&&typeof bv==='number')?(av-bv):String(av).localeCompare(String(bv));return bfsSort.dir==='asc'?cmp:-cmp;});}
-  // Hide good bins (1–4) from display
+  // Hide good bins (1-4) from display
   rows=rows.filter(function(row){var n=+row.bin.replace(/[^\d]/g,'');return !(n>=1&&n<=4);});
   var tbody=document.getElementById('bfs-tbody');if(!tbody)return;
+  var thead=document.getElementById('bfs-thead');
+  // Update header for split mode
+  if(thead){
+    var thHtml='<tr>'
+      +'<th class="sort-btn" onclick="bfsClickHdr(0)">Interface Bin <span class="sort-arr"></span><button class="flt-btn" id="bfs-fb-0" onclick="event.stopPropagation();ddOpen(\'bfs\',0,this)" title="Filter">&#9660;</button></th>'
+      +'<th class="sort-btn" onclick="bfsClickHdr(1)">Category <span class="sort-arr"></span><button class="flt-btn" id="bfs-fb-1" onclick="event.stopPropagation();ddOpen(\'bfs\',1,this)" title="Filter">&#9660;</button></th>'
+      +'<th class="sort-btn" onclick="bfsClickHdr(2)">Description <span class="sort-arr"></span><button class="flt-btn" id="bfs-fb-2" onclick="event.stopPropagation();ddOpen(\'bfs\',2,this)" title="Filter">&#9660;</button></th>';
+    if(hasSplit){
+      _matCats.forEach(function(mc){
+        var lbl=mc==='L0'?'AIO L0':mc==='L5'?'AIO_BB L5':'Other';
+        thHtml+='<th class="num" colspan="3" style="text-align:center;white-space:nowrap">'+lbl+'</th>';
+      });
+    }else{
+      thHtml+='<th class="sort-btn num" onclick="bfsClickHdr(3)">Total Count <span class="sort-arr"></span></th>'
+        +'<th class="sort-btn num" onclick="bfsClickHdr(4)">Count <span class="sort-arr"></span></th>'
+        +'<th class="sort-btn num" onclick="bfsClickHdr(5)">Yield/Fail (%) <span class="sort-arr"></span></th>';
+    }
+    thHtml+='</tr>';
+    if(hasSplit){
+      thHtml+='<tr><th></th><th></th><th></th>';
+      _matCats.forEach(function(){thHtml+='<th class="num">Total</th><th class="num">Count</th><th class="num">Yield/Fail (%)</th>';});
+      thHtml+='</tr>';
+    }
+    thead.innerHTML=thHtml;
+  }
   var sarr=document.querySelectorAll('#bfs-thead .sort-arr');Array.prototype.forEach.call(sarr,function(el,i){el.textContent=i===bfsSort.col?(bfsSort.dir==='asc'?' \u25b2':' \u25bc'):'';});
-  var html='';rows.forEach(function(row){var _bg=_bfsBg(row.cat);var _trAttr=WM_URL?'style="background:'+_bg+';cursor:pointer" onclick="paretoNav(\''+WM_URL+'\')" title="Click to view IBIN wafer map"':'style="background:'+_bg+'"';html+='<tr '+_trAttr+'>';html+='<td>'+esc(row.bin)+'</td><td>'+esc(row.cat)+'</td><td>'+esc(row.desc)+'</td>';html+='<td class="num">'+row.total.toLocaleString()+'</td><td class="num">'+row.count.toLocaleString()+'</td><td class="num">'+row.pct.toFixed(2)+'%</td>';html+='</tr>';});
+  var html='';
+  rows.forEach(function(row){
+    var _bg=_bfsBg(row.cat);
+    var _trAttr=WM_URL?'style="background:'+_bg+';cursor:pointer" onclick="paretoNav(\''+WM_URL+'\')" title="Click to view IBIN wafer map"':'style="background:'+_bg+'"';
+    html+='<tr '+_trAttr+'>';
+    html+='<td>'+esc(row.bin)+'</td><td>'+esc(row.cat)+'</td><td>'+esc(row.desc)+'</td>';
+    if(hasSplit){
+      var binKey=row.bin.replace(/[^\d]/g,'');
+      _matCats.forEach(function(mc){
+        var mCn=_matCounts[mc]||{},mTot=_matTotals[mc]||0;
+        var mCnt=mCn[binKey]||0;
+        var mPct=mTot>0?mCnt/mTot*100:0;
+        html+='<td class="num">'+mTot.toLocaleString()+'</td><td class="num">'+mCnt.toLocaleString()+'</td><td class="num">'+mPct.toFixed(2)+'%</td>';
+      });
+    }else{
+      html+='<td class="num">'+row.total.toLocaleString()+'</td><td class="num">'+row.count.toLocaleString()+'</td><td class="num">'+row.pct.toFixed(2)+'%</td>';
+    }
+    html+='</tr>';
+  });
   tbody.innerHTML=html;
 }
 function bfsClickHdr(col){
@@ -1639,6 +1703,7 @@ function rPP(){
   if(window.IC&&IC.sR&&IC.DATA&&Object.keys(PP_WAFER_DATA).length>0){
     var totals={};
     IC.sR.forEach(function(i){var row=IC.DATA.rows[i];if(!row)return;var key=(row.lot||'')+'|'+(row.wafer||'');var wd=PP_WAFER_DATA[key];if(wd)Object.keys(wd).forEach(function(fbkey){totals[fbkey]=(totals[fbkey]||0)+wd[fbkey];});});
+    if(Object.keys(totals).length===0){pp_rows=ppGetFiltered();}else{
     var totDie=IC.gFC?IC.gFC().total:0;
     var descMap={},modsMap={};
     PP_DATA.forEach(function(r){descMap[String(r.fb)]=r.desc||'';modsMap[String(r.fb)]=r.mods||[];});
@@ -1653,6 +1718,7 @@ function rPP(){
       if(!_ddState.pp)return true;
       return Object.keys(_ddState.pp).every(function(ci){var allowed=_ddState.pp[ci];if(!allowed)return true;return allowed.has(vals[parseInt(ci)]);});
     });
+    }
   }else{pp_rows=ppGetFiltered();}
   if(ppSort.col>=0){var k=keys[ppSort.col];pp_rows=pp_rows.slice().sort(function(a,b){var av=a[k],bv=b[k];var cmp=(typeof av==='number'&&typeof bv==='number')?(av-bv):String(av).localeCompare(String(bv));return ppSort.dir==='asc'?cmp:-cmp;});}
   var tbody=document.getElementById('pp-tbody');if(!tbody)return;
@@ -1688,6 +1754,7 @@ function rFP(){
       var wd=FP_WAFER_DATA[key];
       if(wd)Object.keys(wd).forEach(function(fbkey){totals[fbkey]=(totals[fbkey]||0)+wd[fbkey];});
     });
+    if(Object.keys(totals).length===0){fp_rows=fpGetFiltered();}else{
     var totDie=IC.gFC?IC.gFC().total:0;
     var urlMap={},descMap={},modsMap={};
     FP_DATA.forEach(function(r){urlMap[String(r.fb)]=r.url;descMap[String(r.fb)]={bkt:r.bkt,desc:r.desc};modsMap[String(r.fb)]=r.mods||[];});
@@ -1703,6 +1770,7 @@ function rFP(){
       if(!_ddState.fp)return true;
       return Object.keys(_ddState.fp).every(function(ci){var allowed=_ddState.fp[ci];if(!allowed)return true;return allowed.has(vals[parseInt(ci)]);});
     });
+    }
   }else{
     fp_rows=fpGetFiltered();
   }
