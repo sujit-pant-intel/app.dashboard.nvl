@@ -131,7 +131,6 @@ def build_index(base_dir: Path) -> Path:
     import time as _time
     for _attempt in range(3):
         try:
-            out.unlink(missing_ok=True)
             out.write_text(html, encoding="utf-8")
             break
         except (PermissionError, OSError):
