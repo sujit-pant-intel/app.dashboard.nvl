@@ -1,0 +1,9 @@
+{
+  "email_to": "sujit.n.pant@intel.com",
+  "smtp_server": "smtp.intel.com",
+  "smtp_port": 25,
+  "smtp_from": "sujit.n.pant@intel.com",
+  "subject": "NVL-BLLC Trend Chart \u2014 {product} \u2014 {interval} \u2014 {date}",
+  "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\trend",
+  "email_to_alert": "sujit.n.pant@intel.com"
+}

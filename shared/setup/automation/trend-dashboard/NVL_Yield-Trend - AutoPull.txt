@@ -1,0 +1,147 @@
+@ Report : NVL_Sort_Yield - Dashboard - 06052026
+
+
+####################
+@ FilterSet : NVL_Sort_Yield - Dashboard - 06052026_FilterSet
+####################
+
+@ Domain : PreAssembly
+@ Apply all to Parameter : NO
+@ Attributes : 
+	@@ Operation :
+		 = 119325, = 
+	;
+	@@ LATOValidFlag :
+		 = Both
+	;
+	@@ ProgramName :
+	;
+	@@ LastNWwsStartDateTime :
+		 = 12
+	;
+	@@ Lot :
+	;
+	@@ UnitInterfaceBin :
+	;
+	@@ DevRevStep :
+		 = 8PF5CV*
+		 = 8PF6CV*
+	;
+
+####################
+@ Parameters : NVL_Sort_Yield - Dashboard - 06052026_Parameters
+####################
+
+@ Operations : 
+
+	@@ 132322| : Data Domain = SDX; Show Latest = Yes; Lots From Filterset = Yes; Display Index = 2; 
+		@@@ Selected Filters : ProgramName|LastNWwsStartDateTime|UnitInterfaceBin
+
+	@@ 119325| : Data Domain = SDX; Show Latest = Yes; Lots From Filterset = Yes; Display Index = 1; 
+		@@@ Selected Filters : ProgramName|LastNWwsStartDateTime|UnitInterfaceBin
+
+@ Sorting Direction : NONE
+
+@ Parameters Group : Bin
+	@@ "0|FUNCTIONAL_BIN" : Operations = 132322, 119325; 
+	@@ "1|INTERFACE_BIN" : Operations = 132322, 119325; 
+	@@ "2|DATA_BIN" : Operations = 132322, 119325; 
+	@@ "3|DATA_TOTAL_BIN" : Operations = 132322, 119325; 
+	@@ "4|INTERFACE_TOTAL_BIN" : Operations = 132322, 119325; 
+	@@ "5|FUNCTIONAL_TOTAL_BIN" : Operations = 132322, 119325; 
+
+@ Parameters Group : Parametric
+# Group Settings :  [ Data Type Position = None;  ] 
+	@@ "0|UPM_0107_DPMH156P48ULVTINVD4_FULLDIE_0950_MED" : Operations = 119325; 
+	@@ "1|UPM_0704_TPMH156P48ULVTNPPND6_FULLDIE_0650_MED" : 
+	@@ "2|UPM_0704_TPMH156P48ULVTNPPND6_FULLDIE_0950_MED" : 
+	@@ "3|UPM_0704_TPMH156P48ULVTNPPND6_FULLDIE_1150_MED" : 
+	@@ "4|UPM_0704_TPMH156P48ULVTNPPND6_FULLDIE_1200_MED" : 
+	@@ "5|UPM_0107_DPMH156P48ULVTINVD4_FULLDIE_0650_MED" : 
+	@@ "6|UPM_0107_DPMH156P48ULVTINVD4_FULLDIE_1150_MED" : 
+	@@ "7|UPM_0107_DPMH156P48ULVTINVD4_FULLDIE_1200_MED" : 
+	@@ "8|PTH*OG*CDYN*" : 
+	@@ "9|TH_TD_CPU_TDAU0_PTH_DIODE_CJ816P::DIODE_X_TSINGLEMEASUREMENT_K_START_X_X_X_X_SOT_SDS" : 
+	@@ "10|TH_TD_CPU_TDAU1_PTH_DIODE_CJ816P::DIODE_X_TSINGLEMEASUREMENT_K_START_X_X_X_X_SOT_SDS" : 
+	@@ "11|TPI_BIN::CTRL_UB_X_K_SDTFINAL_X_X_X_X_COREBINRESULT_CORESELECT" : 
+	@@ "12|TPI_BIN::CTRL_UB_X_K_SDTFINAL_X_X_X_X_COREBINRESULT_ATOMSELECT" : 
+	@@ "13|TPI_BIN::CTRL_UB_X_K_FINAL_X_X_X_X_COREBINRESULT_CORESELECT" : 
+	@@ "14|TPI_BIN::CTRL_UB_X_K_FINAL_X_X_X_X_COREBINRESULT_ATOMSELECT" : 
+	@@ "15|PTH_POWER*SICC_PMUX*_V2*" : 
+	@@ "16|PTH_POWER*SICC_ALL*" : 
+	@@ "17|*TPI_VCC::CONT*" : 
+	@@ "18|UPM_0704_DPMH156P48ULVTINVD4_FULLDIE*" : 
+	@@ "19|UPM_0107_DPMH156P48ULVTINVD4_FULLDIE*" : 
+	@@ "20|UPM_0107_DPMH156P48ULVTINVD4_ATOM0ASL_0950_MED" : 
+	@@ "21|UPM_0107_DPMH156P48ULVTINVD4_ATOM0ASR_0950_MED" : 
+	@@ "22|UPM_0107_DPMH156P48ULVTINVD4_ATOM1ASL_0950_MED" : 
+	@@ "23|UPM_0107_DPMH156P48ULVTINVD4_ATOM1ASR_0950_MED" : 
+	@@ "24|UPM_0107_DPMH156P48ULVTINVD4_COREBCSLICE0BSL_0950_MED" : 
+	@@ "25|UPM_0107_DPMH156P48ULVTINVD4_COREBCSLICE0BSR_0950_MED" : 
+	@@ "26|UPM_0107_DPMH156P48ULVTINVD4_COREBCSLICE1BSL_0950_MED" : 
+	@@ "27|UPM_0107_DPMH156P48ULVTINVD4_COREBCSLICE1BSR_0950_MED" : 
+	@@ "28|UPM_0107_DPMH156P48ULVTINVD4_UNCOREBCSLICE0BSL_0950_MED" : 
+	@@ "29|UPM_0107_DPMH156P48ULVTINVD4_UNCOREBCSLICE0BSR_0950_MED" : 
+	@@ "30|UPM_0107_DPMH156P48ULVTINVD4_UNCOREBCSLICE1BSL_0950_MED" : 
+	@@ "31|UPM_0107_DPMH156P48ULVTINVD4_UNCOREBCSLICE1BSR_0950_MED" : 
+
+@ Parameters Group : Session Data
+	@@ "0|Bin Description" : Operations = 132322, 119325; 
+	@@ "1|Cell ID" : Operations = 132322, 119325; 
+	@@ "2|Unit Tester Id" : Operations = 132322, 119325; 
+	@@ "3|Unit Tester Site Id" : Operations = 132322, 119325; 
+	@@ "4|DevRevStep" : Operations = 132322, 119325; 
+	@@ "5|Engineering ID" : Operations = 132322, 119325; 
+	@@ "6|Fuse Id" : Operations = 132322, 119325; 
+	@@ "7|Lot" : Operations = 132322, 119325; 
+	@@ "8|LOTS End Date Time" : Operations = 132322, 119325; 
+	@@ "9|LOTS End WW" : Operations = 132322, 119325; 
+	@@ "10|LOTS Temperature" : Operations = 132322, 119325; 
+	@@ "11|Operation" : Operations = 132322, 119325; 
+	@@ "12|Program Name" : Operations = 132322, 119325; 
+	@@ "13|Carrier X" : Operations = 132322, 119325; 
+	@@ "14|Carrier Y" : Operations = 132322, 119325; 
+	@@ "15|Sort Partial Wafer ID" : Operations = 132322, 119325; 
+	@@ "16|Thermal Head Id" : Operations = 132322, 119325; 
+	@@ "17|Unit TIU" : Operations = 132322, 119325; 
+
+@ Parameters Group : String
+# Group Settings :  [ Data Type Position = None; Spm Option = False;  ] 
+	@@ "0|PTH*OG*CDYN*" : 
+	@@ "1|TPI_BIN::CTRL_UB_X_K_BIN_X_X_X_X_SETBIN" : 
+	@@ "2|TPI_ADTL::CTRL_UF_X_K_EXVF_X_X_X_X_ADTL_BULK_KILL_STATUS" : 
+	@@ "3|TPI_ADTL::CTRL_UF_X_K_EXVF_X_X_X_X_ADTL_BULK_KILL_KILL" : 
+	@@ "4|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_COREBINRESULT_TRACKER*" : 
+	@@ "5|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_LOGTRACKER*" : 
+	@@ "6|TPI_BIN::CTRL_UB_X_K_SDTBIN_X_X_X_X_SETBIN" : 
+	@@ "7|*LOGTRACKER_AP*" : 
+	@@ "8|*LOGTRACKER_CR*" : 
+	@@ "9|*LOGTRACKER_SLC*" : 
+	@@ "10|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_LOGTRACKER_TRACKER_*" : 
+	@@ "11|TPI_ADTL::CTRL_UF_X_K_END_X_X_X_X_ADTL_BULK_KILL*" : 
+
+@ Parameters Group : Session Attribute
+	@@ "0|BOMGROUPNAME" : Operations = 119325; 
+
+####################
+@ Report Format
+####################
+
+@ Data Tracking Level : Units
+@ Format : Split
+@ Report Output Format : Csv
+@ Naming Convention : Test Name, Operation
+@ Columns Order : Type = Alphabetical; 
+@ Pivot SSID : NO
+@ Chunk Files : NO
+@ Stack Session Data : NO
+@ Drop Original Unparsed Column : NO
+
+
+
+
+####################
+@ Post Processing Definition - Please IGNORE
+####################
+
+

@@ -1,0 +1,374 @@
+Received: from SJ5PPFD56C4208E.namprd11.prod.outlook.com
+ (2603:10b6:a0f:fc02::858) by SAWPR11MB9899.namprd11.prod.outlook.com with
+ HTTPS; Fri, 29 May 2026 19:50:06 +0000
+Received: from BN9PR03CA0467.namprd03.prod.outlook.com (2603:10b6:408:139::22)
+ by SJ5PPFD56C4208E.namprd11.prod.outlook.com (2603:10b6:a0f:fc02::858) with
+ Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.21.71.15; Fri, 29 May
+ 2026 19:49:59 +0000
+Received: from BN1PEPF00005FFD.namprd05.prod.outlook.com
+ (2603:10b6:408:139:cafe::a2) by BN9PR03CA0467.outlook.office365.com
+ (2603:10b6:408:139::22) with Microsoft SMTP Server (version=TLS1_3,
+ cipher=TLS_AES_256_GCM_SHA384) id 15.21.71.13 via Frontend Transport; Fri, 29
+ May 2026 19:49:55 +0000
+Authentication-Results: spf=none (sender IP is 192.55.55.82)
+ smtp.mailfrom=eclists.intel.com; dkim=none (message not signed)
+ header.d=none;dmarc=fail action=none header.from=intel.com;
+Received-SPF: None (protection.outlook.com: eclists.intel.com does not
+ designate permitted sender hosts)
+Received: from edgegateway.intel.com (192.55.55.82) by
+ BN1PEPF00005FFD.mail.protection.outlook.com (10.167.243.229) with Microsoft
+ SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id
+ 15.21.92.5 via Frontend Transport; Fri, 29 May 2026 19:49:54 +0000
+Received: from FMSMSX901.amr.corp.intel.com (10.18.126.90) by
+ edgegateway.intel.com (10.1.192.144) with Microsoft SMTP Server
+ (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id
+ 15.2.2562.37; Fri, 29 May 2026 12:49:52 -0700
+Received: from FMSMSX903.amr.corp.intel.com (10.18.126.92) by
+ fmsmsx901.amr.corp.intel.com (10.18.126.90) with Microsoft SMTP Server
+ (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id
+ 15.2.2562.37; Fri, 29 May 2026 12:49:51 -0700
+Received: from fmviesa001.fm.intel.com (10.60.135.141) by
+ FMSMSX903.amr.corp.intel.com (10.18.84.216) with Microsoft SMTP Server
+ (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id
+ 15.2.2562.37 via Frontend Transport; Fri, 29 May 2026 12:49:51 -0700
+X-CSE-ConnectionGUID: LUGd0jdZTK633EZpSxO+zQ==
+X-CSE-MsgGUID: qy29Nb5zTpSG3nIgmXHnZw==
+X-ExtLoop1: 1
+X-UnauthorizedSMTPDomain: True
+X-IronPort-AV: E=Sophos;i="6.24,176,1774335600"; 
+   d="scan'208,217";a="266809710"
+Received: from scymls04.sc.intel.com ([10.116.18.87])
+  by fmviesa001.fm.intel.com with ESMTP; 29 May 2026 12:49:48 -0700
+Received: by scymls04.sc.intel.com (Postfix, from userid 15522)
+	id 15534400947; Fri, 29 May 2026 12:49:48 -0700 (PDT)
+X-Original-To: mpe-testprogram-cascade-release@eclists.intel.com
+Delivered-To: mpe-testprogram-cascade-release@eclists.intel.com
+Received: from pdxy0090.pdx.intel.com (pdxy0090.pdx.intel.com [10.38.240.250])
+	by scymls04.sc.intel.com (Postfix) with ESMTP id 42331400940
+	for <mpe-testprogram-cascade-release@eclists.intel.com>; Fri, 29 May 2026 12:49:41 -0700 (PDT)
+Received: from localhost (plxs1579.pdx.intel.com [10.39.136.71])
+	by pdxy0090.pdx.intel.com (Postfix) with ESMTP id 316F2100B5AD;
+	Fri, 29 May 2026 12:49:41 -0700 (PDT)
+Received: from plxs1579.pdx.intel.com (localhost [127.0.0.1])
+	by localhost (Postfix) with ESMTP id 2F78C60087B;
+	Fri, 29 May 2026 12:49:41 -0700 (PDT)
+Content-Type: text/html; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+To: <mpe_ddg_lab_ops.maint@intel.com>,
+	<mpe-testprogram-cascade-release@eclists.intel.com>
+From: <maria.luisa.ignacio@intel.com>
+CC: <mpe_ddg_pde_ptpd@intel.com>
+Message-ID: <20260529194941.2F78C60087B@localhost>
+Date: Fri, 29 May 2026 12:49:41 -0700
+Subject: [mpe-testprogram-cascade-release] NVLSB63A0H54A0DS622 Full Daily
+ Build Report - Class_NVL_S28CB A0, A1, A5, A6 54A0D
+Reply-To: <maria.luisa.ignacio@intel.com>
+X-Loop: mpe-testprogram-cascade-release@eclists.intel.com
+X-Sequence: 6918
+Errors-To: mpe-testprogram-cascade-release-owner@eclists.intel.com
+Precedence: bulk
+Sender: <mpe-testprogram-cascade-release-request@eclists.intel.com>
+X-no-archive: yes
+List-Id: <mpe-testprogram-cascade-release.eclists.intel.com>
+List-Help: <https://eclists.intel.com/sympa/help>, <mailto:sympa@eclists.intel.com?subject=HELP>
+List-Subscribe: <https://eclists.intel.com/sympa/subscribe/mpe-testprogram-cascade-release>, <mailto:sympa@eclists.intel.com?subject=SUB%20mpe-testprogram-cascade-release>
+List-Unsubscribe: <https://eclists.intel.com/sympa/signoff/mpe-testprogram-cascade-release>, <mailto:sympa@eclists.intel.com?subject=SIG%20mpe-testprogram-cascade-release>
+List-Post: <mailto:mpe-testprogram-cascade-release@eclists.intel.com>
+List-Owner: <mailto:mpe-testprogram-cascade-release-request@eclists.intel.com>
+List-Archive: <https://eclists.intel.com/sympa/arc/mpe-testprogram-cascade-release>
+Archived-At: <https://eclists.intel.com/sympa/msg/mpe-testprogram-cascade-release/2026-05/zXCZQdWJeFYP6WxX3F_gRQ>
+Return-Path: mpe-testprogram-cascade-release-owner@eclists.intel.com
+X-OrganizationHeadersPreserved: fmsmsx901.amr.corp.intel.com
+X-MS-Exchange-Organization-ExpirationStartTime: 29 May 2026 19:49:55.0507
+ (UTC)
+X-MS-Exchange-Organization-ExpirationStartTimeReason: OriginalSubmit
+X-MS-Exchange-Organization-ExpirationInterval: 1:00:00:00.0000000
+X-MS-Exchange-Organization-ExpirationIntervalReason: OriginalSubmit
+X-MS-Exchange-Organization-Network-Message-Id: dfa91ed7-cf3d-4ade-3117-08debdbb74df
+X-EOPAttributedMessage: 0
+X-MS-Exchange-Organization-MessageDirectionality: Originating
+X-MS-Exchange-Organization-AuthSource: fmsmsx903.amr.corp.intel.com
+X-MS-Exchange-Organization-AuthAs: Internal
+X-MS-Exchange-Organization-AuthMechanism: 10
+X-MS-Exchange-Organization-SCL: 1
+X-CrossPremisesHeadersPromoted: BN1PEPF00005FFD.namprd05.prod.outlook.com
+X-CrossPremisesHeadersFiltered: BN1PEPF00005FFD.namprd05.prod.outlook.com
+X-MS-PublicTrafficType: Email
+X-MS-TrafficTypeDiagnostic: BN1PEPF00005FFD:EE_|SJ5PPFD56C4208E:EE_|SAWPR11MB9899:EE_
+X-OriginatorOrg: intel.onmicrosoft.com
+X-MS-Office365-Filtering-Correlation-Id: dfa91ed7-cf3d-4ade-3117-08debdbb74df
+X-Microsoft-Antispam: BCL:0;ARA:13230040|4022899009|366016|82310400026|8096899003|16102099003|18002099003|13003099007|21082099003|3113699003|5113699003|11063799006|56012099006|41050700001;
+X-Forefront-Antispam-Report: CIP:192.55.55.82;CTRY:US;LANG:en;SCL:1;SRV:;IPV:NLI;SFV:NSPM;H:edgegateway.intel.com;PTR:edgegateway.intel.com;CAT:NONE;SFS:(13230040)(4022899009)(366016)(82310400026)(8096899003)(16102099003)(18002099003)(13003099007)(21082099003)(3113699003)(5113699003)(11063799006)(56012099006)(41050700001);DIR:INT;
+X-MS-Exchange-CrossTenant-OriginalArrivalTime: 29 May 2026 19:49:54.8787
+ (UTC)
+X-MS-Exchange-CrossTenant-Network-Message-Id: dfa91ed7-cf3d-4ade-3117-08debdbb74df
+X-MS-Exchange-CrossTenant-Id: 46c98d88-e344-4ed4-8496-4ed7712e255d
+X-MS-Exchange-CrossTenant-OriginalAttributedTenantConnectingIp: TenantId=46c98d88-e344-4ed4-8496-4ed7712e255d;Ip=[192.55.55.82];Helo=[edgegateway.intel.com]
+X-MS-Exchange-CrossTenant-AuthSource: fmsmsx903.amr.corp.intel.com
+X-MS-Exchange-CrossTenant-AuthAs: Internal
+X-MS-Exchange-CrossTenant-FromEntityHeader: HybridOnPrem
+X-MS-Exchange-Transport-CrossTenantHeadersStamped: SJ5PPFD56C4208E
+X-MS-Exchange-Transport-EndToEndLatency: 00:00:11.9120007
+X-MS-Exchange-Processed-By-BccFoldering: 15.21.0071.014
+X-Microsoft-Antispam-Mailbox-Delivery:
+	ucf:1;jmr:0;auth:0;dest:C;OFR:CustomRules;ENG:(910005)(944506478)(944626604)(920097)(425001)(930201)(20251009189)(140003);
+X-Microsoft-Antispam-Message-Info:
+	vIRr2IqR5eOn5MGG7L+ljf3aJ2Ewh7h5eS/+PHz3L7bdUrVWU0AlDLskCfTGd71TzPTbcPJf7cVAMvbKN+cwk5Z677U3VR1LRt+ANDuRs2RKeBSCtMsrADl34y7mPMQU5Rk8FA/4Lnjxh2MvRBc9j51qU60dKzbxz2xaJVqecEulQP3d3jdBnQVVfs5gSrtJFTFeFwDN3a+OWXN0Y6pNYrzdQh+XwaVs0gEYK67f4qfZT/8t1D3T/pVT/oLIKF3lXrX4R2760mZko08yELczmXEpcP296wr5/5RHYjQK8ndj/g2N9sq4sxThL9vn5RDGOYDvC7VspnxsSCB+I2Hh9ocMqcb/DDCd1Oe6qvyIu6lG30da3ycPoKr3C+cKyvG62cxYFWead9MBkULbvlDYDdcCy15cprh2aJrVKXTWmZzEkgZ3WRUHBIR/2EMu4IY6oeVy4LARTwZVVTAdF3ATlrBoQSMw+FdtiSU5Zzmd8f+aBmxhyByWOHt5kSyXos4Bo0HoCy03h1HEckfNMNEjI0350fwrNBuYIAprAqdIWncnaMt4YcvVAu1OoU9dCWWQpaCVWJZMsMmO6MuAulxeXx9uNml2hPreYQWhTqZSKFYRd0eh5SsgacfzdR/X8ZbtVa/srBoMICBBPIbknTWUDjrFCaJT/lg3umvZpOaBp3e1VUpMQfU77BhrFHenK8iU11x0QCQRNkcrp9byjL1Y3RTwY71uGlyZ/OstgHSVUu9s3XJGVyam2Igz8EbValo87X+7IAnQ7GsUwOCOzu5j4N/BPfVNl0FxGtVx1V9ko5pNduPZ2cBR5aHWyX4x3I7vftZiCiZGHA/euZi70WLKFirqN/t0hPpoY8EHQ2nWbBLrbK5Rw+giCxJBp/m78tNe7Fbf9fgLmsYlu5luMzLb43tT5gltcpMl5LSP58k4N5o=
+MIME-Version: 1.0
+
+<html style="font-family: Calibri; font-size: 12px;">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=us-ascii"></head>
+<body>
+            <p>Hello Team,</p>
+            <p>
+            <html style="font-family: Calibri; font-size: 0.9em;">
+            <body>
+            <p>Here is the VPO submission report. Please review the details below:</p>
+            
+            <p><strong>Correlation Submission (Site: JF)</strong></p>
+            <p><em>Includes: Correlation, PreFuse, PostFuse submissions</em></p>
+            <p><strong>Test Program:</strong> NVLSB63A0H54A0DS622</p>
+            <p><strong>Email Recipients:</strong> maria.luisa.ignacio@intel.com</p>
+            <table border="1" cellspacing="0" style="border-collapse: collapse;font-family: Calibri;">
+  <tr>
+      <th style="padding-right: 15px; text-align: left; background-color: #000000; color: #FFFFFF;">DisplayName</th>
+      <th style="padding-right: 15px; text-align: left; background-color: #000000; color: #FFFFFF;">New_VPO</th>
+      <th style="padding-right: 15px; text-align: left; background-color: #000000; color: #FFFFFF;">Ref_VPO</th>
+      <th style="padding-right: 15px; text-align: left; background-color: #000000; color: #FFFFFF;">Lot</th>
+      <th style="padding-right: 15px; text-align: left; background-color: #000000; color: #FFFFFF;">Qty</th>
+      <th style="padding-right: 15px; text-align: left; background-color: #000000; color: #FFFFFF;">Operation</th>
+      <th style="padding-right: 15px; text-align: left; background-color: #000000; color: #FFFFFF;">EngID</th>
+      <th style="padding-right: 15px; text-align: left; background-color: #000000; color: #FFFFFF;">Tags</th>
+  </tr>
+  <tr style="margin: 0px; background-color: #DDEBF7;">
+      <td style="padding-right: 15px;">Correlation [01] 54A0D 6248 AF</td>
+      <td style="padding-right: 15px;">NV622150CR</td>
+      <td style="padding-right: 15px;">NV622138CR</td>
+      <td style="padding-right: 15px;">N28BCA0TP03</td>
+      <td style="padding-right: 15px;">20</td>
+      <td style="padding-right: 15px;">6248</td>
+      <td style="padding-right: 15px;">AF</td>
+      <td style="padding-right: 15px;">CLASS_NVL_S28CB,FULL_54A0D,Correlation_Checkout</td>
+  </tr>
+</table>
+
+            
+            </body></html></p>
+            <p>Here is the Daily Build Report for test program NVLSB63A0H54A0DS622 Full.</p>
+            <p><span style="color: #000000; background-color: #FFFF00; font-size: 18px;">Notes: NVL S28CB FULL</span></p>
+            
+            <table border="1" cellspacing="0" style="font-family: Calibri;">
+<tr style="padding-left: 15px; text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;"><pre>NVLSB63A0H54A0DS622 Full Daily Build Report
+Class_NVL_S28CB A0, A1, A5, A6 54A0D Test Program
+Built to JF, FM, PG
+Built Date 2026-05-29</pre></td></tr>  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Test Program Objective/Special Notes</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">NVL S28CB FULL</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Issues</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">None</td>
+    </tr>
+<tr style="text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;">Test Program Summary Information</td></tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Test Program Name</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">NVLSB63A0H54A0DS622</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Test Program Short Name [Nick Name]</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">54A0D Full</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Products/Subfamily</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">NVL Class_NVL_S28CB A0, A1, A5, A6</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Test Program Integrator</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">Ignacio,Maria Luisa/Ladeau,Weilan/Narasimhan,Shreya</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Test Program Product Owner</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">Pearson, Hai; Maroon, Maroon</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Fuse Path</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">I:/fuse/release/NVL/NVL_S_28C_BLLC/NVL_S_28C_BLLC_A0_26WW22P1_PO<br>I:/fuse/release/NVL/CPU_BLLC_Ext/CPU_L0_REV0_26WW21P0<br>I:/fuse/release/NVL/PIXE3S_32EU/PIXE3S_A0_25ww37P0_PLL<br>I:/fuse/release/NVL/PIXE3H_64EU/nvlgcd_a0_24ww46e_presi_25WW12<br>I:/fuse/release/NVL/PIXE3P_P_192EU/PIXE3P_A0_25ww43<br>I:/fuse/release/NVL/HUB_NVL/HUB_B0_26ww21P0<br>I:/fuse/release/NVL/NVL_PCD_S/PCD_A0_25WW49_Rev10<br>I:/fuse/release/NVL/NVL_PCD_S/PCD_OSSE_A0_25WW20_prePO_Rev0<br>I:/fuse/release/NVL/NVL_PCD_S/PCD_INTELIFP_A0_25WW20_prePO_Rev0<br>I:/fuse/release/NVL/NVL_PCD_S/PCD_OSSEIFP_A0_25WW20_prePO_Rev0</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Handler Rev</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">N/A</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">TOS Profile</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">hdmtOS_4.0.2.4</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">PRIME_DLL_PATH</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">I:/tpapps/userlibs/nvl/prime_v13.3.1.12-ddg261701<br>I:/tpapps/userlibs/nvl/modules/prime_v13.3.0/binning/UPS2617.1_UC1.1<br>I:/tpapps/userlibs/nvl/modules/prime_v13.2.0/QNR/QNR_2527.2.0</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Skipped Modules</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">CLK_DEBUG_GKS, FUS_FUSEVLD_CKX, MIO_LP5AC_HXNVL, MIO_LP5DC_HXNVL, PTH_TRC_PKS, QNR_CARV_PXX, SIO_LEAKAGE_PKS, SIO_PCIE5_PKS, SIO_TCSSDP_PKS, TPI_DAS_CXX</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Supersedes</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">Shared/BaseInputs/Common/Supersedes/code\CsioCmemTC.dll<br>Shared/BaseInputs/Common/Supersedes/code\Prime.BusinessLogic.Dc.dll</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+            <td colspan="2" style="padding-right:15px; font-size:12px;">FSM File Path</td>
+            <td colspan="2" style="padding-right:5px; font-size:12px;">I:/engineering/dev/sctp/tptorrent/ulat/fsm/hdmx/nvl/Class_NVL_S28CB/54A00/FullSkipModelInput.csv</td>
+        </tr>
+<tr style="text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;">Test Program Files for Loadings</td></tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">TP Base Dir</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">I:\engineering\dev\sctp\tptorrent\hdmxprogs\nvl\NVLSB63A0H54A0DS622</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Test Plan</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">BaseTestPlan.tpl</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Sub-Test Plan</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">POR_TP\Class_NVL_S28CB\SubTestPlan.stpl</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Plist Reference</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">POR_TP\Class_NVL_S28CB\PLIST_ALL_CLASS_NVL_S28CB.plist.xml</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Socket File</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">Shared\BaseInputs\Common\Common_Class_NVL_S28CB\HVM.soc</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Environment File</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">POR_TP\Class_NVL_S28CB\EnvironmentFile.env</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">BOM Definition</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">634AAB*VA, 634AAB*VAA, 634AAB*VEA, 634AAB*VFA, 634AAB*V_A</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Stepping</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">A0, A1, A5, A6</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">Classification</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">Engineering</td>
+    </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+        <td colspan="2" style="padding-right:15px; font-size:12px;">BOM Groups</td>
+        <td colspan="2" style="padding-right:5px; font-size:12px;">Class_NVL_S28CB</td>
+    </tr>
+<tr style="text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;">Test Program Change List</td></tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+            <td style="padding-right:15px; font-weight: bold; font-size:12px;">PR Number</td>
+            <td style="padding-right:15px; font-weight: bold; font-size:12px;">Title</td>
+            <td style="padding-right:15px; font-weight: bold; font-size:12px;">Submitted By</td>
+            <td style="padding-right:15px; font-weight: bold; font-size:12px;">URL</td>
+        </tr>
+<tr style="text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;">REPO: nvl.common - Built from branch: main</td></tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3088</td>
+                <td style="padding-right:15px; font-size:12px;">Update S28C BLLC FFR 26ww22.5</td>
+                <td style="padding-right:15px; font-size:12px;">trannhi28</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.common/pull/3088</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3086</td>
+                <td style="padding-right:15px; font-size:12px;">PTH/NVL_05_29 PTH Thermal module updates - Update NVL_PER_PART_IDEALITY.txt file to subtract SDS ideality value with same 0.02 offset and update TDAU_ideality.cs file to use per part sds ideality value instead of static value</td>
+                <td style="padding-right:15px; font-size:12px;">kevin2-tran-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.common/pull/3086</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3084</td>
+                <td style="padding-right:15px; font-size:12px;">Clk/csiocmemtc dll supersedes</td>
+                <td style="padding-right:15px; font-size:12px;">mahmadaz</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.common/pull/3084</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3082</td>
+                <td style="padding-right:15px; font-size:12px;">Enable silicon testing for S28CB TPBOT MBOT</td>
+                <td style="padding-right:15px; font-size:12px;">tai-pham-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.common/pull/3082</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3078</td>
+                <td style="padding-right:15px; font-size:12px;">Point pytpd to latest sha for enabling new Qgate</td>
+                <td style="padding-right:15px; font-size:12px;">victor-danielle-gatchalian-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.common/pull/3078</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3028</td>
+                <td style="padding-right:15px; font-size:12px;">Binning fix reenabling &amp; parallel bypass fix</td>
+                <td style="padding-right:15px; font-size:12px;">meadowsa</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.common/pull/3028</td>
+                </tr>
+<tr style="text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;">REPO: nvl.cpu - Built from TAG: G1L0_6225A_CS28CB_A0 -- Timestamp: Thu May 28 01:31:49 2026 -0700 -- Gold Tag(s): No gold tag found</td></tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3988</td>
+                <td style="padding-right:15px; font-size:12px;">[S28C C0][S28CB][BLLC IPC flow update and fix]</td>
+                <td style="padding-right:15px; font-size:12px;">muhammad-sadiq-naim-noor-azhari-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3988</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3987</td>
+                <td style="padding-right:15px; font-size:12px;">[S28C C0][ARR_CCF][ Fix LLC with MTS600]</td>
+                <td style="padding-right:15px; font-size:12px;">namallud</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3987</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3986</td>
+                <td style="padding-right:15px; font-size:12px;">[NVL][S28CB][ARR]update mconfig to fix the dts monitoring</td>
+                <td style="padding-right:15px; font-size:12px;">james-chee-liang-teoh-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3986</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3985</td>
+                <td style="padding-right:15px; font-size:12px;">[S28C C0][S28C BLLC][ARR_ATOM][ pmux fix for arr atom ]</td>
+                <td style="padding-right:15px; font-size:12px;">nor-diyana-ghazalee-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3985</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3984</td>
+                <td style="padding-right:15px; font-size:12px;">[S28C|S28CB|HX28C|DNL28C] Plist patch update for PUP enabling</td>
+                <td style="padding-right:15px; font-size:12px;">lean-aik-wong-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3984</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3983</td>
+                <td style="padding-right:15px; font-size:12px;">[S28CB][ARR_CXX] IPC Subflow update</td>
+                <td style="padding-right:15px; font-size:12px;">muhammad-sadiq-naim-noor-azhari-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3983</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3982</td>
+                <td style="padding-right:15px; font-size:12px;">[S28CB][FUN_ATOM_CX816][Enabled LO flow for S28CB]</td>
+                <td style="padding-right:15px; font-size:12px;">dhiren-kaylen-ram-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3982</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3981</td>
+                <td style="padding-right:15px; font-size:12px;">[S28C|S28CB|HX28C|DNL28C] FUN CORE FCT flow update</td>
+                <td style="padding-right:15px; font-size:12px;">lean-aik-wong-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3981</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3980</td>
+                <td style="padding-right:15px; font-size:12px;">Update PR template package list for Novalake S 52C BLLC</td>
+                <td style="padding-right:15px; font-size:12px;">app/copilot-swe-agent</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3980</td>
+                </tr>
+  <tr style="padding-left: 5px; text-align: left; background-color: #F0F8FF; color: #000000;">
+                <td style="padding-right:15px; font-size:12px;">3978</td>
+                <td style="padding-right:15px; font-size:12px;">[AutoPR][main] - CPU fa95bec common sha updated from 870753f</td>
+                <td style="padding-right:15px; font-size:12px;">sys-tprobot-intel</td>
+                <td style="padding-right:15px; font-size:12px;">https://github.com/intel-restricted/nvl.cpu/pull/3978</td>
+                </tr>
+<tr style="text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;">REPO: nvl.gcd - Built from TAG: G1B0_6215A_GS28CB_A0 -- Timestamp: Fri May 22 02:42:21 2026 +0800 -- Gold Tag(s): No gold tag found</td></tr>
+<tr style="text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;">REPO: nvl.pcd - Built from TAG: G1B0_6223A_PS28C_C0 -- Timestamp: Wed May 27 09:40:18 2026 -0700 -- Gold Tag(s): No gold tag found</td></tr>
+<tr style="text-align: center; font-weight: bold; background-color: #F0F8FF; color: #0000FF;"><td colspan="4" style="font-size:15px;">REPO: nvl.hub - Built from TAG: G1B0_6224A_HS28CB_A0 -- Timestamp: Wed May 27 15:22:12 2026 -0700 -- Gold Tag(s): No gold tag found</td></tr>
+</table>
+
+            <p>Thank you</p></body></html>

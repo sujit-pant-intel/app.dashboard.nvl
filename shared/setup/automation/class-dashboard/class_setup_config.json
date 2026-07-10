@@ -1,0 +1,21 @@
+{
+  "email_to_report": "sujit.n.pant@intel.com",
+  "email_to_alert": "sujit.n.pant@intel.com",
+  "tp_patterns": [
+    "NVLSB63A0H54*S*",
+    "NVLS763C0H03*S*"
+  ],
+  "email_exclude_patterns": [
+    "NVLS763C0H03B*"
+  ],
+  "keep_runs": 0,
+  "v2_excluded_tps": [],
+  "v2_max_age_days": 7,
+  "email_group_enabled": false,
+  "email_to_group": [
+    "sujit.n.pant@intel.com",
+    "gems.fte.sds@intel.com",
+    "yi-shing.chang@intel.com"
+  ],
+  "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\class"
+}

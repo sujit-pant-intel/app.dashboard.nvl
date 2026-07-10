@@ -1,0 +1,8 @@
+{
+  "email_to_report": "sujit.n.pant@intel.com",
+  "email_to_alert": "sujit.n.pant@intel.com",
+  "excluded_ops": [
+    "132322"
+  ],
+  "excluded_keys": []
+}

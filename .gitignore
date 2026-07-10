@@ -4,8 +4,6 @@ shared/material/*
 !shared/etest/.gitkeep
 !shared/material/.gitkeep
 
-# Automation configs contain email addresses and server paths
-shared/setup/automation/*/
 
 # ── Large vendored JS — checked in (offline-safe), no secrets ────────────────
 # shared/library/plotly-*.js  ← intentionally tracked

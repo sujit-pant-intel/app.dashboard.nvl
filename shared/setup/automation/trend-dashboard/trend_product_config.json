@@ -1,0 +1,6 @@
+{
+  "email_to": "sujit.n.pant@intel.com",
+  "interval": "weekly",
+  "topn": 8,
+  "thresh": 0.0
+}

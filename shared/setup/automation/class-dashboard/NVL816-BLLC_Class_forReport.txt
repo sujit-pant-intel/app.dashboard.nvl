@@ -1,0 +1,204 @@
+@ Report : NVL816-BLLC_Class_forReport
+
+
+####################
+@ FilterSet : NVL816-BLLC_Class_forReport_FilterSet
+####################
+
+@ Domain : PostAssembly
+@ Apply all to Parameter : NO
+@ Attributes : 
+	@@ ProgramName :
+		 = NVLSB63A0H54*S*
+		 = NVLS763C0H03*S*
+	;
+	@@ Operation :
+		 = 6248, = 
+	;
+	@@ LastNWwsStartDateTime :
+		 = 6
+	;
+	@@ Lot :
+	;
+
+####################
+@ Parameters : NVL816-BLLC_Class_forReport_Parameters
+####################
+
+@ Operations : 
+
+	@@ 119325| : Data Domain = SDX; Show Latest = Yes; Display Index = 3; 
+
+	@@ 132326| : Data Domain = SDX; Show Latest = Yes; Display Index = 2; 
+
+	@@ 6248|CLASSHOT : Data Domain = CLASS; SubFlow Step = CLASSHOT; Show Latest = Yes; Display Index = 1; 
+
+@ Sorting Direction : NONE
+
+@ Parameters Group : Bin
+	@@ "0|INTERFACE_BIN" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "1|FUNCTIONAL_BIN" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "2|INTERFACE_TOTAL_BIN" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "3|DATA_TOTAL_BIN" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "4|FUNCTIONAL_TOTAL_BIN" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "5|DATA_BIN" : Operations = 119325, 132326, 6248|CLASSHOT; 
+
+@ Parameters Group : Parametric
+# Group Settings :  [ Data Type Position = None;  ] 
+	@@ "0|UPM_0107_DPMH156P48ULVTINVD4_FULLDIE_*" : Operations = 119325, 132326; 
+	@@ "1|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCATOM1|HC02_02_0P85_VCCATOM1|PC" : Operations = 119325, 132326; 
+	@@ "2|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCATOM0|HC01_02_0P85_VCCATOM0|PC" : Operations = 119325, 132326; 
+	@@ "3|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCATOM2|HC03_02_0P85_VCCATOM2|PC" : Operations = 119325, 132326; 
+	@@ "4|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCATOM3|HC04_02_0P85_VCCATOM3|PC" : Operations = 119325, 132326; 
+	@@ "5|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCCORE0|HC05_03_0P85_VCCCORE0|PC" : Operations = 119325, 132326; 
+	@@ "6|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCCORE1|HC06_03_0P85_VCCCORE1|PC" : Operations = 119325, 132326; 
+	@@ "7|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCCORE2|HC07_03_0P85_VCCCORE2|PC" : Operations = 119325, 132326; 
+	@@ "8|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCCORE3|HC08_03_0P85_VCCCORE3|PC" : Operations = 119325, 132326; 
+	@@ "9|PTH_POWER_CJ816P::POWER_X_MEASURE_K_BEGIN_X_X_X_X_SICC_ALL_24A_V2|PP_SICC_ALL_24A_V2_VCCR|HV01_08_0P85_VCCR|PC" : Operations = 119325, 132326; 
+	@@ "10|*OG*cdyn*core*" : Operations = 119325, 132326; 
+	@@ "11|*OG_*cdyn*atom*" : Operations = 119325, 132326; 
+	@@ "12|UPM_0704_TPMH156P48ULVTNPPND6_FULLDIE_0950_MED" : Operations = 119325, 132326; 
+	@@ "13|TH_TD_CPU_TDAU0_PTH_POWER_CJ816P::POWER_X_TDAU_E_BEGIN_X_X_X_X_TEMP1" : Operations = 119325, 132326; 
+	@@ "14|TH_TD_CPU_TDAU0_PTH_POWER_CJ816P::POWER_X_TDAU_E_BEGIN_X_X_X_X_TEMP2" : Operations = 119325, 132326; 
+	@@ "15|*OG*Cdyn*ATOM*" : Operations = 119325, 132326; 
+	@@ "16|PTH_POWER_CJ48P::POWER_X_SCREEN_K_BEGIN_X_X_X_X_CAL_PTH_OG_V2_PP_CDYN_CORE1" : 
+	@@ "17|PTH_POWER_CJ48P::POWER_X_SCREEN_K_BEGIN_X_X_X_X_CAL_PTH_OG_V2_PP_CDYN_CORE0" : 
+	@@ "18|PTH_POWER_CJ816P::POWER_X_SCREEN_K_BEGIN_X_X_X_X_CAL_OG_V*_PP_CDYN*" : 
+
+@ Parameters Group : Session Data
+	@@ "0|Engineering ID" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "1|Facility" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "2|Fuse Id" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "3|LOTS End WW" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "4|Operation Final Latest Flag" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "5|Operation SubFlowStep Latest Flag" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "6|S Spec" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "7|Socket Id" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "8|Summary Name" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "9|Testing Session Latest Flag" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "10|Thermal Head Id" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "11|TIU Personality Card ID" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "12|VF Operation Final Latest Flag" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "13|VF Operation SubFlowStep Latest Flag" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "14|Within LATO Latest Flag" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "15|Within LOTS Latest Flag" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "16|Within SubFlowStep Latest Flag" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "17|Program Name" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "18|LOTS Temperature" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "19|DevRevStep" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "20|Unit TIU" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "21|Unit Tester Site Id" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "22|Unit Tester Id" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "23|Operation" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "24|LOTS Start Date Time" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "25|Cell ID" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "26|Carrier Y" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "27|Carrier X" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "28|Bin Description" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "29|LOTS End Date Time" : Operations = 119325, 132326, 6248|CLASSHOT; 
+	@@ "30|Lot" : Operations = 119325, 132326, 6248|CLASSHOT; 
+
+@ Parameters Group : String
+# Group Settings :  [ Data Type Position = None; Spm Option = False;  ] 
+	@@ "0|VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5" : ParsingSchema = "/{*}^:/[1::Value,2::Voltage,3::Temperature@1]%/"; Operations = 6248|CLASSHOT; 
+	@@ "1|VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_U1PU5" : ParsingSchema = "/{*}_:/{*}%^/[:@1]V/"; Operations = 6248|CLASSHOT; 
+	@@ "2|va*passing*qdf*" : Operations = 6248|CLASSHOT; 
+	@@ "3|IPC::FUN_CORE_CX816::SBFT_CORE_VMIN_E_F5XCR_X_CR_F5_1100_SLC_DRG_APEX_FMAX" : Operations = 6248|CLASSHOT; 
+	@@ "4|IPC::FUN_CORE_CX816::SBFT_CORE_VMIN_E_F5XCR_X_CR_F5_1100_MLC_DRG_APEX_FMAX" : Operations = 6248|CLASSHOT; 
+
+####################
+@ Report Format
+####################
+
+@ Data Tracking Level : Units
+@ Format : Split
+@ Report Output Format : Csv
+@ Naming Convention : Test Name, Operation
+@ Columns Order : Type = Alphabetical; 
+@ Pivot SSID : YES
+@ Chunk Files : NO
+@ Stack Session Data : NO
+@ Drop Original Unparsed Column : NO
+
+
+
+
+####################
+@ Post Processing Definition - Please IGNORE
+####################
+
+@ "0|VA-IN-NA-GSDS_D_S::PP_SICC_U1PU5" : 
+<?xml version="1.0" encoding="utf-16"?>
+<ParseDefinition xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Preset>
+    <Delimiter>94</Delimiter>
+    <Action>List</Action>
+    <Children>
+      <DelimiterWithActionElement>
+        <Delimiter>58</Delimiter>
+        <Action>KeyValue</Action>
+        <Children>
+          <DelimiterWithActionElement>
+            <Delimiter>37</Delimiter>
+            <Action>List</Action>
+            <Children />
+          </DelimiterWithActionElement>
+        </Children>
+      </DelimiterWithActionElement>
+    </Children>
+  </Preset>
+  <ExplicitFields>
+    <IndexnAndAlias>
+      <Index>1</Index>
+      <Alias>Value</Alias>
+    </IndexnAndAlias>
+    <IndexnAndAlias>
+      <Index>2</Index>
+      <Alias>Voltage</Alias>
+    </IndexnAndAlias>
+    <IndexnAndAlias>
+      <Index>3</Index>
+      <Alias>Temperature</Alias>
+    </IndexnAndAlias>
+  </ExplicitFields>
+  <PreviewText />
+  <IsDropOriginalValues>false</IsDropOriginalValues>
+</ParseDefinition>
+
+@ "1|VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_U1PU5" : 
+<?xml version="1.0" encoding="utf-16"?>
+<ParseDefinition xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Preset>
+    <Delimiter>95</Delimiter>
+    <Action>List</Action>
+    <Children>
+      <DelimiterWithActionElement>
+        <Delimiter>58</Delimiter>
+        <Action>KeyValue</Action>
+        <Children>
+          <DelimiterWithActionElement>
+            <Delimiter>37</Delimiter>
+            <Action>List</Action>
+            <Children>
+              <DelimiterWithActionElement>
+                <Delimiter>94</Delimiter>
+                <Action>KeyValue</Action>
+                <Children>
+                  <DelimiterWithActionElement>
+                    <Delimiter>86</Delimiter>
+                    <Action>List</Action>
+                    <Children />
+                  </DelimiterWithActionElement>
+                </Children>
+              </DelimiterWithActionElement>
+            </Children>
+          </DelimiterWithActionElement>
+        </Children>
+      </DelimiterWithActionElement>
+    </Children>
+  </Preset>
+  <ExplicitFields />
+  <IsDropOriginalValues>false</IsDropOriginalValues>
+</ParseDefinition>
+
+
