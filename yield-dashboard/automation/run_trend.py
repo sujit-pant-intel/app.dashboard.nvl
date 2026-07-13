@@ -384,6 +384,17 @@ def main() -> None:
             shutil.copy2(str(out_html), str(latest_html))
             _log(f"  Latest: {latest_html.name}  ({out_html.stat().st_size:,} bytes)")
 
+        # ── 3b. Regenerate index.html ───────────────────────────────────────
+        if not args.dry_run and ok:
+            try:
+                import importlib.util as _ilu
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "generate_index.py")
+                _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
+                _gi.build_index(base_dir)
+                _log(f"  Index updated → {trend_dir / 'index.html'}")
+            except Exception as _idx_e:
+                _log(f"  WARNING: index update failed: {_idx_e}")
+
         # ── 4. Send email ───────────────────────────────────────────────────
         email_cfg: dict = {}
         if _EMAIL_CFG.exists():

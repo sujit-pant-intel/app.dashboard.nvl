@@ -25,8 +25,9 @@ def build_index(base_dir: Path) -> Path:
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     all_files = sorted(
-        (f for f in reports_dir.glob("*.html") if not f.name.startswith("index")),
-        key=lambda f: f.name,   # YYYYMMDD_HHMMSS in name → lexicographic = chronological
+        (f for f in reports_dir.glob("NVL816*.html")
+         if not f.name.startswith("index")),
+        key=lambda f: f.name,
         reverse=True,
     )
     bllc_files  = [f for f in all_files if "BLLC" in f.name]
