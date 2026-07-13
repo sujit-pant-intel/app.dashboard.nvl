@@ -2606,6 +2606,7 @@ var _fbFilterIb=null; /* IB currently filtered in histogram by FB/HW selection *
 var _wmdFbScopeRi=null; /* when set: fb-modal is scoped to a single wafer row index */
 var _recovOpen=false; /* Bin Recovery Analysis panel visible */
 var _recovGrpChecked=new Set(); /* AP/CR group filter — empty=no filter, non-empty=filter by selected groups */
+var _fbCbTimer=null; /* debounce handle for FB checkbox expensive redraws */
 function showFbModal(ib){
   _wmdFbScopeRi=null; /* clear wafer-scope: this is a multi-wafer aggregation */
   /* Aggregate FB counts for the given IB across selected wafers */
@@ -3015,9 +3016,15 @@ function legendClick(bin,event){
   if(event&&(event.ctrlKey||event.metaKey)){showFbModal(bin);}
   else{clickLegend(bin,event);}
 }
-function fbCbChange(cb){var fb=cb.dataset.fb;if(cb.checked)_fbChecked.add(fb);else _fbChecked.delete(fb);_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
-function selectAllFbs(){_fbModalFbKeys.forEach(function(fb){_fbChecked.add(fb);});_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
-function clearFbs(){_fbChecked.clear();_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
+function fbCbChange(cb){var fb=cb.dataset.fb;if(cb.checked)_fbChecked.add(fb);else _fbChecked.delete(fb);
+  _renderFbCb();_renderFbChart();rChart(); /* fast: pre-aggregated binCounts, no die iteration */
+  var _fwmEl=document.getElementById('fb-wm-sec');
+  if(_fwmEl&&_fwmEl.style.display!=='none')showFbWaferMap(); /* refresh wafer tiles if visible */
+  /* debounce only the expensive per-die redraws */
+  if(_fbCbTimer)clearTimeout(_fbCbTimer);
+  _fbCbTimer=setTimeout(function(){_fbCbTimer=null;if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();},120);}
+function selectAllFbs(){if(_fbCbTimer){clearTimeout(_fbCbTimer);_fbCbTimer=null;}_fbModalFbKeys.forEach(function(fb){_fbChecked.add(fb);});_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
+function clearFbs(){if(_fbCbTimer){clearTimeout(_fbCbTimer);_fbCbTimer=null;}_fbChecked.clear();_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
 function showFbWaferMap(){
   if(!_fbModalIb)return;
   /* Sync FB checkbox state */
