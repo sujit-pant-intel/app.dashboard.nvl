@@ -1693,6 +1693,9 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '  <div class="upm-box" id="upm-box">\n'
         '    <div class="upm-drag" id="upm-drag"><b>Wafer Heatmap</b>'
         '<button id="upm-mode-btn" onclick="IC._upmToggleMode()" title="Switch between Canvas (fast) and SVG" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#128247; SVG mode</button>'
+        '<button onclick="IC._upmZoomOut()" title="Zoom out" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:2px;line-height:1.6">&#8722;</button>'
+        '<span id="upm-zoom-lbl" style="font-size:11px;color:#ecf0f1;min-width:34px;display:inline-block;text-align:center">100%</span>'
+        '<button onclick="IC._upmZoomIn()" title="Zoom in" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:8px;line-height:1.6">&#43;</button>'
         '<button onclick="IC.refreshUpm()" style="background:none;border:none;color:#fff;font-size:16px;cursor:pointer;margin-right:8px" title="Refresh">&#x21bb;</button>'
         '<button onclick="IC.closeUpmModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">&times;</button></div>\n'
         '    <div id="upm-dieLoc-bar" style="display:none;padding:3px 8px 3px;border-bottom:1px solid #dde4ee;background:#f7f9fc;font-size:10px;flex-shrink:0"></div>\n'
@@ -1715,6 +1718,9 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '  <div class="wm-box" id="wm-box">\n'
         '    <div class="wm-drag" id="wm-drag"><b>&#127759; Wafer Pattern Analysis</b>\n'
         '      <button id="wm-mode-btn" onclick="IC._wmToggleCanvasMode()" title="Switch to Canvas for fast interactive debug" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#128247; SVG mode</button>\n'
+        '      <button onclick="IC._wmZoomOut()" title="Zoom out" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:2px;line-height:1.6">&#8722;</button>\n'
+        '      <span id="wm-zoom-lbl" style="font-size:11px;color:#ecf0f1;min-width:34px;display:inline-block;text-align:center">100%</span>\n'
+        '      <button onclick="IC._wmZoomIn()" title="Zoom in" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:8px;line-height:1.6">&#43;</button>\n'
         '      <button onclick="IC.closeWmModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">&times;</button>\n'
         '    </div>\n'
         '    <div class="wm-body">\n'
@@ -2039,6 +2045,7 @@ var _fbModalIb=null,_fbModalFbKeys=[],_fbChecked=new Set();
 var _upmOpen=false,_upmMetricIdx=0,_upmDieLoc=null;
 var _upmCanvasMode=true,_upmObserver=null,_upmRenderedRis=new Set();
 var _upmLo=0,_upmHi=100,_upmRng=100,_upmIsMHz=false,_upmDivisor=0,_upmHasDieLoc=false;
+var _upmZoom=1;
 var _dlcpOpen=false,_dlcpT=92.5,_dlcpUi=0;
 var _wmOpen=false;
 var _sdtSecOpen=false,_sdtChecked=new Set(),_sdtCombos=[];
@@ -3749,7 +3756,7 @@ function _renderUpmMaps(){
     if(!_pxs.length)return;
     var _pxMin=Math.min.apply(null,_pxs),_pxMax=Math.max.apply(null,_pxs);
     var _pyMin=Math.min.apply(null,_pys),_pyMax=Math.max.apply(null,_pys);
-    var _pPad=2,_pFW=150;
+    var _pPad=2,_pFW=Math.round(150*_upmZoom);
     var _pCs=Math.max(1,(_pFW-_pPad*2)/(_pxMax-_pxMin+1));
     var _pXSpan=_pxMax-_pxMin,_pYSpan=_pyMax-_pyMin;
     var _pCsy=(_pXSpan>0&&_pYSpan>0)?(_pCs*_pXSpan/_pYSpan):_pCs;
@@ -3814,7 +3821,7 @@ function _upmRenderTile(ri,container){
   if(!xs.length)return;
   var xMin=Math.min.apply(null,xs),xMax=Math.max.apply(null,xs);
   var yMin=Math.min.apply(null,ys),yMax=Math.max.apply(null,ys);
-  var pad=2,FIXED_W=150;
+  var pad=2,FIXED_W=Math.round(150*_upmZoom);
   var cs=Math.max(1,(FIXED_W-pad*2)/(xMax-xMin+1));
   var xSpan=xMax-xMin,ySpan=yMax-yMin;
   var csy=(xSpan>0&&ySpan>0)?(cs*xSpan/ySpan):cs;
@@ -3904,6 +3911,20 @@ function _upmToggleMode(){
     if(_upmRenderedRis.has(ri)){var tc=el.querySelector('.upm-tile-content');if(tc)_upmRenderTile(ri,tc);}
   });
 }
+function _upmSetZoom(z){
+  _upmZoom=Math.max(0.5,Math.min(4,z));
+  var lbl=document.getElementById('upm-zoom-lbl');if(lbl)lbl.textContent=Math.round(_upmZoom*100)+'%';
+  _renderUpmMaps();
+}
+function _upmZoomIn(){_upmSetZoom(_upmZoom+0.5);}
+function _upmZoomOut(){_upmSetZoom(_upmZoom-0.5);}
+function _wmSetZoom(z){
+  _wmZoom=Math.max(0.5,Math.min(4,z));
+  var lbl=document.getElementById('wm-zoom-lbl');if(lbl)lbl.textContent=Math.round(_wmZoom*100)+'%';
+  _wmRender();
+}
+function _wmZoomIn(){_wmSetZoom(_wmZoom+0.5);}
+function _wmZoomOut(){_wmSetZoom(_wmZoom-0.5);}
 function _upmTip(e,tip){
   var t=document.getElementById('upm-tooltip');
   if(!t){t=document.createElement('div');t.id='upm-tooltip';
@@ -3970,6 +3991,7 @@ var _wmCriteriaDisabled=new Set(); /* indices of yieldDefs to skip in criteria c
 var _wmSiteToShots=null; /* lazy cache: "rx,ry" -> Set of shot indices */
 var _wmOpen=false;
 var _wmCanvasMode=true,_wmObserver=null,_wmRenderedRis=new Set();
+var _wmZoom=1;
 var _wmdOpen=false,_wmdRi=-1;
 var _wmdDX=0,_wmdDY=0,_wmdDragging=false;
 
@@ -4420,7 +4442,7 @@ function _wmRender(){
     maps.innerHTML='<span style="color:#7f8c8d;font-size:12px">No die-level data for selected wafers.</span>';
     tbody.innerHTML='';if(note)note.innerHTML='';if(legend)legend.innerHTML='';return;
   }
-  var FIXED_W=180,pad=2;
+  var FIXED_W=Math.round(180*_wmZoom),pad=2;
   var mapsHtml='',tbHtml='';
   var allPrimary={};
   var ibSeen={};
@@ -4670,7 +4692,7 @@ function _wmRenderTile(ri,container){
   var xs=[],ys=[];
   dies.forEach(function(d){if(d[0]!==null&&d[0]!==undefined){xs.push(d[0]);ys.push(d[1]);}});
   if(!xs.length)return;
-  var FIXED_W=180,pad=2;
+  var FIXED_W=Math.round(180*_wmZoom),pad=2;
   var xMin=Math.min.apply(null,xs),xMax=Math.max.apply(null,xs);
   var yMin=Math.min.apply(null,ys),yMax=Math.max.apply(null,ys);
   var xCnt=xMax-xMin+1,yCnt=yMax-yMin+1;
@@ -6000,7 +6022,7 @@ return{clickBar:clickBar,clickLegend:clickLegend,legendClick:legendClick,toggleB
   hwGbChange:hwGbChange,hwGbAll:hwGbAll,hwGbNone:hwGbNone,
   hwTxtFilter:hwTxtFilter,showBhHwModal:showBhHwModal,closeBhHwModal:closeBhHwModal,
   refreshFb:refreshFb,refreshUpm:refreshUpm,selectYieldBins:selectYieldBins,
-  lgSearch:lgSearch,showUpmModal:showUpmModal,closeUpmModal:closeUpmModal,_upmToggleMode:_upmToggleMode,
+  lgSearch:lgSearch,showUpmModal:showUpmModal,closeUpmModal:closeUpmModal,_upmToggleMode:_upmToggleMode,_upmZoomIn:_upmZoomIn,_upmZoomOut:_upmZoomOut,_wmZoomIn:_wmZoomIn,_wmZoomOut:_wmZoomOut,
   _upmDieLocToggle:_upmDieLocToggle,_upmDieLocAll:_upmDieLocAll,
   showRecovModal:showRecovModal,_recovCategory:_recovCategory,
   _recovGrpChk:_recovGrpChk,_recovGrpClrAll:_recovGrpClrAll,
