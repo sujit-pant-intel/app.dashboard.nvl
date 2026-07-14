@@ -1692,7 +1692,10 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '<div id="upm-modal" class="upm-overlay">\n'
         '  <div class="upm-box" id="upm-box">\n'
         '    <div class="upm-drag" id="upm-drag"><b>Wafer Heatmap</b>'
-        '<button id="upm-mode-btn" onclick="IC._upmToggleMode()" title="Switch between Canvas (fast) and SVG" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#128247; SVG mode</button>'
+        '<button id="upm-mode-btn" onclick="IC._upmToggleMode()" title="Switch between Canvas (fast) and SVG" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:4px">&#128247; SVG mode</button>'
+        '<button onclick="IC._upmZoomOut()" title="Zoom out" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:2px;line-height:1.6">&#8722;</button>'
+        '<span id="upm-zoom-lbl" style="font-size:11px;color:#ecf0f1;min-width:34px;display:inline-block;text-align:center">100%</span>'
+        '<button onclick="IC._upmZoomIn()" title="Zoom in" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:8px;line-height:1.6">&#43;</button>'
         '<button onclick="IC.refreshUpm()" style="background:none;border:none;color:#fff;font-size:16px;cursor:pointer;margin-right:8px" title="Refresh">&#x21bb;</button>'
         '<button onclick="IC.closeUpmModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">&times;</button></div>\n'
         '    <div id="upm-dieLoc-bar" style="display:none;padding:3px 8px 3px;border-bottom:1px solid #dde4ee;background:#f7f9fc;font-size:10px;flex-shrink:0"></div>\n'
@@ -3723,15 +3726,9 @@ function _renderUpmMaps(){
     var raw=(colMeta.divisor&&colMeta.divisor>0)?Math.round(v*colMeta.divisor/100):NaN;
     return v.toFixed(2)+'%'+(isNaN(raw)?'':' ('+raw+'MHz)');
   };
-  var titleHtml='<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:6px">'
-    +'<span style="font-size:12px;font-weight:bold;color:#1a3a6a;flex:1">UPM @'+colLabel
+  var titleHtml='<div style="font-size:12px;font-weight:bold;color:#1a3a6a;margin-bottom:6px">UPM @'+colLabel
     +' &mdash; range: '+fmtVal(lo)+' to '+fmtVal(hi)
     +(_bhHwSel.size>0?' &nbsp;<span style="background:#e67e22;color:#fff;font-size:10px;padding:1px 6px;border-radius:3px">HW filtered</span>':'')
-    +'</span>'
-    +'<span style="font-size:11px;color:#555;white-space:nowrap">Zoom:</span>'
-    +'<button style="background:#ecf0f1;border:1px solid #bdc3c7;border-radius:4px;font-size:13px;cursor:pointer;padding:0 8px;line-height:1.6" onclick="IC._upmZoomOut()" title="Zoom out">&#8722;</button>'
-    +'<span id="upm-zoom-lbl" style="font-size:11px;color:#555;min-width:34px;display:inline-block;text-align:center">'+Math.round(_upmZoom*100)+'%</span>'
-    +'<button style="background:#ecf0f1;border:1px solid #bdc3c7;border-radius:4px;font-size:13px;cursor:pointer;padding:0 8px;line-height:1.6" onclick="IC._upmZoomIn()" title="Zoom in">&#43;</button>'
     +'</div>';
   var mapsHtml='<div class="upm-maps">';
   /* die-loc filter bar */
