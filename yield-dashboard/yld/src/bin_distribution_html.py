@@ -1692,6 +1692,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '<div id="upm-modal" class="upm-overlay">\n'
         '  <div class="upm-box" id="upm-box">\n'
         '    <div class="upm-drag" id="upm-drag"><b>Wafer Heatmap</b>'
+        '<button id="upm-mode-btn" onclick="IC._upmToggleMode()" title="Switch between Canvas (fast) and SVG" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#128247; SVG mode</button>'
         '<button onclick="IC.refreshUpm()" style="background:none;border:none;color:#fff;font-size:16px;cursor:pointer;margin-right:8px" title="Refresh">&#x21bb;</button>'
         '<button onclick="IC.closeUpmModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">&times;</button></div>\n'
         '    <div id="upm-dieLoc-bar" style="display:none;padding:3px 8px 3px;border-bottom:1px solid #dde4ee;background:#f7f9fc;font-size:10px;flex-shrink:0"></div>\n'
@@ -2036,6 +2037,8 @@ var AB=DATA.bins;
 var sB=new Set(AB);
 var _fbModalIb=null,_fbModalFbKeys=[],_fbChecked=new Set();
 var _upmOpen=false,_upmMetricIdx=0,_upmDieLoc=null;
+var _upmCanvasMode=true,_upmObserver=null,_upmRenderedRis=new Set();
+var _upmLo=0,_upmHi=100,_upmRng=100,_upmIsMHz=false,_upmDivisor=0,_upmHasDieLoc=false;
 var _dlcpOpen=false,_dlcpT=92.5,_dlcpUi=0;
 var _wmOpen=false;
 var _sdtSecOpen=false,_sdtChecked=new Set(),_sdtCombos=[];
@@ -3705,6 +3708,10 @@ function _renderUpmMaps(){
   var isMHz=(_sv.length?_sv[_sv.length-1]:hi)>200;
   var unit=isMHz?' MHz':'%';
   var rng=(hi-lo)||1;
+  /* store in module vars so _upmRenderTile can access them */
+  _upmLo=lo;_upmHi=hi;_upmRng=rng;_upmIsMHz=isMHz;
+  _upmDivisor=(colMeta.divisor&&colMeta.divisor>0)?colMeta.divisor:0;
+  _upmHasDieLoc=DATA.hasReticle&&DATA.retSiteNum&&Object.keys(DATA.retSiteNum).length>0;
   var fmtVal=function(v){return isMHz?Math.round(v)+unit:v.toFixed(2)+unit;};
   var fmtBoth=function(v){
     if(isMHz){var pct=(colMeta.divisor&&colMeta.divisor>0)?v/colMeta.divisor*100:NaN;
@@ -3733,79 +3740,22 @@ function _renderUpmMaps(){
       _dlBarEl.innerHTML=_dlH;_dlBarEl.style.display='';
     }else{_dlBarEl.style.display='none';}
   }
+  /* Build placeholder tiles — actual rendering deferred to IntersectionObserver */
   sR.forEach(function(ri){
     var row=DATA.rows[ri];
     if(!row||!row.dies||!row.dies.length)return;
-    var dies=row.dies;
-    var xs=[],ys=[];
-    dies.forEach(function(d){if(d[0]!==null&&d[0]!==undefined){xs.push(d[0]);ys.push(d[1]);}});
-    if(!xs.length)return;
-    var xMin=Math.min.apply(null,xs),xMax=Math.max.apply(null,xs);
-    var yMax=Math.max.apply(null,ys),yMin=Math.min.apply(null,ys);
-    // Fixed canvas width so all wafers render the same physical size regardless of die count
-    var pad=2, FIXED_W=150;
-    var xCnt=xMax-xMin+1, yCnt=yMax-yMin+1;
-    var cs=Math.max(1,(FIXED_W-pad*2)/xCnt);
-    var xSpan=xMax-xMin,ySpan=yMax-yMin;
-    var csy=(xSpan>0&&ySpan>0)?(cs*xSpan/ySpan):cs;
-    var W=FIXED_W, H=Math.round(yCnt*csy+pad*2);
-    var rects=[];
-    dies.forEach(function(d){
-      var x=d[0],y=d[1],ib=d[2],fb=d[3],hw=d[4],uv=d[(DATA.upmStart||5)+upmIdx];
-      if(x===null||x===undefined)return;
-      var px=(pad+(x-xMin)*cs).toFixed(2),py=(pad+(yMax-y)*csy).toFixed(2);
-      var t=(uv!==null&&uv!==undefined)?Math.max(0,Math.min(1,(uv-lo)/rng)):null;
-      var fill=_upmColor(t);
-      var ibMatch=(_fbModalIb!==null)?(String(ib)===String(_fbModalIb)):(sB.size===AB.length||sB.has(String(ib)));
-      var fbMatch;
-      if(_recovOpen&&ibMatch&&RECOV_DIE_GRPS){fbMatch=(_recovGrpChecked.size>0)&&_dieGrpActive(row.lot+'|'+row.wafer,x,y);}
-      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||(_fbChecked.size===0)||_fbChecked.has(String(fb));}
-      var hwMatch=(_bhHwSel.size===0)||(hw===null)||_bhHwSel.has(String(hw));
-      var opacity=(ibMatch&&fbMatch&&hwMatch)?'1':'0.12';
-      /* SDT combo filter: fade dies whose SDT combo is unchecked */
-      if(_sdtSecOpen&&DATA.hasSdtDie&&opacity==='1'){
-        var _sdtSt=DATA.sdtDieStart||7;
-        var _si=d[_sdtSt],_sf=d[_sdtSt+1];
-        var _sdtK=_si===null||_si===undefined?null:String(_si)+'|'+(_sf===null||_sf===undefined?'':String(_sf));
-        if(_sdtK===null||!_sdtChecked.has(_sdtK))opacity='0.12';
-      }
-      /* die-loc filter: dim dies outside selection */
-      if(hasDieLoc&&_upmDieLoc!==null&&DATA.retMap&&opacity==='1'){
-        var _rmU=DATA.retMap[x+','+y];
-        if(_rmU){var _dlU=DATA.retSiteNum[_rmU[0]+','+_rmU[1]];if(_dlU!==undefined&&!_upmDieLoc.has(+_dlU))opacity='0.07';}
-        else{opacity='0.07';}
-      }
-      var dlTipInfo='';
-      if(hasDieLoc&&DATA.retMap){var _rmTip=DATA.retMap[x+','+y];if(_rmTip){var _dlTip=DATA.retSiteNum[_rmTip[0]+','+_rmTip[1]];if(_dlTip!==undefined)dlTipInfo=' loc'+_dlTip;}}
-      var upmStr=uv!==null&&uv!==undefined?fmtBoth(Number(uv)):'no UPM';
-      var tipStr=upmStr+'|IB'+ib+(fb!==null?' FB'+fb:'')+(hw!==null?' HW'+hw:'')+dlTipInfo+'  ('+x+','+y+')';
-      rects.push('<rect x="'+px+'" y="'+py+'" width="'+(cs*0.92).toFixed(2)+'" height="'+(csy*0.92).toFixed(2)+'" fill="'+fill+'" opacity="'+opacity+'" data-tip="'+tipStr+'"/>');
-      /* die-loc text overlay (only when cells are large enough) */
-      if(hasDieLoc&&DATA.retMap&&cs>=4){
-        var _rmDl=DATA.retMap[x+','+y];
-        if(_rmDl){var _dlN=DATA.retSiteNum[_rmDl[0]+','+_rmDl[1]];
-          if(_dlN!==undefined){
-            var _dlFs=Math.max(4,Math.min(9,Math.round(cs*0.42)));
-            var _dlTc=_wmContrast(fill);
-            rects.push('<text x="'+(parseFloat(px)+cs*0.45).toFixed(2)+'" y="'+(parseFloat(py)+csy*0.5+_dlFs*0.36).toFixed(2)+'"'
-              +' text-anchor="middle" font-size="'+_dlFs+'" fill="'+_dlTc+'"'
-              +' stroke="'+(_dlTc==='#fff'?'#0a0f1a':'#f5faff')+'" stroke-width="0.6" paint-order="stroke"'
-              +' font-weight="bold" pointer-events="none" opacity="'+opacity+'">'+_dlN+'</text>');
-          }
-        }
-      }
-      rects.push('<rect x="'+px+'" y="'+py+'" width="'+(cs*0.92).toFixed(2)+'" height="'+(csy*0.92).toFixed(2)+'" fill="'+fill+'" opacity="'+opacity+'" data-tip="'+tipStr+'"/>');
-    });
+    var _pDies=row.dies,_pxs=[],_pys=[];
+    _pDies.forEach(function(d){if(d[0]!==null&&d[0]!==undefined){_pxs.push(d[0]);_pys.push(d[1]);}});
+    if(!_pxs.length)return;
+    var _pxMin=Math.min.apply(null,_pxs),_pxMax=Math.max.apply(null,_pxs);
+    var _pyMin=Math.min.apply(null,_pys),_pyMax=Math.max.apply(null,_pys);
+    var _pPad=2,_pFW=150;
+    var _pCs=Math.max(1,(_pFW-_pPad*2)/(_pxMax-_pxMin+1));
+    var _pXSpan=_pxMax-_pxMin,_pYSpan=_pyMax-_pyMin;
+    var _pCsy=(_pXSpan>0&&_pYSpan>0)?(_pCs*_pXSpan/_pYSpan):_pCs;
+    var _pW=_pFW,_pH=Math.round((_pyMax-_pyMin+1)*_pCsy+_pPad*2);
     var lbl=(row.lot||'')+' W'+(row.wafer||'');
-    var _retO='';
-    if(DATA.hasReticle&&DATA.retShots&&DATA.retShots.length){
-      DATA.retShots.forEach(function(shot){
-        var _sx=(pad+(shot[0]-xMin)*cs).toFixed(2),_sy=(pad+(yMax-shot[3])*csy).toFixed(2);
-        var _sw=((shot[2]-shot[0]+1)*cs).toFixed(2),_sh=((shot[3]-shot[1]+1)*csy).toFixed(2);
-        _retO+='<rect x="'+_sx+'" y="'+_sy+'" width="'+_sw+'" height="'+_sh+'" fill="none" stroke="#4a90d9" stroke-width="0.8" opacity="0.6"/>';
-      });
-    }
-    mapsHtml+='<div class="upm-ww"><div class="upm-wlbl">'+lbl+'</div><svg width="'+W+'" height="'+H+'" style="display:block">'+rects.join('')+_retO+'</svg></div>';
+    mapsHtml+='<div class="upm-ww upm-tile-ph" data-ri="'+ri+'">'+'<div class="upm-wlbl">'+lbl+'</div>'+'<div class="upm-tile-content" style="width:'+_pW+'px;height:'+_pH+'px;background:#e8ecf0;border-radius:3px;display:inline-block"></div>'+'</div>';
   });
   mapsHtml+='</div>';
   var hwNote=_bhHwSel.size>0?(' &nbsp;&bull;&nbsp; HW: '+_bhHwSel.size+' selected'):'';
@@ -3840,7 +3790,119 @@ function _renderUpmMaps(){
       +'<svg width="'+dW+'" height="'+dH+'" style="display:block;max-width:100%">'+p2.join('')+'</svg></div>';
   }
   body.innerHTML=titleHtml+mapsHtml+lgHtml+distHtml;
+  /* lazy tile rendering via IntersectionObserver */
+  _upmRenderedRis=new Set();
+  if(_upmObserver){_upmObserver.disconnect();_upmObserver=null;}
+  _upmObserver=new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if(entry.isIntersecting){
+        var _phRi=parseInt(entry.target.dataset.ri,10);
+        var _phEl=entry.target.querySelector('.upm-tile-content');
+        if(_phEl)_upmRenderTile(_phRi,_phEl);
+      }
+    });
+  },{root:body,rootMargin:'300px 0px'});
+  body.querySelectorAll('.upm-tile-ph[data-ri]').forEach(function(el){_upmObserver.observe(el);});
   _setupUpmBodyHover();
+}
+function _upmRenderTile(ri,container){
+  var row=DATA.rows[ri];
+  if(!row||!row.dies||!row.dies.length)return;
+  var dies=row.dies,upmIdx=_upmMetricIdx,uStart=DATA.upmStart||5;
+  var xs=[],ys=[];
+  dies.forEach(function(d){if(d[0]!==null&&d[0]!==undefined){xs.push(d[0]);ys.push(d[1]);}});
+  if(!xs.length)return;
+  var xMin=Math.min.apply(null,xs),xMax=Math.max.apply(null,xs);
+  var yMin=Math.min.apply(null,ys),yMax=Math.max.apply(null,ys);
+  var pad=2,FIXED_W=150;
+  var cs=Math.max(1,(FIXED_W-pad*2)/(xMax-xMin+1));
+  var xSpan=xMax-xMin,ySpan=yMax-yMin;
+  var csy=(xSpan>0&&ySpan>0)?(cs*xSpan/ySpan):cs;
+  var W=FIXED_W,H=Math.round((yMax-yMin+1)*csy+pad*2);
+  var lo=_upmLo,rng=_upmRng,isMHz=_upmIsMHz,hasDieLoc=_upmHasDieLoc;
+  var wKey=row.lot+'|'+row.wafer;
+  function _fmtB(v){if(isMHz){var pct=_upmDivisor>0?v/_upmDivisor*100:NaN;return Math.round(v)+'MHz'+(isNaN(pct)?'':' ('+pct.toFixed(1)+'%)');} var raw=_upmDivisor>0?Math.round(v*_upmDivisor/100):NaN;return v.toFixed(2)+'%'+(isNaN(raw)?'':' ('+raw+'MHz)');}
+  if(_upmCanvasMode){
+    var cv=document.createElement('canvas');
+    cv.width=W;cv.height=H;cv.style.display='block';
+    var ctx=cv.getContext('2d');
+    dies.forEach(function(d){
+      var x=d[0],y=d[1],ib=d[2],fb=d[3],hw=d[4],uv=d[uStart+upmIdx];
+      if(x===null||x===undefined)return;
+      var t=(uv!==null&&uv!==undefined)?Math.max(0,Math.min(1,(uv-lo)/rng)):null;
+      var ibMatch=(_fbModalIb!==null)?(String(ib)===String(_fbModalIb)):(sB.size===AB.length||sB.has(String(ib)));
+      var fbMatch;
+      if(_recovOpen&&ibMatch&&RECOV_DIE_GRPS){fbMatch=(_recovGrpChecked.size>0)&&_dieGrpActive(wKey,x,y);}
+      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||(_fbChecked.size===0)||_fbChecked.has(String(fb));}
+      var hwMatch=(_bhHwSel.size===0)||(hw===null)||_bhHwSel.has(String(hw));
+      var active=ibMatch&&fbMatch&&hwMatch;
+      if(active&&_sdtSecOpen&&DATA.hasSdtDie){var _ss=DATA.sdtDieStart||7;var _si2=d[_ss],_sf2=d[_ss+1];var _sk2=_si2===null||_si2===undefined?null:String(_si2)+'|'+(_sf2===null||_sf2===undefined?'':String(_sf2));if(_sk2===null||!_sdtChecked.has(_sk2))active=false;}
+      if(active&&hasDieLoc&&_upmDieLoc!==null&&DATA.retMap){var _ru=DATA.retMap[x+','+y];if(_ru){var _du=DATA.retSiteNum[_ru[0]+','+_ru[1]];if(_du!==undefined&&!_upmDieLoc.has(+_du))active=false;}else{active=false;}}
+      ctx.globalAlpha=active?1:0.12;
+      ctx.fillStyle=_upmColor(t);
+      ctx.fillRect(pad+(x-xMin)*cs,pad+(yMax-y)*csy,cs*0.92,csy*0.92);
+    });
+    ctx.globalAlpha=1;
+    if(DATA.hasReticle&&DATA.retShots&&DATA.retShots.length){
+      DATA.retShots.forEach(function(shot){ctx.strokeStyle='#4a90d9';ctx.lineWidth=0.8;ctx.globalAlpha=0.6;ctx.strokeRect(pad+(shot[0]-xMin)*cs,pad+(yMax-shot[3])*csy,(shot[2]-shot[0]+1)*cs,(shot[3]-shot[1]+1)*csy);ctx.globalAlpha=1;});
+    }
+    var xCtr=(xMin+xMax)/2,yCtr=(yMin+yMax)/2;
+    ctx.strokeStyle='#bdc3c7';ctx.lineWidth=1;
+    ctx.beginPath();ctx.ellipse(pad+(xCtr-xMin)*cs+cs*0.46,pad+(yMax-yCtr)*csy+csy*0.46,(xMax-xMin)/2*cs+cs*0.5,(yMax-yMin)/2*csy+csy*0.5,0,0,2*Math.PI);ctx.stroke();
+    if(hasDieLoc&&DATA.retSiteNum&&cs>=4){var _dlFs3=Math.max(4,Math.min(7,Math.round(cs*0.42)));ctx.font='bold '+_dlFs3+'px Arial';ctx.textAlign='right';ctx.textBaseline='top';ctx.fillStyle='#000';ctx.globalAlpha=1;dies.forEach(function(d){var x=d[0],y=d[1];if(x===null||x===undefined)return;var _inf=DATA.retMap&&DATA.retMap[x+','+y];if(!_inf)return;var _dtag=String(DATA.retSiteNum[_inf[0]+','+_inf[1]]||'');if(!_dtag)return;ctx.fillText(_dtag,pad+(x-xMin)*cs+cs-0.5,pad+(yMax-y)*csy+0.5);});}
+    cv._upmDl={};cv._xMnU=xMin;cv._yMxU=yMax;cv._csU=cs;cv._csyU=csy;cv._padU=pad;cv._fmtB=_fmtB;
+    dies.forEach(function(d){var x=d[0],y=d[1];if(x===null||x===undefined)return;cv._upmDl[x+','+y]={ib:d[2],fb:d[3],uv:d[uStart+upmIdx],x:x,y:y};});
+    if(!cv._upmHv){cv._upmHv=true;
+      cv.addEventListener('mousemove',function(e){
+        var r2=cv.getBoundingClientRect(),sx=cv.width/r2.width,sy=cv.height/r2.height;
+        var dx2=Math.round(cv._xMnU+(e.clientX-r2.left)*sx/cv._csU-cv._padU/cv._csU);
+        var dy2=Math.round(cv._yMxU-(e.clientY-r2.top)*sy/cv._csyU+cv._padU/cv._csyU);
+        var dd=cv._upmDl[dx2+','+dy2];
+        if(!dd){_upmTipHide();return;}
+        var tipTxt=(dd.uv!==null&&dd.uv!==undefined)?cv._fmtB(Number(dd.uv)):'no UPM';
+        _upmTip(e,tipTxt+'|IB'+(dd.ib!==null?dd.ib:'?')+(dd.fb!==null?' FB'+dd.fb:'')+'  ('+dd.x+','+dd.y+')');
+      });
+      cv.addEventListener('mouseleave',function(){_upmTipHide();});
+    }
+    container.innerHTML='';container.appendChild(cv);
+  } else {
+    /* SVG path — duplicate rect bug fixed */
+    var rects=[];
+    dies.forEach(function(d){
+      var x=d[0],y=d[1],ib=d[2],fb=d[3],hw=d[4],uv=d[uStart+upmIdx];
+      if(x===null||x===undefined)return;
+      var px=(pad+(x-xMin)*cs).toFixed(2),py=(pad+(yMax-y)*csy).toFixed(2);
+      var t=(uv!==null&&uv!==undefined)?Math.max(0,Math.min(1,(uv-lo)/rng)):null;
+      var fill=_upmColor(t);
+      var ibMatch=(_fbModalIb!==null)?(String(ib)===String(_fbModalIb)):(sB.size===AB.length||sB.has(String(ib)));
+      var fbMatch;
+      if(_recovOpen&&ibMatch&&RECOV_DIE_GRPS){fbMatch=(_recovGrpChecked.size>0)&&_dieGrpActive(wKey,x,y);}
+      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||(_fbChecked.size===0)||_fbChecked.has(String(fb));}
+      var hwMatch=(_bhHwSel.size===0)||(hw===null)||_bhHwSel.has(String(hw));
+      var opacity=(ibMatch&&fbMatch&&hwMatch)?'1':'0.12';
+      if(opacity==='1'&&_sdtSecOpen&&DATA.hasSdtDie){var _sdtSt=DATA.sdtDieStart||7;var _si=d[_sdtSt],_sf=d[_sdtSt+1];var _sdtK=_si===null||_si===undefined?null:String(_si)+'|'+(_sf===null||_sf===undefined?'':String(_sf));if(_sdtK===null||!_sdtChecked.has(_sdtK))opacity='0.12';}
+      if(opacity!=='0.12'&&hasDieLoc&&_upmDieLoc!==null&&DATA.retMap){var _rmU=DATA.retMap[x+','+y];if(_rmU){var _dlU=DATA.retSiteNum[_rmU[0]+','+_rmU[1]];if(_dlU!==undefined&&!_upmDieLoc.has(+_dlU))opacity='0.07';}else{opacity='0.07';}}
+      var dlTipInfo='';
+      if(hasDieLoc&&DATA.retMap){var _rmTip=DATA.retMap[x+','+y];if(_rmTip){var _dlTip=DATA.retSiteNum[_rmTip[0]+','+_rmTip[1]];if(_dlTip!==undefined)dlTipInfo=' loc'+_dlTip;}}
+      var tipStr=(uv!==null&&uv!==undefined?_fmtB(Number(uv)):'no UPM')+'|IB'+ib+(fb!==null?' FB'+fb:'')+(hw!==null?' HW'+hw:'')+dlTipInfo+'  ('+x+','+y+')';
+      rects.push('<rect x="'+px+'" y="'+py+'" width="'+(cs*0.92).toFixed(2)+'" height="'+(csy*0.92).toFixed(2)+'" fill="'+fill+'" opacity="'+opacity+'" data-tip="'+tipStr+'"/>');
+      if(hasDieLoc&&DATA.retMap&&cs>=4){var _rmDl=DATA.retMap[x+','+y];if(_rmDl){var _dlN=DATA.retSiteNum[_rmDl[0]+','+_rmDl[1]];if(_dlN!==undefined){var _dlFs=Math.max(4,Math.min(9,Math.round(cs*0.42)));var _dlTc=_wmContrast(fill);rects.push('<text x="'+(parseFloat(px)+cs*0.45).toFixed(2)+'" y="'+(parseFloat(py)+csy*0.5+_dlFs*0.36).toFixed(2)+'" text-anchor="middle" font-size="'+_dlFs+'" fill="'+_dlTc+'" stroke="'+(_dlTc==='#fff'?'#0a0f1a':'#f5faff')+'" stroke-width="0.6" paint-order="stroke" font-weight="bold" pointer-events="none" opacity="'+opacity+'">'+_dlN+'</text>');}}}
+    });
+    var _retO2='';
+    if(DATA.hasReticle&&DATA.retShots&&DATA.retShots.length){DATA.retShots.forEach(function(shot){var _sx=(pad+(shot[0]-xMin)*cs).toFixed(2),_sy=(pad+(yMax-shot[3])*csy).toFixed(2),_sw=((shot[2]-shot[0]+1)*cs).toFixed(2),_sh=((shot[3]-shot[1]+1)*csy).toFixed(2);_retO2+='<rect x="'+_sx+'" y="'+_sy+'" width="'+_sw+'" height="'+_sh+'" fill="none" stroke="#4a90d9" stroke-width="0.8" opacity="0.6"/>';});}
+    container.innerHTML='<svg width="'+W+'" height="'+H+'" style="display:block">'+rects.join('')+_retO2+'</svg>';
+  }
+  _upmRenderedRis.add(ri);
+}
+function _upmToggleMode(){
+  _upmCanvasMode=!_upmCanvasMode;
+  var btn=document.getElementById('upm-mode-btn');
+  if(btn)btn.innerHTML=_upmCanvasMode?'&#128247; SVG mode':'&#9889; Fast mode';
+  var body=document.getElementById('upm-body');if(!body)return;
+  body.querySelectorAll('.upm-tile-ph[data-ri]').forEach(function(el){
+    var ri=parseInt(el.dataset.ri,10);
+    if(_upmRenderedRis.has(ri)){var tc=el.querySelector('.upm-tile-content');if(tc)_upmRenderTile(ri,tc);}
+  });
 }
 function _upmTip(e,tip){
   var t=document.getElementById('upm-tooltip');
@@ -5938,7 +6000,7 @@ return{clickBar:clickBar,clickLegend:clickLegend,legendClick:legendClick,toggleB
   hwGbChange:hwGbChange,hwGbAll:hwGbAll,hwGbNone:hwGbNone,
   hwTxtFilter:hwTxtFilter,showBhHwModal:showBhHwModal,closeBhHwModal:closeBhHwModal,
   refreshFb:refreshFb,refreshUpm:refreshUpm,selectYieldBins:selectYieldBins,
-  lgSearch:lgSearch,showUpmModal:showUpmModal,closeUpmModal:closeUpmModal,
+  lgSearch:lgSearch,showUpmModal:showUpmModal,closeUpmModal:closeUpmModal,_upmToggleMode:_upmToggleMode,
   _upmDieLocToggle:_upmDieLocToggle,_upmDieLocAll:_upmDieLocAll,
   showRecovModal:showRecovModal,_recovCategory:_recovCategory,
   _recovGrpChk:_recovGrpChk,_recovGrpClrAll:_recovGrpClrAll,
