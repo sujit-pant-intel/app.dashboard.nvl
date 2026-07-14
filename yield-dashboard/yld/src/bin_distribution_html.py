@@ -1858,6 +1858,9 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;background:#eef2f7;border:1px solid #c8d4e0;border-radius:4px;padding:3px 9px;user-select:none">'
         '<input type="checkbox" id="wmd-hm-chk" onchange="IC._wmdHeatModeSel(this.checked?\'upm\':\'fb\',IC._wmdRiVal())" style="cursor:pointer;width:13px;height:13px">'
         'UPM heatmap</label>'
+        '<button style="background:#ecf0f1;border:1px solid #bdc3c7;border-radius:4px;font-size:13px;cursor:pointer;padding:0 7px;line-height:1.6" onclick="IC._wmdZoomOut()" title="Zoom out">&#8722;</button>'
+        '<span id="wmd-zoom-lbl" style="font-size:11px;color:#555;min-width:32px;display:inline-block;text-align:center">100%</span>'
+        '<button style="background:#ecf0f1;border:1px solid #bdc3c7;border-radius:4px;font-size:13px;cursor:pointer;padding:0 7px;line-height:1.6" onclick="IC._wmdZoomIn()" title="Zoom in">&#43;</button>'
         '<span id="wmd-upm-sel" style="font-size:11px;color:#555"></span>'
         '          </div>\n'
         '          <div id="wmd-upm-body" style="overflow:auto"></div>\n'
@@ -3918,6 +3921,13 @@ function _upmSetZoom(z){
 }
 function _upmZoomIn(){_upmSetZoom(_upmZoom+0.5);}
 function _upmZoomOut(){_upmSetZoom(_upmZoom-0.5);}
+function _wmdZoomSet(z){
+  _wmdZoom=Math.max(0.5,Math.min(4,z));
+  var lbl=document.getElementById('wmd-zoom-lbl');if(lbl)lbl.textContent=Math.round(_wmdZoom*100)+'%';
+  if(_wmdOpen&&_wmdRi>=0)_wmdRender(_wmdRi);
+}
+function _wmdZoomIn(){_wmdZoomSet(_wmdZoom+0.5);}
+function _wmdZoomOut(){_wmdZoomSet(_wmdZoom-0.5);}
 function _wmSetZoom(z){
   _wmZoom=Math.max(0.5,Math.min(4,z));
   var lbl=document.getElementById('wm-zoom-lbl');if(lbl)lbl.textContent=Math.round(_wmZoom*100)+'%';
@@ -3994,6 +4004,7 @@ var _wmCanvasMode=true,_wmObserver=null,_wmRenderedRis=new Set();
 var _wmZoom=1;
 var _wmdOpen=false,_wmdRi=-1;
 var _wmdDX=0,_wmdDY=0,_wmdDragging=false;
+var _wmdZoom=1;
 
 function _wmVisRows(){
   var out=[];
@@ -4961,7 +4972,7 @@ function _wmdRender(ri){
     var xMin=Math.min.apply(null,xs),xMax=Math.max.apply(null,xs);
     var yMin=Math.min.apply(null,ys),yMax=Math.max.apply(null,ys);
     var xCnt=xMax-xMin+1;
-    var pad=4,FIXED_W=320;
+    var pad=4,FIXED_W=Math.round(320*_wmdZoom);
     var cs=Math.max(2,(FIXED_W-pad*2)/xCnt);
     var xSpan=xMax-xMin,ySpan=yMax-yMin;
     var csy=(xSpan>0&&ySpan>0)?(cs*xSpan/ySpan):cs;
@@ -6028,7 +6039,7 @@ return{clickBar:clickBar,clickLegend:clickLegend,legendClick:legendClick,toggleB
   hwGbChange:hwGbChange,hwGbAll:hwGbAll,hwGbNone:hwGbNone,
   hwTxtFilter:hwTxtFilter,showBhHwModal:showBhHwModal,closeBhHwModal:closeBhHwModal,
   refreshFb:refreshFb,refreshUpm:refreshUpm,selectYieldBins:selectYieldBins,
-  lgSearch:lgSearch,showUpmModal:showUpmModal,closeUpmModal:closeUpmModal,_upmToggleMode:_upmToggleMode,_upmZoomIn:_upmZoomIn,_upmZoomOut:_upmZoomOut,_wmZoomIn:_wmZoomIn,_wmZoomOut:_wmZoomOut,
+  lgSearch:lgSearch,showUpmModal:showUpmModal,closeUpmModal:closeUpmModal,_upmToggleMode:_upmToggleMode,_upmZoomIn:_upmZoomIn,_upmZoomOut:_upmZoomOut,_wmZoomIn:_wmZoomIn,_wmZoomOut:_wmZoomOut,_wmdZoomIn:_wmdZoomIn,_wmdZoomOut:_wmdZoomOut,
   _upmDieLocToggle:_upmDieLocToggle,_upmDieLocAll:_upmDieLocAll,
   showRecovModal:showRecovModal,_recovCategory:_recovCategory,
   _recovGrpChk:_recovGrpChk,_recovGrpClrAll:_recovGrpClrAll,
