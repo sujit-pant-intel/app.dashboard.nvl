@@ -1718,9 +1718,6 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '  <div class="wm-box" id="wm-box">\n'
         '    <div class="wm-drag" id="wm-drag"><b>&#127759; Wafer Pattern Analysis</b>\n'
         '      <button id="wm-mode-btn" onclick="IC._wmToggleCanvasMode()" title="Switch to Canvas for fast interactive debug" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:11px;cursor:pointer;padding:2px 9px;border-radius:4px;margin-right:8px">&#128247; SVG mode</button>\n'
-        '      <button onclick="IC._wmZoomOut()" title="Zoom out" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:2px;line-height:1.6">&#8722;</button>\n'
-        '      <span id="wm-zoom-lbl" style="font-size:11px;color:#ecf0f1;min-width:34px;display:inline-block;text-align:center">100%</span>\n'
-        '      <button onclick="IC._wmZoomIn()" title="Zoom in" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:8px;line-height:1.6">&#43;</button>\n'
         '      <button onclick="IC.closeWmModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">&times;</button>\n'
         '    </div>\n'
         '    <div class="wm-body">\n'
@@ -4222,7 +4219,13 @@ function _wmBuildCtrl(){
     threshRow+='<button class="wm-tbtn'+(_wmFailThresh===t?' on':'')+'" onclick="IC._wmSetThresh('+t+')">IB'+t+'</button>';
   });
   threshRow+='<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid '+(_wmCriteriaMissOnly?'#c0392b':'#bbb')+';border-radius:12px;padding:2px 9px;color:'+(_wmCriteriaMissOnly?'#c0392b':'#555')+';background:'+(_wmCriteriaMissOnly?'#fdecea':'#fff')+';margin-left:10px" title="Show only wafers where at least one bin does not meet its expected yield target"><input type="checkbox" '+(_wmCriteriaMissOnly?'checked':'')+' onchange="IC._wmToggleCriteriaMiss(this.checked)" style="cursor:pointer;margin:0">\u26a0 Criteria Miss Only</label>'
-    +'<button id="wm-criteria-cfg-btn" onclick="IC._wmShowCriteriaCfg()" title="Configure which yield targets to check" style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid '+(_wmCriteriaDisabled.size>0?'#f39c12':'#bbb')+';background:'+(_wmCriteriaDisabled.size>0?'rgba(243,156,18,0.15)':'#fff')+';color:'+(_wmCriteriaDisabled.size>0?'#7d6608':'#555')+';cursor:pointer;white-space:nowrap;margin-left:2px">\u2699 Criteria</button></div>';
+    +'<button id="wm-criteria-cfg-btn" onclick="IC._wmShowCriteriaCfg()" title="Configure which yield targets to check" style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid '+(_wmCriteriaDisabled.size>0?'#f39c12':'#bbb')+';background:'+(_wmCriteriaDisabled.size>0?'rgba(243,156,18,0.15)':'#fff')+';color:'+(_wmCriteriaDisabled.size>0?'#7d6608':'#555')+';cursor:pointer;white-space:nowrap;margin-left:2px">\u2699 Criteria</button>'
+    +'<span style="border-left:1px solid #ccc;margin:0 10px;height:14px;display:inline-block;vertical-align:middle"></span>'
+    +'<span style="font-size:11px;color:#555;white-space:nowrap">Zoom:</span>'
+    +'<button class="wm-tbtn" onclick="IC._wmZoomOut()" title="Zoom out" style="padding:1px 8px">&#8722;</button>'
+    +'<span id="wm-zoom-lbl" style="font-size:11px;color:#555;min-width:34px;display:inline-block;text-align:center">'+Math.round(_wmZoom*100)+'%</span>'
+    +'<button class="wm-tbtn" onclick="IC._wmZoomIn()" title="Zoom in" style="padding:1px 8px">&#43;</button>'
+    +'</div>';
   if(!lotOrder.length){ctrl.innerHTML=threshRow;return;}
   var filtRow='<span style="font-size:11px;color:#555;white-space:nowrap;align-self:center">Wafers:</span>'
     +'<span class="wm-selall" onclick="IC._wmSelectAll(true)">All</span>'
