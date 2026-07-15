@@ -29,7 +29,6 @@ class Tab:
 # --- Import tab modules and register them ----------------------------------
 from _tab_sicc   import build_tab as TAB_SICC    # noqa: E402
 from _tab_cdyn   import build_tab as TAB_CDYN    # noqa: E402
-from _tab_summ   import build_tab as TAB_SUMM    # noqa: E402
 from _tab_charts import build_tab as TAB_CHARTS  # noqa: E402
 
-TABS: List[Tab] = [TAB_SICC, TAB_CDYN, TAB_SUMM, TAB_CHARTS]
+TABS: List[Tab] = [TAB_SICC, TAB_CDYN, TAB_CHARTS]

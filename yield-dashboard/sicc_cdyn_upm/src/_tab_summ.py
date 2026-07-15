@@ -1,37 +1,294 @@
-"""_tab_summ.py — All Medians (summary) tab: HTML panel + JavaScript functions."""
-from _tab_registry import Tab
+"""_tab_summ.py — Parameter Table: unified SICC+CDYN with sort/search/checkbox/dist icons."""
 
 TAB_ID     = 'tab-summ'
-TAB_LABEL  = 'All Medians'
-TAB_ACTIVE = False
+TAB_LABEL  = 'Parameter Table'
 
 
 def tab_html() -> str:
-    return '''
-<div id="tab-summ" class="tab-panel">
-  <div style="margin:4px 0 6px">
-    <button class="wfr-btn" onclick="selAll()">Select All Wafers</button>
-    <button class="wfr-btn" onclick="clrAll()">Clear Selection</button>
-    &nbsp;<button class="wfr-btn" onclick="showAllCats('summ-sicc')">Show All SICC</button>
-    <button class="wfr-btn" onclick="hideAllCats('summ-sicc')">Hide All SICC</button>
-    &nbsp;<button class="wfr-btn" onclick="showAllCats('summ-cdyn')">Show All CDYN</button>
-    <button class="wfr-btn" onclick="hideAllCats('summ-cdyn')">Hide All CDYN</button>
-    &nbsp;<button class="wfr-btn" onclick="exportTblCsv('sicc-cat-head','sicc-cat-body','sicc_summary')" title="Export SICC summary to CSV">&#8681; Export SICC CSV</button>
-    <button class="wfr-btn" onclick="exportTblCsv('cdyn-cat-head','cdyn-cat-body','cdyn_summary')" title="Export CDYN summary to CSV">&#8681; Export CDYN CSV</button>
-    <span id="summ-row-info" style="font-size:11px;color:#7f8c8d;margin-left:8px"></span>
-  </div>
-  <h3 style="margin:4px 0 6px;font-size:13px;color:#2c3e50">SICC Summary (by Category)</h3>
-  <div class="cat-legend" id="sicc-cat-legend"></div>
-  <div class="cat-wrap"><table class="cat-tbl"><thead id="sicc-cat-head"></thead><tbody id="sicc-cat-body"></tbody></table></div>
-  <h3 style="margin:18px 0 6px;font-size:13px;color:#2c3e50">CDYN Summary (by Category)</h3>
-  <div class="cat-legend" id="cdyn-cat-legend"></div>
-  <div class="cat-wrap"><table class="cat-tbl"><thead id="cdyn-cat-head"></thead><tbody id="cdyn-cat-body"></tbody></table></div>
-</div>
-'''
+    return ''
 
 
 def tab_js() -> str:
     return '''
+/* ── Parameter Table state ──────────────────────────────────────────── */
+var _ptRows=[];        // [{type,cat,testName,dispName,upmCol,isCdyn,groupKey}, ...]
+var _ptSortCol=null;
+var _ptSortDir=1;
+var _ptQuery='';
+var _ptSelSet=new Set();
+
+/* 8 distinct group colors: 4 cat slots × SICC/CDYN */
+var _PT_COLORS=[
+  ['#dbeafe','#1e40af'],['#dcfce7','#166534'],  /* cat0: SICC=light-blue, CDYN=light-green */
+  ['#fef9c3','#854d0e'],['#fce7f3','#9d174d'],  /* cat1: SICC=light-yellow, CDYN=light-pink */
+  ['#ede9fe','#5b21b6'],['#ffedd5','#9a3412'],  /* cat2: SICC=light-violet, CDYN=light-orange */
+  ['#e0f2fe','#075985'],['#f0fdf4','#14532d']   /* cat3: more blues/greens */
+];
+
+function _ptGroupColor(catIdx,isCdyn){
+  var pair=_PT_COLORS[catIdx%(_PT_COLORS.length/2|0)*2+(isCdyn?1:0)];
+  return pair||['#f8f9fa','#374151'];
+}
+
+function _ptBuildRows(){
+  _ptRows=[];
+  var catMap={},catIdx=0;
+  /* SICC rows */
+  (SICC_TBL_CFG||[]).forEach(function(r){
+    var cat=r[0];
+    if(!(cat in catMap))catMap[cat]=catIdx++;
+    _ptRows.push({type:'SICC',cat:cat,testName:r[2],dispName:r[1]||r[2],upmCol:r[3]||'',isCdyn:false,catIdx:catMap[cat]});
+  });
+  /* CDYN rows */
+  (CDYN_TBL_CFG||[]).forEach(function(r){
+    var cat=r[0];
+    if(!(cat in catMap))catMap[cat]=catIdx++;
+    _ptRows.push({type:'CDYN',cat:cat,testName:r[2],dispName:r[1]||r[2],upmCol:r[3]||'',isCdyn:true,catIdx:catMap[cat]});
+  });
+  /* fallback: raw SICC cols */
+  if(!_ptRows.length){
+    SICC_COLS.forEach(function(c){_ptRows.push({type:'SICC',cat:'SICC',testName:c,dispName:c,upmCol:'',isCdyn:false,catIdx:0});});
+    CDYN_COLS.forEach(function(c){_ptRows.push({type:'CDYN',cat:'CDYN',testName:c,dispName:c,upmCol:'',isCdyn:true,catIdx:1});});
+  }
+}
+
+function _ptComputeRow(row,ai){
+  var actual=null,tgt=null,ratio=null,upmMed=null,upmTgt=null;
+  if(row.isCdyn){
+    var v=ai.map(function(i){return ROWS[i].cdyn[row.testName];}).filter(function(v){return v!=null&&!isNaN(v);});
+    actual=medArr(v); tgt=CDYN_TARGETS[row.testName]||null;
+  }else{
+    var v=ai.map(function(i){return ROWS[i].medians[row.testName];}).filter(function(v){return v!=null&&!isNaN(v);});
+    actual=medArr(v); tgt=TARGETS[row.testName.toUpperCase()]||null;
+  }
+  ratio=(actual!=null&&tgt!=null&&tgt!==0)?actual/tgt:null;
+  if(row.upmCol){
+    var uv=ai.map(function(i){return ROWS[i].medians[row.upmCol];}).filter(function(v){return v!=null&&!isNaN(v);});
+    upmMed=medArr(uv); upmTgt=TARGETS[row.upmCol.toUpperCase()]||null;
+  }
+  return{actual:actual,tgt:tgt,ratio:ratio,upmMed:upmMed,upmTgt:upmTgt};
+}
+
+function _ptRender(){
+  var hd=document.getElementById('param-tbl-head'),bd=document.getElementById('param-tbl-body');
+  if(!hd||!bd)return;
+  var ai=SEL_WFR.size>0?Array.from(SEL_WFR):getFiltered();
+  /* Compute values for all rows */
+  var computed=_ptRows.map(function(r){return _ptComputeRow(r,ai);});
+  /* Sort */
+  var idxArr=_ptRows.map(function(_,i){return i;});
+  if(_ptSortCol!==null){
+    idxArr.sort(function(a,b){
+      var va=_ptSortVal(a,computed[a]),vb=_ptSortVal(b,computed[b]);
+      if(va===null&&vb===null)return 0;
+      if(va===null)return 1;if(vb===null)return -1;
+      return _ptSortDir*(va<vb?-1:va>vb?1:0);
+    });
+  }
+  /* Header */
+  var cols=[
+    {k:'sel',l:'',w:'28px'},
+    {k:'actions',l:'',w:'44px'},
+    {k:'type',l:'Type',w:'46px'},
+    {k:'cat',l:'Category',w:'80px'},
+    {k:'test',l:'Parameter',w:'160px'},
+    {k:'actual',l:'Median',w:'72px'},
+    {k:'tgt',l:'Target',w:'72px'},
+    {k:'ratio',l:'Ratio',w:'52px'},
+    {k:'upm',l:'UPM%',w:'52px'},
+    {k:'upmtgt',l:'UPM Tgt',w:'60px'}
+  ];
+  var th='background:#2c3e50;color:#fff;padding:4px 7px;font-size:11px;position:sticky;top:0;z-index:2;cursor:pointer;user-select:none;white-space:nowrap';
+  var hdrHtml='<tr>';
+  cols.forEach(function(c){
+    if(c.k==='sel'){
+      hdrHtml+='<th style="'+th+';cursor:default;width:'+c.w+'"><input type="checkbox" id="pt-sel-all" onchange="_ptToggleAll(this.checked)" style="cursor:pointer"></th>';
+    }else if(c.k==='actions'){
+      hdrHtml+='<th style="'+th+';cursor:default;width:'+c.w+'">'+c.l+'</th>';
+    }else{
+      var arrow=_ptSortCol===c.k?(_ptSortDir>0?' &#9650;':' &#9660;'):'';
+      hdrHtml+='<th style="'+th+';width:'+c.w+'" data-sk="'+c.k+'" onclick="_ptSort(this.dataset.sk)">'+c.l+arrow+'</th>';
+    }
+  });
+  hdrHtml+='</tr>';
+  hd.innerHTML=hdrHtml;
+  /* Body */
+  var q=_ptQuery.toLowerCase();
+  var body='';
+  idxArr.forEach(function(i){
+    var row=_ptRows[i],cv=computed[i];
+    /* search filter */
+    if(q&&(row.dispName+row.cat+row.type+row.testName).toLowerCase().indexOf(q)<0)return;
+    var clr=_ptGroupColor(row.catIdx,row.isCdyn);
+    var bg=clr[0],fg=clr[1];
+    var sel=_ptSelSet.has(i);
+    var over=cv.ratio!=null&&cv.ratio>1,warn=cv.ratio!=null&&cv.ratio>0.95&&cv.ratio<=1;
+    var medBg=over?'background:#fdecea':warn?'background:#fef9e7':'background:'+bg;
+    var ratioBg=over?'background:#fdecea;color:#c0392b;font-weight:bold':warn?'background:#fef9e7':'';
+    var td='padding:3px 7px;border-bottom:1px solid rgba(0,0,0,.06);vertical-align:middle';
+    body+='<tr data-idx="'+i+'" style="background:'+bg+'">'
+      +'<td style="'+td+';text-align:center;width:28px"><input type="checkbox" '+(sel?'checked':'')+' onchange="_ptCheckRow('+i+',this.checked)" style="cursor:pointer"></td>'
+      +'<td style="'+td+';text-align:center;width:44px;white-space:nowrap">'
+        +'<button onclick="_ptShowDist('+i+',false)" title="Distribution" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 1px">&#128202;</button>'
+        +'<button onclick="_ptShowDist('+i+',true)" title="UPM" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 1px">&#128200;</button>'
+      +'</td>'
+      +'<td style="'+td+';color:'+fg+';font-weight:bold;font-size:10px;text-align:center">'+esc(row.type)+'</td>'
+      +'<td style="'+td+';color:'+fg+';font-size:10px">'+esc(row.cat)+'</td>'
+      +'<td style="'+td+';font-weight:bold;border-left:3px solid '+fg+'">'+esc(row.dispName)+'</td>'
+      +'<td style="'+td+';text-align:right;'+medBg+'">'+(cv.actual!=null?cv.actual.toFixed(4):'&#8212;')+'</td>'
+      +'<td style="'+td+';text-align:right">'+(cv.tgt!=null?cv.tgt.toFixed(4):'&#8212;')+'</td>'
+      +'<td style="'+td+';text-align:right;'+ratioBg+'">'+(cv.ratio!=null?cv.ratio.toFixed(2):'&#8212;')+'</td>'
+      +'<td style="'+td+';text-align:right">'+(cv.upmMed!=null?cv.upmMed.toFixed(2):'&#8212;')+'</td>'
+      +'<td style="'+td+';text-align:right">'+(cv.upmTgt!=null?cv.upmTgt.toFixed(2):'&#8212;')+'</td>'
+      +'</tr>';
+  });
+  if(!body)body='<tr><td colspan="10" style="padding:14px;color:#7f8c8d;text-align:center">No data.</td></tr>';;
+  bd.innerHTML=body;
+}
+
+function _ptSortVal(i,cv){
+  var row=_ptRows[i];
+  if(_ptSortCol==='type')return row.type;
+  if(_ptSortCol==='cat')return row.cat;
+  if(_ptSortCol==='test')return row.dispName;
+  if(_ptSortCol==='actual')return cv.actual;
+  if(_ptSortCol==='tgt')return cv.tgt;
+  if(_ptSortCol==='ratio')return cv.ratio;
+  if(_ptSortCol==='upm')return cv.upmMed;
+  if(_ptSortCol==='upmtgt')return cv.upmTgt;
+  return null;
+}
+
+function _ptSort(col){
+  if(_ptSortCol===col)_ptSortDir*=-1;
+  else{_ptSortCol=col;_ptSortDir=1;}
+  _ptRender();
+}
+
+function _ptFilter(q){
+  _ptQuery=q;
+  _ptRender();
+}
+
+function _ptToggleAll(checked){
+  _ptSelSet=new Set();
+  if(checked)_ptRows.forEach(function(_,i){_ptSelSet.add(i);});
+  _ptRender();
+}
+
+function _ptCheckRow(i,checked){
+  if(checked)_ptSelSet.add(i);else _ptSelSet.delete(i);
+}
+
+function _ptCloseModal(){var m=document.getElementById('pt-dist-modal');if(m)m.style.display='none';}
+window._ptCloseModal=_ptCloseModal;
+function _ptShowDist(rowIdx,showUpm){
+  var row=_ptRows[rowIdx];
+  if(!row)return;
+  var testName=row.testName,isCdyn=row.isCdyn;
+  var ai=getFiltered();var active=ai.filter(function(i){return SEL_WFR.has(i);});
+  if(!active.length)active=ai;
+  /* Build/show floating modal */
+  var modal=document.getElementById('pt-dist-modal');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='pt-dist-modal';
+    modal.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML='<div style="background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.35);padding:0;min-width:560px;max-width:90vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#2c3e50;color:#fff;flex-shrink:0">'
+        +'<span id="pt-dist-modal-title" style="font-size:13px;font-weight:bold"></span>'
+        +'<button onclick="_ptCloseModal()" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px">&#10005;</button>'
+      +'</div>'
+      +'<div style="padding:12px;overflow:auto;flex:1">'
+        +'<div id="pt-dist-modal-content"></div>'
+      +'</div>'
+    +'</div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click',function(e){if(e.target===modal)modal.style.display='none';});
+  }
+  window.pt_modal_id='pt-dist-modal';
+  var titleEl=document.getElementById('pt-dist-modal-title');
+  if(titleEl)titleEl.textContent=(showUpm?'UPM Distribution':'Distribution')+': '+testName;
+  /* Inject SVG container into modal */
+  var content=document.getElementById('pt-dist-modal-content');
+  if(showUpm){
+    content.innerHTML='<svg id="pt-modal-upm-svg" height="240" style="width:100%;display:block;border:1px solid #f5e0c3;border-radius:4px;background:#fffaf4"></svg><div id="pt-modal-upm-note" style="font-size:10px;color:#c0650a;margin-top:3px"></div>';
+    modal.style.display='flex';
+    if(typeof drawMiniUpm!=='undefined')drawMiniUpm(active,testName,isCdyn,'pt-modal-upm-svg','pt-dist-modal-title','pt-modal-upm-note');
+  }else{
+    content.innerHTML='<h3 id="pt-modal-dist-title" style="font-size:12px;color:#2c3e50;margin:0 0 4px"></h3><svg id="pt-modal-hist-svg" height="297" style="width:100%;display:block;border:1px solid #eee;border-radius:4px;background:#fff"></svg><div id="pt-modal-chart-note" style="font-size:11px;color:#7f8c8d;margin-top:4px"></div><div id="pt-modal-stats-tbl" style="margin-top:8px"></div>';
+    modal.style.display='flex';
+    if(typeof _renderSiccHistOnly!=='undefined'){
+      var _origHistSvg='upm-hist-svg',_origHistNote='upm-chart-note',_origStsTbl='upm-stats-tbl',_origTitle='sicc-dist-title';
+      /* Temporarily swap IDs so _renderSiccHistOnly writes into modal SVG */
+      var h=document.getElementById(_origHistSvg),hn=document.getElementById(_origHistNote),hs=document.getElementById(_origStsTbl),ht=document.getElementById(_origTitle);
+      var mh=document.getElementById('pt-modal-hist-svg'),mhn=document.getElementById('pt-modal-chart-note'),mhs=document.getElementById('pt-modal-stats-tbl'),mht=document.getElementById('pt-modal-dist-title');
+      if(h)h.id='_ph_hist';if(hn)hn.id='_ph_note';if(hs)hs.id='_ph_stbl';if(ht)ht.id='_ph_ttl';
+      if(mh)mh.id=_origHistSvg;if(mhn)mhn.id=_origHistNote;if(mhs)mhs.id=_origStsTbl;if(mht)mht.id=_origTitle;
+      _renderSiccHistOnly(active,testName,isCdyn);
+      if(mh)mh.id='pt-modal-hist-svg';if(mhn)mhn.id='pt-modal-chart-note';if(mhs)mhs.id='pt-modal-stats-tbl';if(mht)mht.id='pt-modal-dist-title';
+      if(h)h.id=_origHistSvg;if(hn)hn.id=_origHistNote;if(hs)hs.id=_origStsTbl;if(ht)ht.id=_origTitle;
+    }
+  }
+}
+window._ptShowDist=_ptShowDist;
+window._ptSort=_ptSort;
+window._ptFilter=_ptFilter;
+window._ptToggleAll=_ptToggleAll;
+window._ptCheckRow=_ptCheckRow;
+
+function toggleSummPanel(){
+  var panel=document.getElementById('all-med-panel');
+  var btn=document.getElementById('all-med-toggle-btn');
+  if(!panel)return;
+  var open=panel.classList.contains('open');
+  if(open){
+    panel._savedW=panel.getBoundingClientRect().width;
+    panel.style.flex='';panel.style.width='';
+    panel.classList.remove('open');
+    if(btn)btn.innerHTML='&#9654;';
+  }else{
+    panel.classList.add('open');
+    var w=panel._savedW||480;
+    panel.style.flex='0 0 '+w+'px';panel.style.width=w+'px';
+    if(btn)btn.innerHTML='&#9664;';
+    render_summ();
+  }
+}
+function render_summ_if_open(){
+  var panel=document.getElementById('all-med-panel');
+  if(panel&&panel.classList.contains('open'))render_summ();
+}
+function render_summ(){
+  if(!_ptRows.length)_ptBuildRows();
+  _ptRender();
+}
+window.toggleSummPanel=toggleSummPanel;
+'''
+
+    return '''
+function toggleSummPanel(){
+  var panel=document.getElementById('all-med-panel');
+  var btn=document.getElementById('all-med-toggle-btn');
+  if(!panel)return;
+  var open=panel.classList.contains('open');
+  if(open){
+    panel._savedW=panel.getBoundingClientRect().width;
+    panel.style.flex='';panel.style.width='';
+    panel.classList.remove('open');
+    if(btn)btn.innerHTML='&#9654;';
+  }else{
+    panel.classList.add('open');
+    var w=panel._savedW||420;
+    panel.style.flex='0 0 '+w+'px';panel.style.width=w+'px';
+    if(btn)btn.innerHTML='&#9664;';
+    render_summ();
+  }
+}
+function render_summ_if_open(){
+  var panel=document.getElementById('all-med-panel');
+  if(panel&&panel.classList.contains('open'))render_summ();
+}
 function render_summ(){
   var ai=SEL_WFR.size>0?Array.from(SEL_WFR):getFiltered();
   _renderCatTable(SICC_TBL_CFG,ai,false,'sicc-cat-head','sicc-cat-body','sicc-cat-legend',SUMM_SICC_OFF);
@@ -48,52 +305,38 @@ function _renderCatTable(cfg,ai,isCdyn,headId,bodyId,legendId,offSet){
     if(legEl)legEl.innerHTML='';
     return;
   }
-  // Collect unique categories in order
   var catOrder=[],catSet=new Set();
   cfg.forEach(function(row){
     if(!catSet.has(row[0])){catSet.add(row[0]);catOrder.push(row[0]);}
   });
-  // Toggleable legend
-  if(legEl){
-    _buildCatLegend(catOrder,offSet,legendId,render_summ);
-  }
-  // Header
-  var hdr='<tr><th style="text-align:left;min-width:200px">Test</th><th>Category</th><th>Actual Median</th><th>Target</th><th>Ratio</th><th>UPM Median (%)</th><th>UPM Target (%)</th></tr>';
+  if(legEl) _buildCatLegend(catOrder,offSet,legendId,render_summ);
+  var hdr='<tr><th style="text-align:left;min-width:160px">Test</th><th>Cat</th><th>Median</th><th>Target</th><th>Ratio</th><th>UPM%</th><th>UPM Tgt</th></tr>';
   if(headEl)headEl.innerHTML=hdr;
-  // Body
-  var body='';
-  var lastCat='';
+  var body='',lastCat='';
   cfg.forEach(function(row){
-    var cat=row[0], dispName=row[1], testName=row[2], upmCol=row[3];
+    var cat=row[0],dispName=row[1],testName=row[2],upmCol=row[3];
     if(offSet&&offSet.has(cat))return;
-    // Category separator
     if(cat!==lastCat){
       body+='<tr class="cat-hdr"><td colspan="7" style="background:'+_catColor(cat)+';color:'+_catBorder(cat)+';border-left:4px solid '+_catBorder(cat)+'">'+esc(cat)+'</td></tr>';
       lastCat=cat;
     }
-    // Compute median of the matching test across selected wafers
-    var actual=null, tgt=null, ratio=null, upmMed=null, upmTgt=null;
+    var actual=null,tgt=null,ratio=null,upmMed=null,upmTgt=null;
     if(isCdyn){
       var vals=ai.map(function(i){return ROWS[i].cdyn[testName];}).filter(function(v){return v!=null&&!isNaN(v);});
-      actual=medArr(vals);
-      tgt=CDYN_TARGETS[testName]||null;
+      actual=medArr(vals); tgt=CDYN_TARGETS[testName]||null;
     }else{
       var vals=ai.map(function(i){return ROWS[i].medians[testName];}).filter(function(v){return v!=null&&!isNaN(v);});
-      actual=medArr(vals);
-      tgt=TARGETS[testName.toUpperCase()]||null;
+      actual=medArr(vals); tgt=TARGETS[testName.toUpperCase()]||null;
     }
     ratio=(actual!=null&&tgt!=null&&tgt!==0)?actual/tgt:null;
-    // UPM
     if(upmCol){
       var uv=ai.map(function(i){return ROWS[i].medians[upmCol];}).filter(function(v){return v!=null&&!isNaN(v);});
-      upmMed=medArr(uv);
-      upmTgt=TARGETS[upmCol.toUpperCase()]||null;
+      upmMed=medArr(uv); upmTgt=TARGETS[upmCol.toUpperCase()]||null;
     }
     var bg=_catColor(cat);
-    var clickFn=isCdyn?'selCdyn':'selCol';
-    body+='<tr style="background:'+bg+';cursor:pointer" onclick="'+clickFn+'(&quot;'+testName+'&quot;)">';
+    body+='<tr style="background:'+bg+'">';
     body+='<td style="text-align:left;border-left:4px solid '+_catBorder(cat)+'">'+esc(dispName)+'</td>';
-    body+='<td style="color:#7f8c8d;font-size:11px;text-align:center">'+esc(cat)+'</td>';
+    body+='<td style="color:#7f8c8d;font-size:10px;text-align:center">'+esc(cat)+'</td>';
     body+='<td class="'+ccls(actual,tgt,isCdyn)+'">'+(actual!=null?actual.toFixed(4):'&#8212;')+'</td>';
     body+='<td class="tgt">'+(tgt!=null?tgt.toFixed(4):'&#8212;')+'</td>';
     body+='<td class="'+ratioCls(ratio)+'">'+(ratio!=null?ratio.toFixed(2):'&#8212;')+'</td>';
@@ -103,14 +346,5 @@ function _renderCatTable(cfg,ai,isCdyn,headId,bodyId,legendId,offSet){
   });
   if(bodyEl)bodyEl.innerHTML=body;
 }
-registerTab('tab-summ', render_summ);
+window.toggleSummPanel=toggleSummPanel;
 '''
-
-
-build_tab = Tab(
-    tab_id=TAB_ID,
-    label=TAB_LABEL,
-    active=TAB_ACTIVE,
-    html_fn=tab_html,
-    js_fn=tab_js,
-)

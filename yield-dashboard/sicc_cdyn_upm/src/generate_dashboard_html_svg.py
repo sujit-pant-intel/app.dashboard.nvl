@@ -168,10 +168,19 @@ def generate_html_svg(data: dict, output_path: str, title: str = '') -> str:
     )
 
     # ── Assemble HTML (identical structure to generate_dashboard_html.py) ────
-    # _INNER_RESIZE_OBS_JS is injected inside the IIFE so it can access
-    # _TAB_RENDERS, render_sicc, render_cdyn etc. directly.
+    # Compute relative path from output HTML to shared Plotly file
+    _PLOTLY_ABS = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        '..', '..', '..', 'shared', 'library', 'plotly-3.5.0.min.js'
+    )
+    _PLOTLY_ABS = os.path.normpath(_PLOTLY_ABS)
+    _html_dir = os.path.dirname(os.path.abspath(output_path))
+    _plotly_rel = os.path.relpath(_PLOTLY_ABS, _html_dir).replace('\\', '/')
+    _plotly_tag = f'<script src="{_plotly_rel}" charset="utf-8"></script>\n'
+
     html = (
-        build_page_open(display_title, tabs_html)
+        build_page_open(display_title, tabs_html).replace(
+            '</head>', _plotly_tag + '</head>', 1)
         + tabs_panels_html
         + build_page_close()
         + '<script>\n(function(){\n'

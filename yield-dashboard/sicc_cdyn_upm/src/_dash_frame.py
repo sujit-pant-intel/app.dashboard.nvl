@@ -116,6 +116,14 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:13p
 .wfr-panel.collapsed .wfr-tbl-wrap{display:none}
 .dist-side.collapsed>*:not(.dist-hdr){display:none!important}
 .dist-hdr{display:flex;align-items:center;gap:6px;padding:4px 6px;background:#f0f4fb;border-bottom:1px solid #dde;font-size:11px;font-weight:bold;color:#2c3e50;border-radius:4px 4px 0 0;cursor:default}
+/* ── All Medians right-expand panel (PCM-style) ── */
+.all-med-toggle{width:22px;flex-shrink:0;background:#ecf0f1;cursor:pointer;display:flex;align-items:center;justify-content:center;align-self:stretch;border-left:1px solid #d0d7de;border-right:1px solid #d0d7de;user-select:none}
+.all-med-toggle:hover{background:#d6eaff}
+.all-med-toggle .amt-btn{background:none;border:none;font-size:13px;cursor:pointer;color:#2c3e50;line-height:1;padding:0}
+#all-med-panel{width:0;min-width:0;overflow:hidden;transition:width 0.15s;display:flex;flex-direction:column;background:#fff;border-right:2px solid #d0d7de;flex-shrink:0;height:calc(100vh - 90px);align-self:flex-start}
+#all-med-panel.open{width:420px;min-width:180px}
+.all-med-hdr{background:#2c3e50;color:#fff;padding:6px 10px;font-size:11px;font-weight:bold;flex-shrink:0;display:flex;justify-content:space-between;align-items:center}
+.all-med-body{flex:1;overflow:auto;padding:6px 8px 10px}
 """
 # Append shared filter CSS (bin_distribution_html.py is the master)
 CSS = _CSS_BASE + _FILTER_CSS
@@ -166,6 +174,30 @@ def build_page_open(display_title: str, tabs_html: str) -> str:
   </div>
 </div>
 <div class="h-splitter" id="wfr-splitter" title="Drag to resize sidebar" onmousedown="startSplit(event,'wfr-panel','tab-content','wfr-panel-w')"></div>
+<div class="all-med-toggle" id="all-med-toggle" onclick="toggleSummPanel()" title="Parameter Table">
+  <button class="amt-btn" id="all-med-toggle-btn">&#9654;</button>
+</div>
+<div id="all-med-panel">
+  <div class="all-med-hdr">
+    Parameter Table
+    <span style="display:flex;align-items:center;gap:4px">
+      <button class="collapse-btn" onclick="toggleSummPanel()" title="Close">&#9664;</button>
+    </span>
+  </div>
+  <div class="all-med-body" id="sicc-summ-body">
+    <div style="padding:0 0 5px;display:flex;gap:4px;align-items:center">
+      <input id="param-tbl-search" type="text" placeholder="&#128269; Search parameters..." oninput="_ptFilter(this.value)"
+        style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #bdc3c7;border-radius:3px;background:#f8f9fa;color:#2c3e50">
+    </div>
+    <div style="overflow:auto;max-height:calc(100vh - 200px)">
+      <table id="param-unified-tbl" style="border-collapse:collapse;font-size:11px;white-space:nowrap;width:100%">
+        <thead id="param-tbl-head"></thead>
+        <tbody id="param-tbl-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="h-splitter" id="all-med-splitter" title="Drag to resize All Medians panel" onmousedown="startSplit(event,'all-med-panel',null,'all-med-w')"></div>
 <div class="tab-content" id="tab-content">
 '''
     )
