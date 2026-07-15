@@ -42,7 +42,7 @@ function exportCsv(){
     var r=DATA.rows[i];var tot=r.total||0;
     var bc=r.binCounts||{};
     var ff=(bc['1']||0)+(bc['2']||0),ffdf=ff+(bc['3']||0)+(bc['4']||0);
-    var row=[r.program||'',r.lot||'',r.wafer||''].concat(DATA.hasMaterial?[r.material||']':[])
+    var row=[r.program||'',r.lot||'',r.wafer||''].concat(DATA.hasMaterial?[r.material||'']:[])
       .concat(DATA.hasUpmMed?(r.upmMed||[]).map(function(v){return v!=null?v:''}):[])
       .concat(DATA.hasDate?[r.date||'']:[])
       .concat([tot>0?(ff/tot*100).toFixed(1):0,tot>0?(ffdf/tot*100).toFixed(1):0,tot]);
