@@ -1869,25 +1869,34 @@ function showTab(name, btn) {{
     }}
     if (runs && name === 'dlcp') {{
       updateDlcp(runs);
-      // Replicate bin_distribution_html pattern: set up ResizeObserver *after* tab is
-      // visible so the first callback fires with the real canvas dimensions.
-      // Also use double-rAF to guarantee at least one layout cycle has completed.
+      // Trigger CDF render when canvas actually becomes visible in the viewport.
+      // IntersectionObserver is the most reliable: fires AFTER layout completes,
+      // exactly when the hidden tab → visible transition is done.
       (function() {{
         var _cv = document.getElementById('dlcp-cv-t');
         if (!_cv) return;
-        // Double-rAF: first rAF queues before paint; second runs after layout
-        requestAnimationFrame(function() {{
-          requestAnimationFrame(function() {{
-            if (_activeTab === 'dlcp') _dlcpRenderCdfT();
-          }});
-        }});
-        // Also (re-)attach ResizeObserver so subsequent resizes keep CDF current
+        // IntersectionObserver: fires when canvas enters viewport
+        if (window.IntersectionObserver && !_cv._dlcpIO) {{
+          _cv._dlcpIO = true;
+          new IntersectionObserver(function(entries) {{
+            if (entries[0].isIntersecting && _activeTab === 'dlcp') {{
+              requestAnimationFrame(_dlcpRenderCdfT);
+            }}
+          }}, {{threshold: 0.01}}).observe(_cv);
+        }}
+        // ResizeObserver: re-renders on resize (e.g. splitter drag)
         if (window.ResizeObserver && !_cv._dlcpRO2) {{
           _cv._dlcpRO2 = true;
           new ResizeObserver(function() {{
             if (_activeTab === 'dlcp' && _cv.clientWidth > 0) _dlcpRenderCdfT();
           }}).observe(_cv);
         }}
+        // Fallback: direct call after two frames in case observers don't fire
+        requestAnimationFrame(function() {{
+          requestAnimationFrame(function() {{
+            if (_activeTab === 'dlcp' && _cv.clientWidth > 0) _dlcpRenderCdfT();
+          }});
+        }});
       }})();
     }}
   }} catch(e) {{ console.warn('showTab lazy render error:', e); }}
