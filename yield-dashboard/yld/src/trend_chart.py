@@ -1814,15 +1814,6 @@ function ibinLabel(ib) {{
 }}
 
 // ═══════════════════════════════════════ TABS ══════════════════════════════
-const _PARETO_H_EL= '{_pareto_h_id}'|| 'pareto-h-chart';
-const _PARETO_V_EL= '{_pareto_v_id}'|| 'pareto-v-chart';
-const PASS_BINS  = new Set(DATA.pass_bins);
-const FF_BINS    = new Set(DATA.ff_bins);
-const FF_DF_BINS = new Set(DATA.ff_df_bins);
-const PALETTE    = DATA.palette;
-
-function ibinLabel(ib) {{
-  const n = DATA.ibin_names[String(ib)];
   return n ? `iBin ${{ib}} \u2014 ${{n}}` : `iBin ${{ib}}`;
 }}
 
