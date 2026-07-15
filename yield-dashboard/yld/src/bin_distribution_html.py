@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 import re as _re
 import pandas as pd
-from _filter_lot_wafer import FILTER_TABLE_CSS, FILTER_DD_JS
+from _filter_lot_wafer import FILTER_TABLE_CSS, FILTER_DD_JS, make_filter_js
 
 
 
@@ -1564,7 +1564,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '</div>\n'
     )
 
-    _upm_med_ths = '<th class="num" onclick="event.stopPropagation();IC.sortFilter(\'upmmed\')" style="cursor:pointer">UPM (Med) <span id="ft-sh-upmmed"></span></th>' if _upm_med_col else ''
+    _upm_med_ths = ''  # thead is now built dynamically by _buildFilterThead() (see _filter_lot_wafer.py)
 
     _html_layout = (
         '<div class="mr">\n'
@@ -1602,19 +1602,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '<div class="yp-body" id="ypb-filter" style="padding:6px 8px;max-height:calc(100vh - 260px)">\n'
         '  <div class="ftw">\n'
         '    <table class="ftbl">\n'
-        '      <thead><tr>\n'
-        + (
-            '        <th>TestProgram <button class="flt-btn" id="ft-fb-0" onclick="event.stopPropagation();IC.ftDdOpen(0,this)" title="Filter">&#9660;</button></th>'
-            '<th>Lot <button class="flt-btn" id="ft-fb-1" onclick="event.stopPropagation();IC.ftDdOpen(1,this)" title="Filter">&#9660;</button></th>'
-            '<th>Wafer <button class="flt-btn" id="ft-fb-2" onclick="event.stopPropagation();IC.ftDdOpen(2,this)" title="Filter">&#9660;</button></th>'
-            + ('<th>MaterialType <button class="flt-btn" id="ft-fb-3" onclick="event.stopPropagation();IC.ftDdOpen(3,this)" title="Filter">&#9660;</button></th>' if mat_col else '')
-            + _upm_med_ths
-            + '<th onclick="event.stopPropagation();IC.sortFilter(\'date\')" style="cursor:pointer">Date Tested <span id="ft-sh-date"></span></th>'
-              '<th class="num" onclick="event.stopPropagation();IC.sortFilter(\'ff\')" style="cursor:pointer">FF% <span id="ft-sh-ff"></span></th>'
-              '<th class="num" onclick="event.stopPropagation();IC.sortFilter(\'ffdf\')" style="cursor:pointer">FF+DF% <span id="ft-sh-ffdf"></span></th>'
-              '<th class="num" onclick="event.stopPropagation();IC.sortFilter(\'total\')" style="cursor:pointer">Total <span id="ft-sh-total"></span></th>\n'
-        )
-        + '      </tr>\n      </thead>\n'
+        '      <thead id="filter-thead"></thead>\n'
         '      <tbody id="filter-tbody"></tbody>\n'
         '    </table>\n'
         '  </div>\n'
@@ -2016,6 +2004,12 @@ def generate(data_path, out_dir=None, tbl_path=None):
     import json as _json
     _hw_combo_table_bh_json = _json.dumps(_hw_combo_table_bh)
     _hw_fields_bh_json = _json.dumps([str(c) for c in hw_fields]) if hw_fields else '[]'
+    # ── Shared filter JS: provides rFilter, sortFilter, ftDdOpen, toggleRow, selectAllRows, clearRows ──
+    _ic_filter_js = make_filter_js(
+        on_change_calls='upd();',
+        sel_var='sR',
+        toggle_fn='IC.toggleRow',
+    )
     _html_script = (
       '<script>\nvar DATA=' + _ic_data_json + ';\n'
       'var HW_COMBO_TABLE_BH=' + _hw_combo_table_bh_json + ';\n'
@@ -2041,12 +2035,12 @@ var _dlcpOpen=false,_dlcpT=92.5,_dlcpUi=0;
 var _wmOpen=false;
 var _sdtSecOpen=false,_sdtChecked=new Set(),_sdtCombos=[];
 var _sdtSortCol=0,_sdtSortDir=1,_sdtRows=[];
-var _ftSortCol=null,_ftSortDir=-1;
+var _ftSortCol=null,_ftSortDir=-1;  // kept for exportCsv compat — also defined by make_filter_js
 var _ftIdxs=DATA.rows.map(function(_,i){return i;});
 var _SDT_PALETTE=['#3498db','#e74c3c','#27ae60','#e67e22','#9b59b6','#1abc9c','#f39c12','#2980b9','#c0392b','#16a085'];
 var _ySelIdx=-1;
 var sR=new Set(DATA.rows.map(function(_,i){return i;}));
-var lR=-1;
+var lR=-1;  // kept for any external refs; shared filter uses _ftLR internally
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function dk(h){try{var r=Math.max(0,parseInt(h.slice(1,3),16)-35),g=Math.max(0,parseInt(h.slice(3,5),16)-35),b=Math.max(0,parseInt(h.slice(5,7),16)-35);return 'rgb('+r+','+g+','+b+')';}catch(e){return '#555';}}
 function gFC(){
@@ -2218,76 +2212,8 @@ function lgSearch(q){
     grp.style.display=anyVis?'':'none';
   });
 }
-// ftDdOpen — thin wrapper around shared _ftDdCreate (see _filter_lot_wafer.py)
-var _ftDdState={};
-function ftDdOpen(col,btn){
-  var allVals=[];var seen=new Set();
-  DATA.rows.forEach(function(row){
-    var cols=[row.program,row.lot,row.wafer].concat(DATA.hasMaterial?[row.material||'']:[]);
-    var v=String(cols[col]||'');
-    if(!seen.has(v)){seen.add(v);allVals.push(v);}
-  });
-  allVals.sort(function(a,b){return a.localeCompare(b);});
-  var allowed=_ftDdState[col];
-  var checked=allowed?new Set(allowed):new Set(allVals);
-  _ftDdCreate({btn:btn,allVals:allVals,checked:checked,onApply:function(chk){
-    _ftDdState[col]=(chk.size===allVals.length)?null:new Set(chk);
-    var b=document.getElementById('ft-fb-'+col);if(b)b.classList.toggle('active',!!_ftDdState[col]);
-    rFilter();
-  }});
-}
-function sortFilter(col){
-  if(_ftSortCol===col){_ftSortDir=-_ftSortDir;}else{_ftSortCol=col;_ftSortDir=-1;}
-  rFilter();
-}
-function rFilter(){
-  var tbody=document.getElementById('filter-tbody');
-  var html='';
-  _ftIdxs=DATA.rows.map(function(_,i){return i;});
-  if(_ftSortCol){
-    _ftIdxs.sort(function(a,b){
-      var ra=DATA.rows[a],rb=DATA.rows[b];
-      if(_ftSortCol==='date'){var av=ra.date||'',bv=rb.date||'';return _ftSortDir*(av<bv?-1:av>bv?1:0);}
-      var ffA=(ra.binCounts['1']||0)+(ra.binCounts['2']||0),ffB=(rb.binCounts['1']||0)+(rb.binCounts['2']||0);
-      var ffdfA=ffA+(ra.binCounts['3']||0)+(ra.binCounts['4']||0),ffdfB=ffB+(rb.binCounts['3']||0)+(rb.binCounts['4']||0);
-      var av2,bv2;
-      if(_ftSortCol==='ff'){av2=ra.total>0?ffA/ra.total:0;bv2=rb.total>0?ffB/rb.total:0;}
-      else if(_ftSortCol==='ffdf'){av2=ra.total>0?ffdfA/ra.total:0;bv2=rb.total>0?ffdfB/rb.total:0;}
-      else if(_ftSortCol==='upmmed'){av2=(ra.upmMed&&ra.upmMed[0]!=null)?ra.upmMed[0]:-Infinity;bv2=(rb.upmMed&&rb.upmMed[0]!=null)?rb.upmMed[0]:-Infinity;}
-      else{av2=ra.total;bv2=rb.total;}
-      return _ftSortDir*(av2-bv2);
-    });
-  }
-  _ftIdxs.forEach(function(i){
-    var row=DATA.rows[i];
-    var cols=[row.program,row.lot,row.wafer].concat(DATA.hasMaterial?[row.material||'']:[]);
-    var show=Object.keys(_ftDdState).every(function(ci){
-      var s=_ftDdState[ci];return !s||s.has(String(cols[parseInt(ci)]||''));
-    });
-    if(!show)return;
-    var sel=sR.has(i);
-    html+='<tr class="fr'+(sel?' frs':'')+'" onclick="IC.toggleRow('+i+',event)">';
-    var ffCnt=(row.binCounts['1']||0)+(row.binCounts['2']||0);
-    var ffdfCnt=ffCnt+(row.binCounts['3']||0)+(row.binCounts['4']||0);
-    var ffPct=row.total>0?(ffCnt/row.total*100).toFixed(1)+'%':'\u2014';
-    var ffdfPct=row.total>0?(ffdfCnt/row.total*100).toFixed(1)+'%':'\u2014';
-    html+='<td>'+esc(row.program)+'</td><td>'+esc(row.lot)+'</td><td>'+esc(row.wafer)+'</td>';
-    if(DATA.hasMaterial)html+='<td>'+esc(row.material||'')+'</td>';
-    if(DATA.hasUpmMed&&row.upmMed)(row.upmMed||[]).forEach(function(v){html+='<td class="num">'+(v!==null&&v!==undefined?v.toFixed(2):'\u2014')+'</td>';});
-    if(DATA.hasDate)html+='<td>'+esc(row.date||'')+'</td>';
-    html+='<td class="num">'+ffPct+'</td><td class="num">'+ffdfPct+'</td>';
-    html+='<td class="num">'+row.total.toLocaleString()+'</td></tr>';
-  });
-  ['date','ff','ffdf','total','upmmed'].forEach(function(k){
-    var sh=document.getElementById('ft-sh-'+k);
-    if(sh)sh.innerHTML=(_ftSortCol===k)?(_ftSortDir>0?'&#9650;':'&#9660;'):'';
-  });
-  tbody.innerHTML=html;
-  document.getElementById('row-sel-info').textContent=
-    sR.size<DATA.rows.length?'('+sR.size+'/'+DATA.rows.length+' selected)':'';
-  if(_dlcpOpen){_dlcpRender();}
-  if(_wmOpen){_wmRender();}
-}
+// filter JS from _filter_lot_wafer.py: rFilter, sortFilter, ftDdOpen, toggleRow, selectAllRows, clearRows
+''' + _ic_filter_js + r'''
 function _computeDlcpByFb(){
   // Single pass over selected dies → {fbStr:{hp,lp}} using current _dlcpT/_dlcpUi
   if(!DATA.hasUpm)return null;
@@ -3194,38 +3120,9 @@ function toggleAllBins(state){
   else{sB.clear();if(AB.length)sB.add(AB[0]);}
   upd();
 }
-function _visibleIdxs(){
-  var vis=[];
-  _ftIdxs.forEach(function(i){
-    var row=DATA.rows[i];
-    var cols=[row.program,row.lot,row.wafer].concat(DATA.hasMaterial?[row.material||'']:[]);
-    var show=Object.keys(_ftDdState).every(function(ci){var s=_ftDdState[ci];return !s||s.has(String(cols[parseInt(ci)]||''));});
-    if(show)vis.push(i);
-  });
-  return vis;
-}
-function toggleRow(idx,event){
-  if(event&&event.shiftKey&&lR>=0){
-    var vis=_visibleIdxs();
-    var a=vis.indexOf(idx),b=vis.indexOf(lR);
-    if(a<0||b<0){sR.add(idx);}
-    else{var lo=Math.min(a,b),hi=Math.max(a,b);for(var k=lo;k<=hi;k++)sR.add(vis[k]);}
-  }else if(event&&(event.ctrlKey||event.metaKey)){
-    if(sR.has(idx)){if(sR.size>1)sR.delete(idx);}else sR.add(idx);
-  }else{
-    var vis=_visibleIdxs();
-    var allVisSelected=vis.length>0&&vis.every(function(i){return sR.has(i);});
-    if(allVisSelected){sR.clear();sR.add(idx);}
-    else if(sR.size===1&&sR.has(idx)){vis.forEach(function(i){sR.add(i);});}
-    else if(sR.has(idx)){sR.delete(idx);}
-    else{sR.add(idx);}
-  }
-  lR=idx;upd();
-}
-function selectAllRows(){
-  _visibleIdxs().forEach(function(i){sR.add(i);});lR=-1;upd();
-}
-function clearRows(){sR.clear();lR=-1;upd();}
+// _visibleIdxs / toggleRow / selectAllRows / clearRows now from make_filter_js()
+// Backward-compat alias so any code calling _visibleIdxs() still works
+function _visibleIdxs(){return _visibleFtIdxs();}
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',function(){upd();window.addEventListener('resize',rChart);_setupBhHwDrag();_setupFbDrag();_setupUpmDrag();});
 }else{upd();window.addEventListener('resize',rChart);_setupBhHwDrag();_setupFbDrag();_setupUpmDrag();}

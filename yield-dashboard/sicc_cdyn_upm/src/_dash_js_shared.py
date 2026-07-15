@@ -6,10 +6,32 @@ import sys as _sys, os as _os
 _YLD_SRC = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '../../yld/src')
 if _YLD_SRC not in _sys.path:
     _sys.path.insert(0, _YLD_SRC)
-from _filter_lot_wafer import FILTER_DD_JS as _FILTER_DD_JS
+from _filter_lot_wafer import FILTER_DD_JS as _FILTER_DD_JS, make_filter_js as _make_filter_js
+
+_SICC_ON_CHANGE = (
+    'render_sicc();render_cdyn();render_summ();'
+    'var _ap=document.querySelector(\'.tab-panel.active\');'
+    'if(_ap&&_ap.id===\'tab-dist\')renderHist();'
+)
+_SICC_FILTER_JS = _make_filter_js(
+    on_change_calls=_SICC_ON_CHANGE,
+    sel_var='SEL_WFR',
+    toggle_fn='toggleRow',
+)
 
 # ── Shared state, utils, sidebar, and chart helpers ─────────────────────────
-SHARED_JS = _FILTER_DD_JS + r'''
+SHARED_JS = (
+    _FILTER_DD_JS
+    + 'var DATA={rows:ROWS,hasMaterial:ROWS.some(function(r){return r.material&&r.material!==\'\';}),'  # noqa
+    + 'hasDate:ROWS.some(function(r){return r.date&&r.date!==\'\';}),'                                   # noqa
+    + 'hasUpmMed:ROWS.some(function(r){return r.upmMed!=null&&r.upmMed.length>0;})};\n'
+    + _SICC_FILTER_JS
+    + r'''
+window.toggleRow=toggleRow;window.selectAllRows=selectAllRows;window.clearRows=clearRows;
+window.selAll=selectAllRows;window.clrAll=clearRows;
+window.ftDdOpen=ftDdOpen;window.sortFilter=sortFilter;window.rFilter=rFilter;
+'''
+    + r'''
 var IS_CDYN=false;
 var XY_COLOR_BY=['material'];
 var _SCATTER_Y_LOG=true;
@@ -219,83 +241,6 @@ function _catColor(cat){if(CAT_COLORS[cat])return CAT_COLORS[cat];if(!_dynMap[ca
 function _catBorder(cat){if(CAT_BORDER[cat])return CAT_BORDER[cat];if(!_dynMap[cat]){var p=_dynPal[_dynI%_dynPal.length];_dynMap[cat]={bg:p[0],bd:p[1]};_dynI++;} return _dynMap[cat].bd;}
 // ── Filter-by-Lot/Wafer table (yield-dashboard style) ──────────────────────
 var _tblFT={};
-var _tblLastRow=-1;
-var _hasMat=ROWS.some(function(r){return r.material&&r.material!==''});
-function _tblCell(r,ci){
-  if(ci===0)return r.program;if(ci===1)return r.lot;if(ci===2)return r.wafer;return r.material||'';
-}
-function _tblFieldVals(ci){
-  var seen=new Set(),out=[];
-  ROWS.forEach(function(r){var v=String(_tblCell(r,ci)||'');if(!seen.has(v)){seen.add(v);out.push(v);}});
-  out.sort(function(a,b){var na=parseFloat(a),nb=parseFloat(b);return(!isNaN(na)&&!isNaN(nb))?(na-nb):a.localeCompare(b);});
-  return out;
-}
-function buildWfrList(){
-  var th=document.getElementById('wfr-thead');
-  if(th&&!th.innerHTML){
-    var h='<tr>';
-    [['Program',0],['Lot',1],['Wafer',2]].forEach(function(p){
-      h+='<th>'+p[0]+' <button class="flt-btn" id="wft-'+p[1]+'" onclick="event.stopPropagation();tblFtOpen('+p[1]+',this)" title="Filter">&#9660;</button></th>';
-    });
-    if(_hasMat)h+='<th>Material <button class="flt-btn" id="wft-3" onclick="event.stopPropagation();tblFtOpen(3,this)" title="Filter">&#9660;</button></th>';
-    h+='<th class="num">Total</th></tr>';
-    th.innerHTML=h;
-  }
-  var ai=getFiltered();
-  if(SEL_WFR.size===0)ai.forEach(function(i){SEL_WFR.add(i);});
-  var html='';
-  ai.forEach(function(i){
-    var r=ROWS[i];
-    var show=Object.keys(_tblFT).every(function(ci){
-      var s=_tblFT[ci];return !s||s.has(String(_tblCell(r,parseInt(ci))||''));
-    });
-    if(!show)return;
-    var sel=SEL_WFR.has(i);
-    html+='<tr class="fr'+(sel?' frs':'')+'" onclick="toggleRow('+i+',event)">';
-    html+='<td>'+esc(r.program||'')+'</td>';
-    html+='<td>'+esc(r.lot||'')+'</td>';
-    html+='<td>'+esc(r.wafer||'')+'</td>';
-    if(_hasMat)html+='<td>'+esc(r.material||'')+'</td>';
-    html+='<td class="num">'+(r.total!=null?Number(r.total).toLocaleString():'&#8212;')+'</td>';
-    html+='</tr>';
-  });
-  var tb=document.getElementById('wfr-tbody');if(tb)tb.innerHTML=html;
-  var ri=document.getElementById('row-info');
-  if(ri)ri.textContent=SEL_WFR.size<ai.length?'('+SEL_WFR.size+'/'+ai.length+' selected)':'';
-}
-function toggleRow(i,ev){
-  var ai=getFiltered();
-  if(ev&&ev.shiftKey&&_tblLastRow>=0){
-    var lo2=Math.min(i,_tblLastRow),hi2=Math.max(i,_tblLastRow);
-    for(var k=lo2;k<=hi2;k++){if(ai.indexOf(k)>=0)SEL_WFR.add(k);}
-  }else if(ev&&(ev.ctrlKey||ev.metaKey)){
-    if(SEL_WFR.has(i)&&SEL_WFR.size>1)SEL_WFR.delete(i);else SEL_WFR.add(i);
-  }else{
-    if(SEL_WFR.size===ai.length){SEL_WFR.clear();SEL_WFR.add(i);}
-    else if(SEL_WFR.size===1&&SEL_WFR.has(i)){ai.forEach(function(k){SEL_WFR.add(k);});}
-    else if(SEL_WFR.has(i)){SEL_WFR.delete(i);}
-    else{SEL_WFR.add(i);}
-  }
-  _tblLastRow=i;buildWfrList();render_sicc();render_cdyn();render_summ();
-  var active=document.querySelector('.tab-panel.active');if(active&&active.id==='tab-dist')renderHist();
-}
-function selAll(){getFiltered().forEach(function(i){SEL_WFR.add(i);});_tblLastRow=-1;buildWfrList();render_sicc();render_cdyn();render_summ();
-  var active=document.querySelector('.tab-panel.active');if(active&&active.id==='tab-dist')renderHist();}
-function clrAll(){SEL_WFR.clear();var ai=getFiltered();if(ai.length)SEL_WFR.add(ai[0]);_tblLastRow=-1;buildWfrList();render_sicc();render_cdyn();render_summ();
-  var active=document.querySelector('.tab-panel.active');if(active&&active.id==='tab-dist')renderHist();}
-window.toggleRow=toggleRow;window.selAll=selAll;window.clrAll=clrAll;
-// tblFtOpen — thin wrapper around shared _ftDdCreate (see _filter_lot_wafer.py)
-function tblFtOpen(ci,btn){
-  var vals=_tblFieldVals(ci);
-  var chk=_tblFT[ci]?new Set(_tblFT[ci]):new Set(vals);
-  _ftDdCreate({btn:btn,allVals:vals,checked:chk,onApply:function(result){
-    _tblFT[ci]=(result.size===vals.length)?null:new Set(result);
-    var b=document.getElementById('wft-'+ci);if(b)b.classList.toggle('active',!!_tblFT[ci]);
-    SEL_WFR.clear();buildWfrList();render_sicc();render_cdyn();render_summ();
-    var active=document.querySelector('.tab-panel.active');if(active&&active.id==='tab-dist')renderHist();
-  }});
-}
-window.tblFtOpen=tblFtOpen;
 function _getUpmCol(col){
   // Mirror backend mapping behavior: last matching config row wins.
   // This prevents picking a stale/duplicate UPM mapping in Charts.
@@ -1023,6 +968,7 @@ function exportTblCsv(headId,bodyId,fname){
 }
 window.exportTblCsv=exportTblCsv;
 '''
+)  # end SHARED_JS
 
 # ── Resize panel IIFE ────────────────────────────────────────────────────────
 RESIZE_JS = '''

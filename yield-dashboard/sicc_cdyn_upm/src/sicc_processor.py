@@ -354,7 +354,15 @@ def process_csv(csv_path: str,
 
     group_cols = [c for c in [prg_col, lot_col, wfr_col] if c]
 
-    # ── Step 6: Numeric conversion ─────────────────────────────────────────
+    # ── Extra columns for shared filter panel (same CSV as bin_distribution) ──
+    _date_col = (next((c for c in df.columns if 'end_date'   in c.lower()), None) or
+                 next((c for c in df.columns if 'start_date' in c.lower()), None) or
+                 next((c for c in df.columns if 'date'       in c.lower()), None))
+    _ib_col = next((c for c in df.columns
+                    if 'interface_bin' in c.lower() and 'total' not in c.lower()), None)
+    _upm_med_col_fp = _upm_dist_cols[0] if _upm_dist_cols else None
+
+    # -- Step 6: Numeric conversion --
     sicc_col_names = list(used_targets.keys()) + sum_col_names
     # deduplicate while preserving order
     seen: set = set()
@@ -525,15 +533,27 @@ def process_csv(csv_path: str,
                             'u': [round(float(v), 8) for v in u_vals],
                         }
         return {
-            'program':  program,
-            'lot':      lot,
-            'wafer':    wafer,
-            'material': material,
-            'total':    len(grp),
-            'medians':  medians,
-            'hists':    hists,
-            'cdyn':     cdyn_meds,
-            'die_pairs': die_pairs,
+            'program':    program,
+            'lot':        lot,
+            'wafer':      wafer,
+            'material':   material,
+            'total':      len(grp),
+            'medians':    medians,
+            'hists':      hists,
+            'cdyn':       cdyn_meds,
+            'die_pairs':  die_pairs,
+            # ── Shared filter-panel fields (same CSV → same data contract) ──
+            'date':       (str(grp[_date_col].dropna().iloc[0])
+                           if _date_col and _date_col in grp.columns
+                           and not grp[_date_col].dropna().empty else ''),
+            'binCounts':  ({str(k): int(v)
+                            for k, v in grp[_ib_col].astype(str)
+                              .str.extract(r'(\d+)', expand=False)
+                              .dropna().value_counts().items()}
+                           if _ib_col and _ib_col in grp.columns else {}),
+            'upmMed':     ([round(float(np.median(grp[_upm_med_col_fp].dropna().values)), 4)]
+                           if _upm_med_col_fp and _upm_med_col_fp in grp.columns
+                           and len(grp[_upm_med_col_fp].dropna()) > 0 else None),
         }
 
     if group_cols:

@@ -150,10 +150,11 @@ def build_page_open(display_title: str, tabs_html: str) -> str:
     <div class="wfr-hdr">
       <span>Filter by Lot / Wafer</span>
       <span>
-        <button class="cb" onclick="selAll()">Select All</button>
-        <button class="cb" onclick="clrAll()">Clear</button>
+        <button class="cb" onclick="selectAllRows()">Select All</button>
+        <button class="cb" onclick="clearRows()">Clear</button>
+        <button class="cb" onclick="exportCsv()" title="Export to CSV">&#8681; CSV</button>
         <button class="collapse-btn" onclick="togglePanel('wfr-panel','wfr-splitter')" title="Collapse/expand panel">&#9664;</button>
-        <span class="row-info" id="row-info"></span>
+        <span class="row-info" id="row-sel-info"></span>
       </span>
     </div>
     <div class="wfr-tbl-wrap">
