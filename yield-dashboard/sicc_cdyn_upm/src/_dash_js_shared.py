@@ -886,13 +886,15 @@ function updateAll() {
   Object.keys(_TAB_RENDERS).forEach(function(id) {
     if (!_TAB_LAZY[id] || id === activeId) _TAB_RENDERS[id]();
   });
-  buildWfrList();
+  rFilter();
 }
 function init() {
   if (SICC_COLS.length)       { SEL_COL = SICC_COLS[0]; IS_CDYN = false; }
   else if (UPM_COLS.length)   { SEL_COL = UPM_COLS[0];  IS_CDYN = false; }
   else if (CDYN_COLS.length)  { SEL_COL = CDYN_COLS[0]; IS_CDYN = true;  }
-  buildWfrList();
+  // Pre-populate SEL_WFR with all rows on first load
+  if(SEL_WFR.size===0)DATA.rows.forEach(function(_,i){SEL_WFR.add(i);});
+  rFilter();
   // Render non-lazy tabs on load
   Object.keys(_TAB_RENDERS).forEach(function(id) {
     if (!_TAB_LAZY[id]) _TAB_RENDERS[id]();
