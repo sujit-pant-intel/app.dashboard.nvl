@@ -513,9 +513,8 @@ def load_csv(path: Path, log=None, grouping_mode: str = 'wafer') -> list[dict]:
                     ib_mod[fbin][bdesc] = ib_mod[fbin].get(bdesc, 0) + cnt
             except (ValueError, TypeError):
                 pass
-        # Store [ibin, upm_pct] per die for DLCP CDF — cap at 2000 per run to keep
-        # JS processing fast (sorting large arrays blocks the browser thread).
-        if upm950_s and len(grp['upm_950']) < 2000:
+        # Store [ibin, upm_pct] per die for DLCP CDF (same as bin_distribution_html)
+        if upm950_s:
             try:
                 upm_pct = round(float(upm950_s) / _upm950_divisor * 100, 2)
                 grp['upm_950'].append([ibin, upm_pct])
@@ -2964,32 +2963,23 @@ function _dlcpRenderTableT(){{
 
 function _dlcpRenderCdfT(){{
   var cv=document.getElementById('dlcp-cv-t');if(!cv)return;
-  // Self-retry: if canvas not yet laid out, reschedule until dimensions are real
-  if(cv.clientWidth===0||cv.clientHeight===0){{
-    setTimeout(function(){{if(_activeTab==='dlcp')_dlcpRenderCdfT();}},80);
-    return;
-  }}
-  var W=cv.clientWidth,H=cv.clientHeight;
+  var W=cv.clientWidth||560,H=cv.clientHeight||280;
   cv.width=W;cv.height=H;
   var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   var hp=[],lp=[],ff=[],df=[];
-  // Only count IB 1-4 dies for sampling budget (fail bins IB>4 don't contribute to CDF)
-  // With 2000-entry cap per run in Python, total IB1-4 is well under 200k → step≈1
-  var MAX_CDF=200000,_cdfTot=0;
+  /* Systematic downsampling: cap at 80k points so large datasets don't stall the browser */
+  var MAX_CDF=80000,_cdfTot=0;
   var runs=window._dlcpRuns||[];
-  runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
-    run.dies.forEach(function(d){{var ib=d[0];if(ib!=null&&ib>=1&&ib<=4)_cdfTot++;}});}});
+  runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;_cdfTot+=run.dies.length;}});
   var _cdfStep=_cdfTot>MAX_CDF?Math.ceil(_cdfTot/MAX_CDF):1,_cdfI=0;
   runs.forEach(function(run){{
     if(!run||!run.dies)return;
     var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
     run.dies.forEach(function(d){{
-      var ib=d[0],up=d[1];
-      // Only sample and count IB 1-4 (the only bins that contribute to CDF)
-      if(ib==null||ib<1||ib>4||up==null)return;
       _cdfI++;if(_cdfI%_cdfStep!==0)return;
+      var ib=d[0],up=d[1];if(up==null)return;
       if(ib===1||ib===2){{ff.push(up);if(up>=_dlcpT)hp.push(up);else lp.push(up);}}
-      else{{df.push(up);lp.push(up);}}  // ib===3||ib===4
+      else if(ib===3||ib===4){{df.push(up);lp.push(up);}}
     }});
   }});
   hp.sort(function(a,b){{return a-b;}});lp.sort(function(a,b){{return a-b;}});
@@ -3012,20 +3002,19 @@ function _dlcpRenderCdfT(){{
     ctx.setLineDash([]);ctx.fillStyle='#e74c3c';ctx.font='11px Arial';ctx.textAlign='center';
     ctx.fillText(_dlcpT.toFixed(1)+'%',tx,MT-5);ctx.restore();
   }}
-  function drawCdf(arr,col,dash){{
-    if(!arr.length)return;var n=arr.length;
+  function drawCdf(arr,col,dash){{if(!arr.length)return;
     ctx.save();ctx.strokeStyle=col;ctx.lineWidth=2;if(dash)ctx.setLineDash([6,3]);
+    var n=arr.length;
     ctx.beginPath();ctx.moveTo(xp(arr[0]),yp(0));
     for(var i=0;i<n;i++){{ctx.lineTo(xp(arr[i]),yp((i+1)/n*100));if(i<n-1)ctx.lineTo(xp(arr[i+1]),yp((i+1)/n*100));}}
     ctx.lineTo(ML+PW,yp(100));ctx.stroke();ctx.restore();
   }}
-  drawCdf(df,'#8e44ad',true);drawCdf(ff,'#27ae60',true);drawCdf(lp,'#e67e22',false);drawCdf(hp,'#2980b9',false);
-  ctx.strokeStyle='#555';ctx.lineWidth=1;
-  ctx.beginPath();ctx.moveTo(ML,MT);ctx.lineTo(ML,MT+PH);ctx.lineTo(ML+PW,MT+PH);ctx.stroke();
+  drawCdf(df,'#8e44ad',true);drawCdf(ff,'#27ae60',true);
+  drawCdf(lp,'#e67e22',false);drawCdf(hp,'#2980b9',false);
+  ctx.strokeStyle='#555';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(ML,MT);ctx.lineTo(ML,MT+PH);ctx.lineTo(ML+PW,MT+PH);ctx.stroke();
   ctx.fillStyle='#555';ctx.font='11px Arial';ctx.textAlign='right';
   for(var yi2=0;yi2<=4;yi2++)ctx.fillText(yi2*25+'%',ML-4,yp(yi2*25)+4);
-  ctx.textAlign='center';
-  var rng=xMx-xMn,stp=rng>20?5:rng>10?2:1,xs=Math.ceil(xMn/stp)*stp;
+  ctx.textAlign='center';var rng=xMx-xMn,stp=rng>20?5:rng>10?2:1,xs=Math.ceil(xMn/stp)*stp;
   for(var xv=xs;xv<=xMx;xv+=stp)ctx.fillText(xv.toFixed(0)+'%',xp(xv),MT+PH+14);
   ctx.fillStyle='#2c3e50';ctx.font='bold 11px Arial';ctx.textAlign='center';
   ctx.fillText('UPM %',ML+PW/2,H-4);
