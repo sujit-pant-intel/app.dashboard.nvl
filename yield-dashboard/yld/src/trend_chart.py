@@ -2898,7 +2898,7 @@ function _dlcpRenderTableT(){{
     var f12=x.nA+x.nB, f14=x.nFF+x.nDF3+x.nDF4;
     if(ddOk){{tA+=isSel?x.nA:0;tB+=isSel?x.nB:0;tC+=isSel?x.nC:0;tN+=isSel?t:0;
               tFF+=isSel?x.nFF:0;tDF34+=isSel?x.nDF34:0;tDF3+=isSel?x.nDF3:0;tDF4+=isSel?x.nDF4:0;}}
-    html+='<tr data-key="'+_dlcpEscT(key)+'" class="'+(isSel?'dlcp-rsel':'dlcp-runsel')+'" style="'+visStyle+'" onclick="dlcpRowClickT(this.getAttribute(\'data-key\'))">'+
+    html+='<tr data-key="'+_dlcpEscT(key)+'" class="'+(isSel?'dlcp-rsel':'dlcp-runsel')+'" style="'+visStyle+'" onclick="dlcpRowClickT(this.getAttribute(\\'data-key\\'))">'+
       '<td>'+_dlcpEscT(x.lot)+'</td>'+'<td>'+_dlcpEscT(x.wafer)+'</td>'+'<td style="color:#555;font-size:11px">'+_dlcpEscT(x.mat)+'</td>'+
       '<td class="num">'+t+'</td>'+'<td class="num">'+(x.med!=null?x.med.toFixed(2)+'%':'\u2014')+'</td>'+
       '<td class="num" style="color:#1a5276;font-weight:bold">'+x.nA+'</td>'+'<td class="num" style="color:#1a5276">'+(f12>0?(x.nA/f12*100).toFixed(1):'\u2014')+'%</td>'+
