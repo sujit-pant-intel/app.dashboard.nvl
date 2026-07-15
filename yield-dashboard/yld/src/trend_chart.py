@@ -2500,6 +2500,7 @@ function rebuildCharts() {{
         }}
       }});
     }});
+  }}  // end if (!_firstLoad)
   }} else {{
     // Plotly not loaded — show inline warning in the trend chart area
     var tc = document.getElementById('trend-chart');
