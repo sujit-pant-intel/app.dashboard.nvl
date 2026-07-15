@@ -1396,12 +1396,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '.fb-tbl td{padding:4px 10px;border-bottom:1px solid #eee}\n'
         '.fb-tbl tr:nth-child(even) td{background:#f7f9fc}\n'
         '.fb-tbl .num{text-align:right}\n'
-        '.fb-fbfilt{margin-top:12px;padding:8px 10px;background:#f4f7fb;border-radius:6px;border:1px solid #d0d8e8}\n'
-        '.fb-ffhdr{font-size:13px;font-weight:bold;color:#2c3e50;margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}\n'
-        '.fb-cblist{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}\n'
-        '.fb-cbitem{display:flex;align-items:center;gap:3px;font-size:12px;padding:2px 7px;border-radius:3px;background:#fff;border:1px solid #cdd5e0;cursor:pointer}\n'
-        '.fb-cbitem:hover{background:#eaf2ff}\n'
-        '.fb-cbitem input{cursor:pointer;margin:0}\n'
+        '.fb-wm-sec{margin-top:12px}\n'
         '.fb-wm-sec{margin-top:12px}\n'
         '.fb-wm-ttl{font-size:13px;font-weight:bold;color:#2c3e50;margin-bottom:6px}\n'
         '.fb-wm-grid{display:flex;flex-wrap:wrap;gap:6px;max-height:240px;overflow-y:auto;padding:6px;background:#f4f7fb;border-radius:6px;border:1px solid #d0d8e8}\n'
@@ -1698,7 +1693,22 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '<button onclick="IC._upmZoomIn()" title="Zoom in" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:0 7px;border-radius:4px;margin-right:8px;line-height:1.6">&#43;</button>'
         '<button onclick="IC.refreshUpm()" style="background:none;border:none;color:#fff;font-size:16px;cursor:pointer;margin-right:8px" title="Refresh">&#x21bb;</button>'
         '<button onclick="IC.closeUpmModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">&times;</button></div>\n'
-        '    <div id="upm-dieLoc-bar" style="display:none;padding:3px 8px 3px;border-bottom:1px solid #dde4ee;background:#f7f9fc;font-size:10px;flex-shrink:0"></div>\n'
+        '    <div id="upm-ctrl-wrap" style="flex-shrink:0;background:#f7f9fc;border-bottom:1px solid #dde4ee">\n'
+        '      <div style="display:flex;align-items:center">\n'
+        '        <div id="upm-dieLoc-bar" style="display:none;padding:3px 8px;font-size:10px;flex:1;min-width:0"></div>\n'
+        '        <div id="upm-fb-filter" style="display:none;padding:3px 8px;font-size:11px">'
+        '<span style="font-weight:bold;color:#2c3e50;margin-right:6px">FB filter:</span>'
+        '<button class="cb" id="upm-fb-dd-btn" onclick="IC._upmFbDdToggle()" style="padding:1px 9px;font-size:11px">&#9660; Choose FBs</button>'
+        '<button class="cb" onclick="IC.selectAllFbs()" style="padding:1px 7px;font-size:11px">All</button>'
+        '<button class="cb" onclick="IC.clearFbs()" style="padding:1px 7px;font-size:11px">None</button>'
+        '<span id="upm-fb-summary" style="margin-left:8px;font-size:11px;color:#555"></span>'
+        '</div>\n'
+        '      </div>\n'
+        '      <div id="upm-fb-dd" style="display:none;padding:8px 10px;border-top:1px solid #e0e8f0;background:#fff">'
+        '<input id="upm-fb-search" type="text" placeholder="Search FB / description…" oninput="IC._upmFbSearch(this.value)" style="width:100%;box-sizing:border-box;padding:4px 8px;font-size:12px;border:1px solid #c5cfe0;border-radius:4px;margin-bottom:6px">'
+        '<div id="upm-fb-cblist" style="max-height:240px;overflow-y:auto"></div>'
+        '</div>\n'
+        '    </div>\n'
         '    <div class="upm-body" id="upm-body"></div>\n'
         '  </div>\n'
         '</div>\n'
@@ -1979,20 +1989,18 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '    <div class="fb-modal-inner">\n'
         '    <svg id="fb-chart" class="fb-chart"></svg>\n'
         '    <table class="fb-tbl">\n'
-        '      <thead><tr><th>Functional Bin</th><th>Category</th><th>Description</th><th class="num">Count</th><th class="num">% of IB</th><th class="num">Fail %</th></tr></thead>\n'
+        '      <thead>\n'
+        '        <tr><th style="width:60px;white-space:nowrap"><button class="cb" onclick="IC.selectAllFbs()" style="padding:1px 6px;font-size:11px">All</button><button class="cb" onclick="IC.clearFbs()" style="padding:1px 6px;font-size:11px">None</button></th>'
+        '<th>Functional Bin</th><th>Category</th><th>Description</th><th class="num">Count</th><th class="num">% of IB</th><th class="num">Fail %</th></tr>\n'
+        '      </thead>\n'
         '      <tbody id="fb-modal-tbody"></tbody>\n'
         '    </table>\n'
-        '    <div class="fb-fbfilt">\n'
-        '      <div class="fb-ffhdr">Filter by Functional Bin\n'
-        '        <button class="cb" onclick="IC.selectAllFbs()">All</button>\n'
-        '        <button class="cb" onclick="IC.clearFbs()">None</button>\n'
-        '        <button class="cb" onclick="IC.showFbWaferMap()">Show Wafer Distribution &#9654;</button>\n'
-        '        <button class="cb" onclick="IC.showBhHwModal()">HW Breakdown &#128295;</button>\n'
-        +('        <button class="cb" onclick="IC.showUpmModal()">Heatmap &#128202;</button>\n' if _upm_col_defs and _x_col and _y_col else '')
-        +('        <button class="cb" id="recov-btn" onclick="IC.showRecovModal()" style="display:none">Bin Analysis &#128300;</button>\n' if (_has_recovery or (sdt_ib_col and _x_col and _y_col)) else '')
-        +'      </div>\n'
-        '      <div id="fb-cblist" class="fb-cblist"></div>\n'
-        '    </div>\n'
+        '    <div style="padding:4px 0 6px;display:flex;flex-wrap:wrap;gap:4px">'
+        '<button class="cb" onclick="IC.showFbWaferMap()">Show Wafer Distribution &#9654;</button>'
+        '<button class="cb" onclick="IC.showBhHwModal()">HW Breakdown &#128295;</button>'
+        +('<button class="cb" onclick="IC.showUpmModal()">Heatmap &#128202;</button>' if _upm_col_defs and _x_col and _y_col else '')
+        +('<button class="cb" id="recov-btn" onclick="IC.showRecovModal()" style="display:none">Bin Analysis &#128300;</button>' if (_has_recovery or (sdt_ib_col and _x_col and _y_col)) else '')
+        +'</div>\n'
         '    <div class="fb-wm-sec" id="fb-wm-sec" style="display:none">\n'
         '      <div class="fb-wm-ttl">Wafer Distribution &mdash; IB <span id="fb-wm-ib"></span> (selected FBs) &nbsp;<small style="color:#7f8c8d;font-weight:normal">click tile to jump to wafer</small></div>\n'
         '      <div id="fb-wm-grid" class="fb-wm-grid"></div>\n'
@@ -2065,7 +2073,7 @@ function gFC(){
       var cnt=rw.binCounts[b];
       if(_fbFilterIb!==null&&String(b)===String(_fbFilterIb)){
         var ibFb=(rw.ibToFb||{})[String(_fbFilterIb)]||{};
-        if(Object.keys(ibFb).length>0){
+        if(Object.keys(ibFb).length>0&&_fbChecked.size>0){
           var filtCnt=0;_fbChecked.forEach(function(fb){filtCnt+=(ibFb[fb]||0);});cnt=filtCnt;
         }
         if(_bhHwSel.size>0){
@@ -2783,14 +2791,15 @@ function _renderFbChart(){
     var fbFP=allTot>0?cnt/allTot*100:0;
     var op=_fbChecked.has(fb)?'':'opacity:0.3;';
     if(_fbChecked.has(fb))tblSelCount+=cnt;
-    html+='<tr style="'+op+'"><td>FB'+fb+'</td><td>'+esc(ibCat)+'</td><td>'+esc(fbi.desc||'')+'</td><td class="num">'+cnt.toLocaleString()+'</td><td class="num">'+pct.toFixed(1)+'%</td><td class="num">'+fbFP.toFixed(2)+'%</td></tr>';
+    var chkAttr=_fbChecked.has(fb)?' checked':'';
+    html+='<tr style="'+op+'"><td style="text-align:center"><input type="checkbox"'+chkAttr+' data-fb="'+fb+'" onchange="IC.fbCbChange(this)"></td><td>FB'+fb+'</td><td>'+esc(ibCat)+'</td><td>'+esc(fbi.desc||'')+'</td><td class="num">'+cnt.toLocaleString()+'</td><td class="num">'+pct.toFixed(1)+'%</td><td class="num">'+fbFP.toFixed(2)+'%</td></tr>';
   });
   /* Total row for selected FBs */
   if(fbKeys.length>1){
     var tblSelIbPct=ibTotal>0?tblSelCount/ibTotal*100:0;
     var tblSelFailPct=allTot>0?tblSelCount/allTot*100:0;
     html+='<tr style="background:#d6eaff;font-weight:bold;border-top:2px solid #2471a3">'
-      +'<td colspan="3" style="color:#1a3a5c">Total (selected '+_fbChecked.size+' / '+fbKeys.length+')</td>'
+      +'<td></td><td colspan="3" style="color:#1a3a5c">Total (selected '+_fbChecked.size+' / '+fbKeys.length+')</td>'
       +'<td class="num" style="color:#1a3a5c">'+tblSelCount.toLocaleString()+'</td>'
       +'<td class="num" style="color:#2471a3">'+tblSelIbPct.toFixed(1)+'%</td>'
       +'<td class="num" style="color:#c0392b">'+tblSelFailPct.toFixed(2)+'%</td>'
@@ -2989,56 +2998,107 @@ function refreshFb(){
   _renderFbCb();_renderFbChart();rChart();
 }
 function refreshUpm(){if(_upmOpen)_renderUpmMaps();}
-function _renderFbCb(){
-  var el=document.getElementById('fb-cblist');if(!el)return;
+var _upmFbDdOpen=false;
+var _upmFbSearchVal='';
+function _upmFbDdToggle(){
+  _upmFbDdOpen=!_upmFbDdOpen;
+  var dd=document.getElementById('upm-fb-dd');if(dd)dd.style.display=_upmFbDdOpen?'':'none';
+  var btn=document.getElementById('upm-fb-dd-btn');if(btn)btn.innerHTML=(_upmFbDdOpen?'&#9650;':'&#9660;')+' Choose FBs';
+  if(_upmFbDdOpen){
+    _upmFbSearchVal='';var si=document.getElementById('upm-fb-search');if(si)si.value='';
+    _renderFbCb();
+    /* close on outside click */
+    setTimeout(function(){
+      document.addEventListener('click',function _upmFbOut(e){
+        var dd2=document.getElementById('upm-fb-dd'),btn2=document.getElementById('upm-fb-dd-btn');
+        if((dd2&&dd2.contains(e.target))||(btn2&&btn2.contains(e.target)))return;
+        document.removeEventListener('click',_upmFbOut);
+        _upmFbDdOpen=false;
+        if(dd2)dd2.style.display='none';
+        if(btn2)btn2.innerHTML='&#9660; Choose FBs';
+      });
+    },0);
+  }
+}
+function _upmFbSearch(v){_upmFbSearchVal=(v||'').toLowerCase().trim();_renderFbCbList();}
+function _renderFbCbList(){
+  var upmCbList=document.getElementById('upm-fb-cblist');if(!upmCbList)return;
+  var ibCat=DATA.binBuckets[String(_fbModalIb)]||'';
   var fbDesc=DATA.fbDescriptions||{};
   var ibTotal=_fbModalIbTotal,allTot=_fbModalAllTot;
-  var html='';
-  var selCount=0,selIbPct=0,selFailPct=0;
-  _fbModalFbKeys.forEach(function(fb){
+  var q=_upmFbSearchVal;
+  var html='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html+='<thead><tr style="background:#2c3e50;color:#ecf0f1">';
+  html+='<th style="padding:3px 6px;width:28px"></th>';
+  html+='<th style="padding:3px 6px;text-align:left">FB</th>';
+  html+='<th style="padding:3px 6px;text-align:left">Category</th>';
+  html+='<th style="padding:3px 6px;text-align:left">Description</th>';
+  html+='<th style="padding:3px 6px;text-align:right">Count</th>';
+  html+='<th style="padding:3px 6px;text-align:right">% IB</th>';
+  html+='<th style="padding:3px 6px;text-align:right">Fail%</th>';
+  html+='</tr></thead><tbody>';
+  var shown=0;
+  _fbModalFbKeys.forEach(function(fb,idx){
+    var fbi=fbDesc[fb]||{};
+    var desc=fbi.desc||'';
+    if(q&&('fb'+fb).toLowerCase().indexOf(q)<0&&desc.toLowerCase().indexOf(q)<0&&ibCat.toLowerCase().indexOf(q)<0)return;
+    shown++;
     var chk=_fbChecked.has(fb)?' checked':'';
     var cnt=_fbModalTotals[fb]||0;
     var ibPct=ibTotal>0?cnt/ibTotal*100:0;
     var failPct=allTot>0?cnt/allTot*100:0;
-    var fbd=(fbDesc[fb]&&fbDesc[fb].desc)?fbDesc[fb].desc:'';
-    var pctLbl=' <span style="color:#2471a3;font-size:11px;white-space:nowrap">'+ibPct.toFixed(1)+'% IB</span>'
-      +' <span style="color:#888;font-size:11px;white-space:nowrap">'+failPct.toFixed(2)+'% fail</span>';
-    if(_fbChecked.has(fb)){selCount+=cnt;selIbPct+=ibPct;selFailPct+=failPct;}
-    html+='<label class="fb-cbitem" title="FB'+fb+': '+cnt.toLocaleString()+' ('+ibPct.toFixed(1)+'% IB | '+failPct.toFixed(2)+'% fail)'+(fbd?' \u2014 '+fbd:'')+'">'
-      +'<input type="checkbox"'+chk+' data-fb="'+fb+'" onchange="IC.fbCbChange(this)"> FB'+fb
-      +pctLbl
-      +(fbd?'<span style="color:#888;font-size:11px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom"> \u2014 '+esc(fbd.substring(0,22))+'</span>':'')
-      +'</label>';
+    var bg=idx%2===0?'#fff':'#f7f9fc';
+    var op=_fbChecked.has(fb)?'':'opacity:0.45;';
+    html+='<tr data-fb="'+fb+'" style="background:'+bg+';'+op+'">';
+    html+='<td style="text-align:center;padding:3px 4px"><input type="checkbox"'+chk+' data-fb="'+fb+'" onchange="IC.fbCbChange(this)"></td>';
+    html+='<td style="padding:3px 6px;white-space:nowrap;font-weight:bold">FB'+esc(fb)+'</td>';
+    html+='<td style="padding:3px 6px;white-space:nowrap">'+esc(ibCat)+'</td>';
+    html+='<td style="padding:3px 6px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(desc)+'">'+esc(desc)+'</td>';
+    html+='<td style="padding:3px 6px;text-align:right">'+cnt.toLocaleString()+'</td>';
+    html+='<td style="padding:3px 6px;text-align:right;color:#2471a3">'+ibPct.toFixed(1)+'%</td>';
+    html+='<td style="padding:3px 6px;text-align:right;color:#c0392b">'+failPct.toFixed(2)+'%</td>';
+    html+='</tr>';
   });
-  /* Total row for selected FBs */
-  if(_fbModalFbKeys.length>1){
-    var selFailActual=allTot>0?selCount/allTot*100:0;
-    html+='<div style="width:100%;margin-top:5px;padding:3px 8px;background:#eaf0fb;border:1px solid #aec6ef;border-radius:3px;font-size:11px;color:#1a3a5c;display:flex;gap:10px;align-items:center">'
-      +'<b>Selected total:</b>'
-      +' <span>'+selCount.toLocaleString()+' die</span>'
-      +' <span style="color:#2471a3">'+selIbPct.toFixed(1)+'% of IB</span>'
-      +' <span style="color:#c0392b">'+selFailActual.toFixed(2)+'% fail</span>'
-      +'</div>';
+  if(shown===0)html+='<tr><td colspan="7" style="padding:6px;color:#888;text-align:center">No FBs match</td></tr>';
+  html+='</tbody></table>';
+  upmCbList.innerHTML=html;
+}
+function _renderFbCb(){
+  /* Update summary badge */
+  var sumEl=document.getElementById('upm-fb-summary');
+  if(sumEl){
+    var sel=_fbChecked.size,tot=_fbModalFbKeys.length;
+    sumEl.textContent=sel<tot?(sel+'/'+tot+' FBs selected'):(tot+' FBs (all)')
   }
-  el.innerHTML=html;
+  /* Rebuild dropdown list if open */
+  if(_upmFbDdOpen)_renderFbCbList();
+  /* Show/hide bar */
+  var upmBar=document.getElementById('upm-fb-filter');
+  if(upmBar)upmBar.style.display=(_fbModalFbKeys.length>0)?'':'none';
 }
 function legendClick(bin,event){
   if(event&&(event.ctrlKey||event.metaKey)){showFbModal(bin);}
   else{clickLegend(bin,event);}
 }
 function fbCbChange(cb){var fb=cb.dataset.fb;if(cb.checked)_fbChecked.add(fb);else _fbChecked.delete(fb);
-  _renderFbCb();_renderFbChart();rChart(); /* fast: pre-aggregated binCounts, no die iteration */
+  /* Sync the other checkbox for this FB (table row vs UPM dropdown) */
+  document.querySelectorAll('input[type=checkbox][data-fb="'+fb+'"]').forEach(function(el){el.checked=_fbChecked.has(fb);});
+  /* Sync row opacity in UPM dropdown list */
+  if(_upmFbDdOpen)(document.querySelectorAll('#upm-fb-cblist tr[data-fb="'+fb+'"]')||[]).forEach(function(tr){tr.style.opacity=_fbChecked.has(fb)?'':'0.45';});
+  /* Update summary badge */
+  _renderFbCb();
+  _renderFbChart();rChart(); /* fast: pre-aggregated binCounts, no die iteration */
   var _fwmEl=document.getElementById('fb-wm-sec');
   if(_fwmEl&&_fwmEl.style.display!=='none')showFbWaferMap(); /* refresh wafer tiles if visible */
   /* debounce only the expensive per-die redraws */
   if(_fbCbTimer)clearTimeout(_fbCbTimer);
   _fbCbTimer=setTimeout(function(){_fbCbTimer=null;if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();},120);}
-function selectAllFbs(){if(_fbCbTimer){clearTimeout(_fbCbTimer);_fbCbTimer=null;}_fbModalFbKeys.forEach(function(fb){_fbChecked.add(fb);});_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
-function clearFbs(){if(_fbCbTimer){clearTimeout(_fbCbTimer);_fbCbTimer=null;}_fbChecked.clear();_renderFbCb();_renderFbChart();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
+function selectAllFbs(){if(_fbCbTimer){clearTimeout(_fbCbTimer);_fbCbTimer=null;}_fbModalFbKeys.forEach(function(fb){_fbChecked.add(fb);});_renderFbChart();_renderFbCb();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
+function clearFbs(){if(_fbCbTimer){clearTimeout(_fbCbTimer);_fbCbTimer=null;}_fbChecked.clear();_renderFbChart();_renderFbCb();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
 function showFbWaferMap(){
   if(!_fbModalIb)return;
-  /* Sync FB checkbox state */
-  (document.querySelectorAll('#fb-cblist input[type=checkbox]')||[]).forEach(function(inp){
+  /* Sync FB checkbox state from table */
+  document.querySelectorAll('#fb-modal-tbody input[type=checkbox]').forEach(function(inp){
     if(inp.checked)_fbChecked.add(inp.dataset.fb);else _fbChecked.delete(inp.dataset.fb);
   });
   var sec=document.getElementById('fb-wm-sec'),grid=document.getElementById('fb-wm-grid'),ibEl=document.getElementById('fb-wm-ib');
@@ -3262,10 +3322,15 @@ function showUpmModal(){
   var m=document.getElementById('upm-box');
   if(m){m.style.left='';m.style.top='';m.style.transform='';}
   document.getElementById('upm-modal').classList.add('open');
+  _renderFbCb(); /* show FB filter bar if an IB is active */
   _renderUpmMaps();
 }
 function closeUpmModal(){
   _upmOpen=false;
+  /* reset dropdown state */
+  _upmFbDdOpen=false;
+  var dd=document.getElementById('upm-fb-dd');if(dd)dd.style.display='none';
+  var btn=document.getElementById('upm-fb-dd-btn');if(btn)btn.innerHTML='&#9660; Choose FBs';
   document.getElementById('upm-modal').classList.remove('open');
 }
 function setUpmMetric(idx){_upmMetricIdx=idx;_renderUpmMaps();}
@@ -3328,8 +3393,8 @@ function _applyRecovGrpFilter(){
     /* Fall back to all IB FBs if no RECOV_DATA found for selected groups */
     _fbChecked=fbsWithGroup.size>0?fbsWithGroup:new Set(_fbModalFbKeys);
   }
-  /* Sync FB checkboxes in the histogram panel */
-  (document.querySelectorAll('#fb-cblist input[type=checkbox]')||[]).forEach(function(inp){
+  /* Sync FB checkboxes in the table + UPM bar */
+  document.querySelectorAll('#fb-modal-tbody input[type=checkbox],#upm-fb-cblist input[type=checkbox]').forEach(function(inp){
     inp.checked=_fbChecked.has(inp.dataset.fb);
   });
   _renderFbChart();
@@ -3703,7 +3768,7 @@ function _renderUpmMaps(){
       var ibMatch=(_fbModalIb!==null)?(String(ib)===String(_fbModalIb)):(sB.size===AB.length||sB.has(String(ib)));
       var fbMatch;
       if(_recovOpen&&ibMatch&&RECOV_DIE_GRPS){fbMatch=(_recovGrpChecked.size>0)&&_dieGrpActive(row.lot+'|'+row.wafer,x,y);}
-      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||(_fbChecked.size===0)||_fbChecked.has(String(fb));}
+      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||_fbChecked.has(String(fb));}
       if(ibMatch&&fbMatch)filteredVals.push(v);
     });
   });
@@ -3840,7 +3905,7 @@ function _upmRenderTile(ri,container){
       var ibMatch=(_fbModalIb!==null)?(String(ib)===String(_fbModalIb)):(sB.size===AB.length||sB.has(String(ib)));
       var fbMatch;
       if(_recovOpen&&ibMatch&&RECOV_DIE_GRPS){fbMatch=(_recovGrpChecked.size>0)&&_dieGrpActive(wKey,x,y);}
-      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||(_fbChecked.size===0)||_fbChecked.has(String(fb));}
+      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||_fbChecked.has(String(fb));}
       var hwMatch=(_bhHwSel.size===0)||(hw===null)||_bhHwSel.has(String(hw));
       var active=ibMatch&&fbMatch&&hwMatch;
       if(active&&_sdtSecOpen&&DATA.hasSdtDie){var _ss=DATA.sdtDieStart||7;var _si2=d[_ss],_sf2=d[_ss+1];var _sk2=_si2===null||_si2===undefined?null:String(_si2)+'|'+(_sf2===null||_sf2===undefined?'':String(_sf2));if(_sk2===null||!_sdtChecked.has(_sk2))active=false;}
@@ -3867,7 +3932,7 @@ function _upmRenderTile(ri,container){
         var dd=cv._upmDl[dx2+','+dy2];
         if(!dd){_upmTipHide();return;}
         var tipTxt=(dd.uv!==null&&dd.uv!==undefined)?cv._fmtB(Number(dd.uv)):'no UPM';
-        _upmTip(e,tipTxt+'|IB'+(dd.ib!==null?dd.ib:'?')+(dd.fb!==null?' FB'+dd.fb:'')+'  ('+dd.x+','+dd.y+')');
+        _upmTip(e,'UPM '+tipTxt+'|IB'+(dd.ib!==null?dd.ib:'?')+(dd.fb!==null?' FB'+dd.fb:'')+'  ('+dd.x+','+dd.y+')');
       });
       cv.addEventListener('mouseleave',function(){_upmTipHide();});
     }
@@ -3884,14 +3949,14 @@ function _upmRenderTile(ri,container){
       var ibMatch=(_fbModalIb!==null)?(String(ib)===String(_fbModalIb)):(sB.size===AB.length||sB.has(String(ib)));
       var fbMatch;
       if(_recovOpen&&ibMatch&&RECOV_DIE_GRPS){fbMatch=(_recovGrpChecked.size>0)&&_dieGrpActive(wKey,x,y);}
-      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||(_fbChecked.size===0)||_fbChecked.has(String(fb));}
+      else{fbMatch=(!ibMatch)||(fb===null)||(String(_fbModalIb)!==String(ib))||_fbChecked.has(String(fb));}
       var hwMatch=(_bhHwSel.size===0)||(hw===null)||_bhHwSel.has(String(hw));
       var opacity=(ibMatch&&fbMatch&&hwMatch)?'1':'0.12';
       if(opacity==='1'&&_sdtSecOpen&&DATA.hasSdtDie){var _sdtSt=DATA.sdtDieStart||7;var _si=d[_sdtSt],_sf=d[_sdtSt+1];var _sdtK=_si===null||_si===undefined?null:String(_si)+'|'+(_sf===null||_sf===undefined?'':String(_sf));if(_sdtK===null||!_sdtChecked.has(_sdtK))opacity='0.12';}
       if(opacity!=='0.12'&&hasDieLoc&&_upmDieLoc!==null&&DATA.retMap){var _rmU=DATA.retMap[x+','+y];if(_rmU){var _dlU=DATA.retSiteNum[_rmU[0]+','+_rmU[1]];if(_dlU!==undefined&&!_upmDieLoc.has(+_dlU))opacity='0.07';}else{opacity='0.07';}}
       var dlTipInfo='';
       if(hasDieLoc&&DATA.retMap){var _rmTip=DATA.retMap[x+','+y];if(_rmTip){var _dlTip=DATA.retSiteNum[_rmTip[0]+','+_rmTip[1]];if(_dlTip!==undefined)dlTipInfo=' loc'+_dlTip;}}
-      var tipStr=(uv!==null&&uv!==undefined?_fmtB(Number(uv)):'no UPM')+'|IB'+ib+(fb!==null?' FB'+fb:'')+(hw!==null?' HW'+hw:'')+dlTipInfo+'  ('+x+','+y+')';
+      var tipStr='UPM '+(uv!==null&&uv!==undefined?_fmtB(Number(uv)):'no UPM')+'|IB'+ib+(fb!==null?' FB'+fb:'')+(hw!==null?' HW'+hw:'')+dlTipInfo+'  ('+x+','+y+')';
       rects.push('<rect x="'+px+'" y="'+py+'" width="'+(cs*0.92).toFixed(2)+'" height="'+(csy*0.92).toFixed(2)+'" fill="'+fill+'" opacity="'+opacity+'" data-tip="'+tipStr+'"/>');
       if(hasDieLoc&&DATA.retMap&&cs>=4){var _rmDl=DATA.retMap[x+','+y];if(_rmDl){var _dlN=DATA.retSiteNum[_rmDl[0]+','+_rmDl[1]];if(_dlN!==undefined){var _dlFs=Math.max(4,Math.min(9,Math.round(cs*0.42)));var _dlTc=_wmContrast(fill);rects.push('<text x="'+(parseFloat(px)+cs*0.45).toFixed(2)+'" y="'+(parseFloat(py)+csy*0.5+_dlFs*0.36).toFixed(2)+'" text-anchor="middle" font-size="'+_dlFs+'" fill="'+_dlTc+'" stroke="'+(_dlTc==='#fff'?'#0a0f1a':'#f5faff')+'" stroke-width="0.6" paint-order="stroke" font-weight="bold" pointer-events="none" opacity="'+opacity+'">'+_dlN+'</text>');}}}
     });
@@ -3952,7 +4017,7 @@ function _setupUpmBodyHover(){
     var el=e.target;
     if(el&&el.tagName==='rect'&&el.dataset&&el.dataset.tip){
       _upmTip(e,el.dataset.tip);
-    } else {_upmTipHide();}
+    } else if(el.tagName!=='CANVAS'){_upmTipHide();}
   });
   body.addEventListener('mouseleave',function(){_upmTipHide();});
 }
@@ -6032,6 +6097,7 @@ return{clickBar:clickBar,clickLegend:clickLegend,legendClick:legendClick,toggleB
   toggleAllBins:toggleAllBins,toggleRow:toggleRow,selectAllRows:selectAllRows,clearRows:clearRows,
   gFC:gFC,DATA:DATA,sR:sR,rFilter:rFilter,sortFilter:sortFilter,ftDdOpen:ftDdOpen,showFbModal:showFbModal,closeFbModal:closeFbModal,
   fbCbChange:fbCbChange,selectAllFbs:selectAllFbs,clearFbs:clearFbs,showFbWaferMap:showFbWaferMap,fbTileClick:fbTileClick,
+  _upmFbDdToggle:_upmFbDdToggle,_upmFbSearch:_upmFbSearch,
   bhHwChk:bhHwChk,bhHwSelAll:bhHwSelAll,bhHwClrAll:bhHwClrAll,bhHwClrColFilters:bhHwClrColFilters,
   hwGbChange:hwGbChange,hwGbAll:hwGbAll,hwGbNone:hwGbNone,
   hwTxtFilter:hwTxtFilter,showBhHwModal:showBhHwModal,closeBhHwModal:closeBhHwModal,
