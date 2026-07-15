@@ -2,8 +2,13 @@
 
 These are plain string constants (no f-string escaping required).
 """
+import sys as _sys, os as _os
+_YLD_SRC = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '../../yld/src')
+if _YLD_SRC not in _sys.path:
+    _sys.path.insert(0, _YLD_SRC)
+from _filter_lot_wafer import FILTER_TABLE_CSS as _FILTER_CSS
 
-CSS = """
+_CSS_BASE = """
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:13px}
 .page-hdr{background:#1f3a50;color:#fff;padding:10px 16px}
@@ -112,6 +117,9 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:13p
 .dist-side.collapsed>*:not(.dist-hdr){display:none!important}
 .dist-hdr{display:flex;align-items:center;gap:6px;padding:4px 6px;background:#f0f4fb;border-bottom:1px solid #dde;font-size:11px;font-weight:bold;color:#2c3e50;border-radius:4px 4px 0 0;cursor:default}
 """
+# Append shared filter CSS (bin_distribution_html.py is the master)
+CSS = _CSS_BASE + _FILTER_CSS
+_CSS_BASE = None  # free the reference
 
 
 def build_page_open(display_title: str, tabs_html: str) -> str:
@@ -149,7 +157,7 @@ def build_page_open(display_title: str, tabs_html: str) -> str:
       </span>
     </div>
     <div class="wfr-tbl-wrap">
-      <table class="wfr-tbl">
+      <table class="ftbl">
         <thead id="wfr-thead"></thead>
         <tbody id="wfr-tbody"></tbody>
       </table>

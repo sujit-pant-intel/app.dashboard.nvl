@@ -2,9 +2,14 @@
 
 Plain Python string constants — normal JS braces {{ }} do NOT need escaping here.
 """
+import sys as _sys, os as _os
+_YLD_SRC = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '../../yld/src')
+if _YLD_SRC not in _sys.path:
+    _sys.path.insert(0, _YLD_SRC)
+from _filter_lot_wafer import FILTER_DD_JS as _FILTER_DD_JS
 
 # ── Shared state, utils, sidebar, and chart helpers ─────────────────────────
-SHARED_JS = r'''
+SHARED_JS = _FILTER_DD_JS + r'''
 var IS_CDYN=false;
 var XY_COLOR_BY=['material'];
 var _SCATTER_Y_LOG=true;
@@ -214,7 +219,7 @@ function _catColor(cat){if(CAT_COLORS[cat])return CAT_COLORS[cat];if(!_dynMap[ca
 function _catBorder(cat){if(CAT_BORDER[cat])return CAT_BORDER[cat];if(!_dynMap[cat]){var p=_dynPal[_dynI%_dynPal.length];_dynMap[cat]={bg:p[0],bd:p[1]};_dynI++;} return _dynMap[cat].bd;}
 // ── Filter-by-Lot/Wafer table (yield-dashboard style) ──────────────────────
 var _tblFT={};
-var _tblDDOpen=null;var _tblLastRow=-1;
+var _tblLastRow=-1;
 var _hasMat=ROWS.some(function(r){return r.material&&r.material!==''});
 function _tblCell(r,ci){
   if(ci===0)return r.program;if(ci===1)return r.lot;if(ci===2)return r.wafer;return r.material||'';
@@ -279,54 +284,18 @@ function selAll(){getFiltered().forEach(function(i){SEL_WFR.add(i);});_tblLastRo
 function clrAll(){SEL_WFR.clear();var ai=getFiltered();if(ai.length)SEL_WFR.add(ai[0]);_tblLastRow=-1;buildWfrList();render_sicc();render_cdyn();render_summ();
   var active=document.querySelector('.tab-panel.active');if(active&&active.id==='tab-dist')renderHist();}
 window.toggleRow=toggleRow;window.selAll=selAll;window.clrAll=clrAll;
+// tblFtOpen — thin wrapper around shared _ftDdCreate (see _filter_lot_wafer.py)
 function tblFtOpen(ci,btn){
-  if(_tblDDOpen)_tblFtClose();
   var vals=_tblFieldVals(ci);
-  var panel=document.createElement('div');panel.className='dd-panel';
-  panel.innerHTML='<input class="dds" placeholder="Search\u2026">'
-    +'<div class="dda"><button>All</button><button>Clear</button></div>'
-    +'<div class="ddl" id="_tbl-ddl"></div>'
-    +'<div class="ddf"><button>OK</button></div>';
-  document.body.appendChild(panel);
-  var br=btn.getBoundingClientRect();
-  panel.style.top=(br.bottom+2+window.scrollY)+'px';
-  panel.style.left=Math.min(br.left,window.innerWidth-220)+'px';
-  _tblDDOpen={panel:panel,ci:ci,btn:btn,vals:vals,chk:_tblFT[ci]?new Set(_tblFT[ci]):new Set(vals)};
-  _tblDdRender(vals);
-  panel.querySelector('.dds').oninput=function(){
-    var q=this.value.toLowerCase();
-    _tblDdRender(q?vals.filter(function(v){return v.toLowerCase().indexOf(q)>=0;}):vals);
-  };
-  var acts=panel.querySelectorAll('.dda button');
-  acts[0].onclick=function(){_tblDDOpen.vals.forEach(function(v){_tblDDOpen.chk.add(v);});_tblDdRender(_tblDDOpen.vals);};
-  acts[1].onclick=function(){_tblDDOpen.chk.clear();_tblDdRender(_tblDDOpen.vals);};
-  panel.querySelector('.ddf button').onclick=_tblFtApply;
-  setTimeout(function(){document.addEventListener('mousedown',_tblFtOut);},0);
+  var chk=_tblFT[ci]?new Set(_tblFT[ci]):new Set(vals);
+  _ftDdCreate({btn:btn,allVals:vals,checked:chk,onApply:function(result){
+    _tblFT[ci]=(result.size===vals.length)?null:new Set(result);
+    var b=document.getElementById('wft-'+ci);if(b)b.classList.toggle('active',!!_tblFT[ci]);
+    SEL_WFR.clear();buildWfrList();render_sicc();render_cdyn();render_summ();
+    var active=document.querySelector('.tab-panel.active');if(active&&active.id==='tab-dist')renderHist();
+  }});
 }
 window.tblFtOpen=tblFtOpen;
-function _tblDdRender(vals){
-  var list=document.getElementById('_tbl-ddl');if(!list)return;
-  list.innerHTML=vals.map(function(v){
-    return '<label class="ddi"><input type="checkbox"'+(_tblDDOpen.chk.has(v)?' checked':'')+' data-val="'+esc(String(v))+'">'+esc(String(v))+'</label>';
-  }).join('');
-  list.querySelectorAll('input').forEach(function(inp){
-    inp.onchange=function(){if(inp.checked)_tblDDOpen.chk.add(inp.dataset.val);else _tblDDOpen.chk.delete(inp.dataset.val);};
-  });
-}
-function _tblFtApply(){
-  if(!_tblDDOpen)return;
-  var ci=_tblDDOpen.ci,chk=_tblDDOpen.chk,vals=_tblDDOpen.vals;
-  _tblFT[ci]=(chk.size===vals.length)?null:new Set(chk);
-  var b=document.getElementById('wft-'+ci);if(b)b.classList.toggle('active',!!_tblFT[ci]);
-  _tblFtClose();SEL_WFR.clear();buildWfrList();render_sicc();render_cdyn();render_summ();
-  var active=document.querySelector('.tab-panel.active');if(active&&active.id==='tab-dist')renderHist();
-}
-function _tblFtClose(){
-  document.removeEventListener('mousedown',_tblFtOut);
-  if(_tblDDOpen&&_tblDDOpen.panel.parentNode)_tblDDOpen.panel.parentNode.removeChild(_tblDDOpen.panel);
-  _tblDDOpen=null;
-}
-function _tblFtOut(e){if(_tblDDOpen&&!_tblDDOpen.panel.contains(e.target))_tblFtApply();}
 function _getUpmCol(col){
   // Mirror backend mapping behavior: last matching config row wins.
   // This prevents picking a stale/duplicate UPM mapping in Charts.

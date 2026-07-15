@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import re as _re
 import pandas as pd
+from _filter_lot_wafer import FILTER_TABLE_CSS, FILTER_DD_JS
 
 
 
@@ -1331,27 +1332,8 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '.fh{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}\n'
         '.ft{font-size:15px;font-weight:bold;color:#2c3e50}\n'
         '.ri{font-size:13px;color:#7f8c8d}\n'
-        '.ftw{overflow-x:auto;max-height:calc(100vh - 320px);overflow-y:auto}\n'
-        '.ftbl{border-collapse:collapse;font-size:13px;white-space:nowrap;width:100%}\n'
-        '.ftbl th{background:#2c3e50;color:#ecf0f1;padding:5px 9px;text-align:left;'
-        'position:sticky;top:0;z-index:1}\n'
-        '.ftbl td{padding:4px 9px;border-bottom:1px solid #eee;text-align:left}\n'
-        '.flt-btn{background:none;border:none;color:#aed6f1;cursor:pointer;font-size:11px;padding:0 0 0 4px;vertical-align:middle;opacity:.85}\n'
-        '.flt-btn:hover{opacity:1;color:#fff}\n'
-        '.flt-btn.active{color:#f1c40f!important;opacity:1}\n'
-        '.dd-panel{position:fixed;background:#fff;border:1px solid #aaa;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,.18);z-index:25000;min-width:180px;max-width:280px;font-family:Arial,sans-serif;font-size:12px;color:#2c3e50}\n'
-        '.dd-panel .dd-search{width:100%;box-sizing:border-box;padding:5px 8px;border:none;border-bottom:1px solid #ddd;font-size:12px;outline:none}\n'
-        '.dd-panel .dd-acts{display:flex;gap:4px;padding:4px 6px;border-bottom:1px solid #eee}\n'
-        '.dd-panel .dd-acts button{flex:1;padding:2px 6px;font-size:11px;cursor:pointer;border:1px solid #bdc3c7;background:#ecf0f1;border-radius:3px}\n'
-        '.dd-panel .dd-list{max-height:200px;overflow-y:auto;padding:4px 0}\n'
-        '.dd-panel .dd-item{display:flex;align-items:center;gap:6px;padding:3px 10px;cursor:pointer}\n'
-        '.dd-panel .dd-item:hover{background:#eaf0fb}\n'
-        '.dd-panel .dd-item input{margin:0;cursor:pointer}\n'
-        '.dd-panel .dd-footer{padding:4px 8px;border-top:1px solid #eee;text-align:right}\n'
-        '.dd-panel .dd-footer button{padding:3px 12px;font-size:11px;cursor:pointer;background:#2c3e50;color:#fff;border:none;border-radius:3px}\n'
-        '.fr{cursor:pointer;transition:background .1s}\n'
-        '.fr:hover td{background:#f0f4ff}\n'
-        '.frs td{background:#d6eaff!important;font-weight:bold}\n'
+        + FILTER_TABLE_CSS
+        +
         '.num{text-align:right}\n'
         '.ys{background:#fff;border-radius:6px;padding:10px;box-shadow:0 1px 4px rgba(0,0,0,.1);flex:1 1 53%;min-width:0;overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 320px)}\n'
         '.yt{font-size:15px;font-weight:bold;color:#2c3e50;margin-bottom:8px}\n'
@@ -2045,6 +2027,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
       'var RECOV_HF='      + _recov_hard_fail_json + ';\n'
       'var BINDESC_DATA='  + _bindesc_data_json  + ';\n'
       'var BINDESC_IBS='   + _bindesc_ibs_json   + ';\n'
+      + FILTER_DD_JS
       + r'''var IC=(function(){
 'use strict';
 var AB=DATA.bins;
@@ -2235,11 +2218,10 @@ function lgSearch(q){
     grp.style.display=anyVis?'':'none';
   });
 }
-var _ftDdState={};var _ftDdOpen_=null;
+// ftDdOpen — thin wrapper around shared _ftDdCreate (see _filter_lot_wafer.py)
+var _ftDdState={};
 function ftDdOpen(col,btn){
-  if(_ftDdOpen_){_ftDdClose();}
-  var allVals=[];
-  var seen=new Set();
+  var allVals=[];var seen=new Set();
   DATA.rows.forEach(function(row){
     var cols=[row.program,row.lot,row.wafer].concat(DATA.hasMaterial?[row.material||'']:[]);
     var v=String(cols[col]||'');
@@ -2248,48 +2230,12 @@ function ftDdOpen(col,btn){
   allVals.sort(function(a,b){return a.localeCompare(b);});
   var allowed=_ftDdState[col];
   var checked=allowed?new Set(allowed):new Set(allVals);
-  var panel=document.createElement('div');
-  panel.className='dd-panel';
-  panel.innerHTML='<input class="dd-search" placeholder="Search\u2026">'
-    +'<div class="dd-acts"><button class="ft-sel-all">Select All</button><button class="ft-clr">Clear</button></div>'
-    +'<div class="dd-list" id="ft-dd-list"></div>'
-    +'<div class="dd-footer"><button class="ft-ok">OK</button></div>';
-  document.body.appendChild(panel);
-  var r=btn.getBoundingClientRect();
-  panel.style.top=(r.bottom+2)+'px';
-  panel.style.left=Math.min(r.left,window.innerWidth-200)+'px';
-  _ftDdOpen_={panel:panel,col:col,btn:btn,allVals:allVals,checked:checked,
-    renderList:function(vals){
-      var list=document.getElementById('ft-dd-list');if(!list)return;
-      var h='';vals.forEach(function(v){var c=_ftDdOpen_.checked.has(v)?' checked':'';
-        h+='<label class="dd-item"><input type="checkbox"'+c+' data-val="'+v.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'">'+v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</label>';
-      });list.innerHTML=h;
-      list.querySelectorAll('input').forEach(function(inp){inp.onchange=function(){_ftDdOpen_.toggle(inp,inp.dataset.val);};});
-    },
-    toggle:function(cb,v){if(cb.checked)_ftDdOpen_.checked.add(v);else _ftDdOpen_.checked.delete(v);},
-    selAll:function(){_ftDdOpen_.allVals.forEach(function(v){_ftDdOpen_.checked.add(v);});_ftDdOpen_.renderList(_ftDdOpen_.allVals);},
-    clearAll:function(){_ftDdOpen_.checked.clear();_ftDdOpen_.renderList(_ftDdOpen_.allVals);},
-    apply:function(){
-      var c=_ftDdOpen_.col,chk=_ftDdOpen_.checked,all=_ftDdOpen_.allVals;
-      _ftDdState[c]=(chk.size===all.length)?null:new Set(chk);
-      var b=document.getElementById('ft-fb-'+c);if(b)b.classList.toggle('active',!!_ftDdState[c]);
-      _ftDdClose();rFilter();
-    }
-  };
-  _ftDdOpen_.renderList(allVals);
-  panel.querySelector('.dd-search').oninput=function(){var q=(this.value||'').toLowerCase();var fl=q?_ftDdOpen_.allVals.filter(function(v){return v.toLowerCase().indexOf(q)>=0;}):_ftDdOpen_.allVals;_ftDdOpen_.renderList(fl);};
-  panel.querySelector('.ft-sel-all').onclick=function(){_ftDdOpen_.selAll();};
-  panel.querySelector('.ft-clr').onclick=function(){_ftDdOpen_.clearAll();};
-  panel.querySelector('.ft-ok').onclick=function(){_ftDdOpen_.apply();};
-  setTimeout(function(){document.addEventListener('mousedown',_ftDdOutside);},0);
+  _ftDdCreate({btn:btn,allVals:allVals,checked:checked,onApply:function(chk){
+    _ftDdState[col]=(chk.size===allVals.length)?null:new Set(chk);
+    var b=document.getElementById('ft-fb-'+col);if(b)b.classList.toggle('active',!!_ftDdState[col]);
+    rFilter();
+  }});
 }
-function _ftDdClose(){
-  if(!_ftDdOpen_)return;
-  document.removeEventListener('mousedown',_ftDdOutside);
-  if(_ftDdOpen_.panel.parentNode)_ftDdOpen_.panel.parentNode.removeChild(_ftDdOpen_.panel);
-  _ftDdOpen_=null;
-}
-function _ftDdOutside(e){if(_ftDdOpen_&&!_ftDdOpen_.panel.contains(e.target)){_ftDdOpen_.apply();}}
 function sortFilter(col){
   if(_ftSortCol===col){_ftSortDir=-_ftSortDir;}else{_ftSortCol=col;_ftSortDir=-1;}
   rFilter();
