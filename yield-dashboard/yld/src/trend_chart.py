@@ -2974,7 +2974,8 @@ function _dlcpRenderCdfT(){{
   var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   var hp=[],lp=[],ff=[],df=[];
   // Only count IB 1-4 dies for sampling budget (fail bins IB>4 don't contribute to CDF)
-  var MAX_CDF=80000,_cdfTot=0;
+  // With 2000-entry cap per run in Python, total IB1-4 is well under 200k → step≈1
+  var MAX_CDF=200000,_cdfTot=0;
   var runs=window._dlcpRuns||[];
   runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
     run.dies.forEach(function(d){{var ib=d[0];if(ib!=null&&ib>=1&&ib<=4)_cdfTot++;}});}});
