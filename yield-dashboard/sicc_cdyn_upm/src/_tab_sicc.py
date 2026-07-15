@@ -12,29 +12,18 @@ def tab_html() -> str:
     from _dash_js_shared import _GROUP_BY_HTML_INLINE  # noqa
     return f'''
 <div id="tab-sicc" class="tab-panel active">
-  <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 10px;background:#f8f9fa;border-bottom:1px solid #dde;flex-wrap:wrap">
-    <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
-      <div style="display:flex;align-items:center;gap:4px">
-        <button id="sicc-xy-sicc-btn" onclick="_setSiccScatterMode('sicc')" style="padding:9px 18px;font-size:13px;font-weight:bold;border:2px solid #2980b9;border-radius:5px;background:#2980b9;color:#fff;cursor:pointer;min-width:130px;text-align:left">&#128202; SICC</button>
-        <div id="sicc-col-checks-wrap" style="display:flex;flex-direction:column">
-          <div style="font-size:10px;color:#7f8c8d;font-weight:bold;margin-bottom:3px;letter-spacing:0.04em">PARAMETERS:</div>
-          <div id="sicc-col-checks" style="display:flex;flex-wrap:wrap;gap:3px 6px;max-height:56px;overflow-y:auto;max-width:320px"></div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <button id="sicc-xy-cdyn-btn" onclick="_setSiccScatterMode('cdyn')" style="padding:9px 18px;font-size:13px;font-weight:bold;border:2px solid #27ae60;border-radius:5px;background:#ecf0f1;color:#27ae60;cursor:pointer;min-width:130px;text-align:left">&#128200; CDYN</button>
-        <select id="cdyn-scatter-col-sel" style="display:none;font-size:11px;padding:4px 6px;border:1px solid #bdc3c7;border-radius:3px;background:#f8f9fa;color:#2c3e50" onchange="render_upm_dist()"></select>
-      </div>
+  <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:#f8f9fa;border-bottom:1px solid #dde;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:6px">
+      <button id="sicc-xy-sicc-btn" onclick="_setSiccScatterMode('sicc')" style="padding:7px 14px;font-size:13px;font-weight:bold;border:2px solid #2980b9;border-radius:5px;background:#2980b9;color:#fff;cursor:pointer;white-space:nowrap">&#128202; SICC</button>
+      <select id="sicc-scatter-col-sel" style="font-size:11px;padding:4px 6px;border:1px solid #bdc3c7;border-radius:3px;background:#f8f9fa;color:#2c3e50" onchange="_onSiccSelChange()"></select>
     </div>
-    <div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-      <div style="display:flex;gap:4px">
-        <button class="wfr-btn" onclick="selAll()">Select All Wafers</button>
-        <button class="wfr-btn" onclick="clrAll()">Clear Selection</button>
-      </div>
-      <div style="display:flex;gap:4px">
-        <button class="wfr-btn" onclick="_toggleSiccChart('sicc-hist-section')" style="font-size:13px" title="Toggle Distribution histogram">&#128202; Dist</button>
-        <button class="wfr-btn" onclick="_toggleSiccChart('sicc-upm-section')" style="font-size:13px" title="Toggle UPM distribution">&#128200; UPM</button>
-      </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button id="sicc-xy-cdyn-btn" onclick="_setSiccScatterMode('cdyn')" style="padding:7px 14px;font-size:13px;font-weight:bold;border:2px solid #27ae60;border-radius:5px;background:#ecf0f1;color:#27ae60;cursor:pointer;white-space:nowrap">&#128200; CDYN</button>
+      <select id="cdyn-scatter-col-sel" style="display:none;font-size:11px;padding:4px 6px;border:1px solid #bdc3c7;border-radius:3px;background:#f8f9fa;color:#2c3e50" onchange="render_upm_dist()"></select>
+    </div>
+    <div style="display:flex;gap:4px;margin-left:auto">
+      <button class="wfr-btn" onclick="selAll()">Select All Wafers</button>
+      <button class="wfr-btn" onclick="clrAll()">Clear Selection</button>
     </div>
   </div>
   <div id="upm-dist-panel" style="flex:1;overflow-y:auto;padding:8px 10px">
@@ -48,32 +37,6 @@ def tab_html() -> str:
         <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;min-width:600px">
           <thead id="sicc-stats-head"></thead><tbody id="sicc-stats-body"></tbody>
         </table>
-      </div>
-      <div style="margin:6px 0 8px;display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#555;padding:5px 10px;background:#f8f9fa;border:1px solid #dde;border-radius:4px">
-        <strong style="font-size:11px;color:#7f8c8d;margin-right:4px">Group by:</strong>
-        {_GROUP_BY_HTML_INLINE}
-      </div>
-      <div id="sicc-hist-section" style="display:none;margin-top:12px;padding:8px 10px;background:#fff;border:1px solid #d0d7de;border-radius:6px;max-width:95%;position:relative">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <h3 id="sicc-dist-title" style="font-size:13px;color:#2c3e50">Distribution</h3>
-          <button onclick="_toggleSiccChart('sicc-hist-section')" style="background:none;border:none;font-size:14px;cursor:pointer;color:#888">&#10005;</button>
-        </div>
-        <div class="xy-resize-wrap" style="position:relative">
-          <svg id="upm-hist-svg" height="297" style="width:100%;display:block;border:1px solid #eee;border-radius:4px;background:#fff"></svg>
-          <div class="xy-resize-handle" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,#aaa 50%);border-radius:0 0 4px 0;opacity:0.5"></div>
-        </div>
-        <div class="chart-note" id="upm-chart-note" style="font-size:13px;color:#7f8c8d;margin-top:4px"></div>
-        <div id="upm-stats-tbl" style="margin-top:8px"></div>
-      </div>
-      <div id="sicc-upm-section" style="display:none;margin-top:12px;padding:8px 10px;background:#fff;border:1px solid #d0d7de;border-radius:6px;max-width:80%;position:relative">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <h3 id="sicc-mini-upm-title" style="font-size:12px;color:#c0650a">UPM Distribution</h3>
-          <button onclick="_toggleSiccChart('sicc-upm-section')" style="background:none;border:none;font-size:14px;cursor:pointer;color:#888">&#10005;</button>
-        </div>
-        <div id="sicc-mini-upm-panel">
-          <svg id="sicc-mini-upm-svg" height="200" style="width:100%;display:block;border:1px solid #f5e0c3;border-radius:4px;background:#fffaf4"></svg>
-          <div id="sicc-mini-upm-note" style="font-size:9px;color:#c0650a;margin-top:2px"></div>
-        </div>
       </div>
     </div>
   </div>
@@ -103,15 +66,13 @@ var _siccSelCols=[];
 function _setSiccScatterMode(mode){
   _siccScatterMode=mode;
   var b1=document.getElementById('sicc-xy-sicc-btn'),b2=document.getElementById('sicc-xy-cdyn-btn');
+  var ssel=document.getElementById('sicc-scatter-col-sel');
   var csel=document.getElementById('cdyn-scatter-col-sel');
-  var cwrap=document.getElementById('sicc-col-checks-wrap');
   if(b1){if(mode==='sicc'){b1.style.background='#2980b9';b1.style.color='#fff';}else{b1.style.background='#ecf0f1';b1.style.color='#2980b9';}}
   if(b2){if(mode==='cdyn'){b2.style.background='#27ae60';b2.style.color='#fff';}else{b2.style.background='#ecf0f1';b2.style.color='#27ae60';}}
-  if(cwrap)cwrap.style.display=mode==='sicc'?'':'none';
-  if(csel){
-    if(mode==='cdyn'&&!csel._populated){csel._populated=true;CDYN_COLS.forEach(function(c){var o=document.createElement('option');o.value=c;o.textContent=c;csel.appendChild(o);});}
-    csel.style.display=mode==='cdyn'?'':'none';
-  }
+  if(ssel)ssel.style.display=mode==='sicc'?'':'none';
+  if(csel)csel.style.display=mode==='cdyn'?'':'none';
+  if(mode==='cdyn'&&csel&&!csel._populated){csel._populated=true;CDYN_COLS.forEach(function(c){var o=document.createElement('option');o.value=c;o.textContent=c;csel.appendChild(o);});}
   render_upm_dist();
 }
 function _toggleSiccChart(sid){
@@ -199,7 +160,9 @@ function _renderSiccStats(active,cols,isCdyn){
   var hd=document.getElementById('sicc-stats-head'),bd=document.getElementById('sicc-stats-body');
   if(!hd||!bd)return;
   var th='padding:4px 10px;background:#2c3e50;color:#fff;font-size:11px;white-space:nowrap';
-  hd.innerHTML='<tr><th style="'+th+';text-align:left">Parameter</th><th style="'+th+';text-align:right">N</th><th style="'+th+';text-align:right">Median</th><th style="'+th+';text-align:right">Target</th><th style="'+th+';text-align:right">Ratio</th><th style="'+th+';text-align:right">Min</th><th style="'+th+';text-align:right">Max</th><th style="'+th+';text-align:right">Mean</th><th style="'+th+';text-align:right">Std</th></tr>';
+  var gbGroups=XY_COLOR_BY.length?XY_COLOR_BY.join('/'):'None';
+  var gbCell='<td style="padding:3px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555">'+esc(gbGroups)+'</td>';
+  hd.innerHTML='<tr><th style="'+th+';text-align:left">Parameter</th><th style="'+th+';text-align:right">N</th><th style="'+th+';text-align:right">Median</th><th style="'+th+';text-align:right">Target</th><th style="'+th+';text-align:right">Ratio</th><th style="'+th+';text-align:right">Min</th><th style="'+th+';text-align:right">Max</th><th style="'+th+';text-align:right">Mean</th><th style="'+th+';text-align:right">Std</th><th style="'+th+';text-align:left">Group By</th></tr>';
   var body='';
   cols.forEach(function(col){
     var vals=active.map(function(i){return isCdyn?ROWS[i].cdyn[col]:ROWS[i].medians[col];}).filter(function(v){return v!=null&&!isNaN(v);});
@@ -218,7 +181,8 @@ function _renderSiccStats(active,cols,isCdyn){
       +'<td style="'+td+'">'+(mn!=null?mn.toFixed(4):'--')+'</td>'
       +'<td style="'+td+'">'+(mx!=null?mx.toFixed(4):'--')+'</td>'
       +'<td style="'+td+'">'+(mean!=null?mean.toFixed(4):'--')+'</td>'
-      +'<td style="'+td+'">'+(std!=null?std.toFixed(4):'--')+'</td></tr>';
+      +'<td style="'+td+'">'+(std!=null?std.toFixed(4):'--')+'</td>'
+      +gbCell+'</tr>';
   });
   bd.innerHTML=body;
 }
