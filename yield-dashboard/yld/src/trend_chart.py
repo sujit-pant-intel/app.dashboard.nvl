@@ -516,7 +516,7 @@ def load_csv(path: Path, log=None, grouping_mode: str = 'wafer') -> list[dict]:
         # Store [ibin, upm_pct] per die so JS can classify HP/LP correctly
         if upm950_s:
             try:
-                upm_pct = round(float(upm950_s) / _upm950_divisor * 100, 4)
+                upm_pct = round(float(upm950_s) / _upm950_divisor * 100, 2)
                 grp['upm_950'].append([ibin, upm_pct])
             except (ValueError, TypeError):
                 pass
@@ -1130,7 +1130,7 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
         'chart_name':   (cfg or {}).get('name', ''),
         'ff_name':      (cfg or {}).get('ff_name', 'SDS FF'),
         'ff_df_name':   (cfg or {}).get('ff_df_name', 'SDS FF+DF'),
-    }, ensure_ascii=False)
+    }, ensure_ascii=False, separators=(',', ':'))
 
     cfg_note = (f' &nbsp;|&nbsp; Config: <code>{Path(cfg_path).name}</code>'
                 if cfg_path else '')
@@ -1761,6 +1761,29 @@ function showTab(name) {{
   event.currentTarget.classList.add('active');
   _activeTab = name;
   resizeActiveChart();
+  // Lazy render: flush pending data for tabs not rendered on initial load
+  const runs = window._pendingRuns;
+  if (runs && (name === 'pareto-h' || name === 'pareto-v') && !_paretoRendered) {{
+    const pareto = buildParetoTraces(runs, 20);
+    Plotly.react('pareto-h-chart', pareto.traces, pareto.layout, {{ responsive:true }}).then(() => {{
+      document.getElementById('pareto-h-chart').on('plotly_click', function(d) {{
+        const pt = d.points[0];
+        const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
+        if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-h', window._lastFilteredRuns);
+      }});
+    }});
+    const paretoV = buildParetoVertTraces(runs, 20);
+    Plotly.react('pareto-v-chart', paretoV.traces, paretoV.layout, {{ responsive:true }}).then(() => {{
+      document.getElementById('pareto-v-chart').on('plotly_click', function(d) {{
+        const pt = d.points[0];
+        const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
+        if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-v', window._lastFilteredRuns);
+      }});
+    }});
+    updateParetoTable(paretoV.tableRows);
+    _paretoRendered = true;
+  }}
+  if (runs && name === 'dlcp') updateDlcp(runs);
 }}
 
 // ═══════════════════════════════════════ FILTER HELPERS ════════════════════
@@ -2393,28 +2416,34 @@ function rebuildCharts() {{
   }});
 
   const pareto = buildParetoTraces(filteredRuns, 20);
-  Plotly.react('pareto-h-chart', pareto.traces, pareto.layout, {{ responsive:true }}).then(() => {{
-    document.getElementById('pareto-h-chart').on('plotly_click', function(d) {{
-      const pt = d.points[0];
-      // pareto-h: x-axis is ibin label, extract ib number from it
-      const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
-      if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-h', window._lastFilteredRuns);
+  // Lazy: only render pareto/DLCP charts if their tab is currently visible
+  if (_activeTab === 'pareto-h' || _activeTab === 'pareto-v' || !_paretoRendered) {{
+    const pareto = buildParetoTraces(filteredRuns, 20);
+    Plotly.react('pareto-h-chart', pareto.traces, pareto.layout, {{ responsive:true }}).then(() => {{
+      document.getElementById('pareto-h-chart').on('plotly_click', function(d) {{
+        const pt = d.points[0];
+        const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
+        if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-h', window._lastFilteredRuns);
+      }});
     }});
-  }});
-
-  const paretoV = buildParetoVertTraces(filteredRuns, 20);
-  Plotly.react('pareto-v-chart', paretoV.traces, paretoV.layout, {{ responsive:true }}).then(() => {{
-    document.getElementById('pareto-v-chart').on('plotly_click', function(d) {{
-      const pt = d.points[0];
-      const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
-      if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-v', window._lastFilteredRuns);
+    const paretoV = buildParetoVertTraces(filteredRuns, 20);
+    Plotly.react('pareto-v-chart', paretoV.traces, paretoV.layout, {{ responsive:true }}).then(() => {{
+      document.getElementById('pareto-v-chart').on('plotly_click', function(d) {{
+        const pt = d.points[0];
+        const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
+        if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-v', window._lastFilteredRuns);
+      }});
     }});
-  }});
-  updateParetoTable(paretoV.tableRows);
+    updateParetoTable(paretoV.tableRows);
+    if (_activeTab === 'pareto-h' || _activeTab === 'pareto-v') _paretoRendered = true;
+  }}
+  if (_activeTab === 'dlcp') updateDlcp(filteredRuns);
 
+  // Always update table/stats (cheap DOM ops)
   updateTable(flat);
   updateStats(filteredRuns, flat);
-  updateDlcp(filteredRuns);
+  // Stash filtered runs so lazy tabs can render on first show
+  window._pendingRuns = filteredRuns;
 }}
 
 // ═══════════════════════════════════════ STICKY TOOLTIP (FF/FF+DF HOVER) ═
@@ -2984,6 +3013,7 @@ function importComments(input) {{
   reader.readAsText(file);
 }}
 
+var _paretoRendered = false;
 window.addEventListener('load', () => {{ rebuildCharts(); initParetoComments(); resizeAllTables(); }});
 
 // Listen to interval radio changes

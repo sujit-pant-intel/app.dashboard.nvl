@@ -25,8 +25,11 @@ def build_index(base_dir: Path) -> Path:
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
+    # Derive UNC path from base_dir (works for both yield and trend dirs)
+    unc_reports = str(base_dir / "reports") if str(base_dir).startswith("\\\\") else _UNC_REPORTS
+
     files = sorted(
-        (f for f in reports_dir.glob("Yield_Report_*.html")
+        (f for f in reports_dir.glob("*.html")
          if not f.name.startswith("index")),
         key=lambda f: f.name,   # YYYYMMDD_HHMMSS in name → lexicographic = chronological
         reverse=True,
@@ -47,7 +50,7 @@ def build_index(base_dir: Path) -> Path:
         except OSError:
             sz    = "–"
             mtime = "–"
-        unc   = "file:////" + _UNC_REPORTS.replace("\\", "/").lstrip("/") + "/" + f.name
+        unc   = "file:////" + unc_reports.replace("\\", "/").lstrip("/") + "/" + f.name
         badge = '<span class="badge">latest</span>' if i == 0 else ""
         rows += (f'\n      <tr data-n="{f.name}">'
                  f'<td class="mono"><a href="{unc}" target="_blank">{f.name}</a> {badge}</td>'
@@ -104,7 +107,7 @@ def build_index(base_dir: Path) -> Path:
       <li><strong style="color:var(--fg)">Wrong browser</strong> — use <strong>Microsoft Edge</strong> (Chrome blocks UNC file:// links).</li>
       <li><strong style="color:var(--fg)">Link silent / nothing happens</strong> — paste the path below directly into Windows Explorer address bar.</li>
     </ul>
-    <code style="color:var(--acc);font-size:11px">{_UNC_REPORTS}</code>
+    <code style="color:var(--acc);font-size:11px">{unc_reports}</code>
   </div>
 
   <div class="card">

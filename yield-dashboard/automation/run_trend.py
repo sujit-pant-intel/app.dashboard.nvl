@@ -182,6 +182,64 @@ def _find_product_config() -> str:
     return str(candidates[0]) if candidates else ""
 
 
+def _find_product_config_for(prefix: str) -> str:
+    """Return the product config JSON path matching the given devrevstep prefix."""
+    candidates = sorted(_PROD_CFG_DIR.glob("*.json"))
+    key = prefix.upper()
+    for c in candidates:
+        if c.name.upper().startswith(key):
+            return str(c)
+    # Fallback: same logic as original _find_product_config
+    return _find_product_config()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Split CSV by devrevstep  (mirrors manage_trend.py logic)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Maps devrevstep prefix → output filename stem
+_DEVREVSTEP_SPLITS = {
+    "8PF6CV": "NVL816-Yield-Trend-Report",
+    "8PF5CV": "NVL816-BLLC-Yield-Trend-Report",
+}
+
+
+def _split_csv_by_devrevstep(src_csv: Path, out_dir: Path, ts: str) -> dict:
+    """Split src_csv by devrevstep prefix. Returns {prefix: Path} for each
+    product that has rows. Only prefixes in _DEVREVSTEP_SPLITS are kept."""
+    import csv as _csv
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    writers: dict = {}
+    handles: dict = {}
+    out_paths: dict = {}
+    try:
+        with open(src_csv, newline="", encoding="utf-8", errors="replace") as fh:
+            reader = _csv.DictReader(fh)
+            fieldnames = reader.fieldnames or []
+            for row in reader:
+                drs = next(
+                    (v for k, v in row.items()
+                     if k.strip().lower().startswith("devrevstep") and v),
+                    "",
+                )
+                prefix = drs.strip()[:6].upper()
+                if prefix not in _DEVREVSTEP_SPLITS:
+                    continue
+                if prefix not in writers:
+                    fname = f"{_DEVREVSTEP_SPLITS[prefix]}-{ts}.csv"
+                    p = out_dir / fname
+                    out_paths[prefix] = p
+                    handles[prefix] = open(p, "w", newline="", encoding="utf-8")
+                    writers[prefix] = _csv.DictWriter(handles[prefix], fieldnames=fieldnames)
+                    writers[prefix].writeheader()
+                writers[prefix].writerow(row)
+    finally:
+        for h in handles.values():
+            h.close()
+    return out_paths
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Run trend_chart.py
 # ─────────────────────────────────────────────────────────────────────────────
@@ -366,36 +424,72 @@ def main() -> None:
         else:
             csv_path = raw_path  # dry-run: path is fictitious, that's fine
 
-        # ── 3. Run trend_chart.py ───────────────────────────────────────────
+        # ── 2b. Split CSV by devrevstep ─────────────────────────────
+        _log("\nSplitting CSV by devrevstep (" + ", ".join(_DEVREVSTEP_SPLITS) + ")...")
+        if not args.dry_run:
+            split_map = _split_csv_by_devrevstep(csv_path, data_dir, ts_label)
+            if not split_map:
+                _log("ERROR: No matching devrevstep rows found — aborting.")
+                sys.exit(1)
+            for _pfx, _sp in split_map.items():
+                _log(f"  {_pfx} -> {_sp.name}  ({_sp.stat().st_size:,} bytes)")
+            try:
+                csv_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        else:
+            split_map = {pfx: data_dir / (stem + "-" + ts_label + ".csv")
+                         for pfx, stem in _DEVREVSTEP_SPLITS.items()}
+
+        # ── 3. Run trend_chart.py once per product ───────────────────
         if not args.dry_run:
             trend_dir.mkdir(parents=True, exist_ok=True)
 
-        out_html    = trend_dir / f"NVL816-BLLC_yield_trend_{ts_label}.html"
-        latest_html = trend_dir / "NVL816-BLLC_yield_trend_latest.html"
+        generated = []
+        for _pfx, _csv_file in split_map.items():
+            _out_html = trend_dir / (_csv_file.stem + ".html")
+            _cfg = _find_product_config_for(_pfx)
+            if _cfg:
+                _log("[" + _pfx + "] Product config: " + Path(_cfg).name)
+            _log("[" + _pfx + "] Running trend_chart.py -> " + _out_html.name)
+            _ok = run_trend_chart(_csv_file, _out_html, args.interval, _cfg, args.dry_run)
+            generated.append((_out_html, _ok))
+            _log("  " + ("OK" if _ok else "FAIL") + " " + _pfx)
 
-        cfg_path = _find_product_config()
-        if cfg_path:
-            _log(f"\nProduct config: {Path(cfg_path).name}")
+        # ── 3b. Compress split input CSVs ────────────────────────────
+        if not args.dry_run:
+            for _pfx, _csv_file in split_map.items():
+                if not _csv_file.exists():
+                    continue
+                try:
+                    if _7Z_EXE.exists():
+                        subprocess.run(
+                            [str(_7Z_EXE), "a", str(_csv_file.with_suffix(".7z")), str(_csv_file)],
+                            capture_output=True, check=False,
+                        )
+                        _csv_file.unlink(missing_ok=True)
+                        _log("  Compressed: " + _csv_file.stem + ".7z")
+                    else:
+                        import zipfile as _zf
+                        zpath = _csv_file.with_suffix(".zip")
+                        with _zf.ZipFile(zpath, "w", _zf.ZIP_DEFLATED) as _z:
+                            _z.write(_csv_file, _csv_file.name)
+                        _csv_file.unlink(missing_ok=True)
+                        _log("  Compressed: " + _csv_file.stem + ".zip")
+                except Exception as _cx:
+                    _log("  WARNING: compression failed for " + _csv_file.name + ": " + str(_cx))
 
-        _log(f"\nRunning trend_chart.py → {out_html.name}")
-        ok = run_trend_chart(csv_path, out_html, args.interval, cfg_path, args.dry_run)
+        # ── 3c. Regenerate index.html ─────────────────────────────────
+        try:
+            import importlib.util as _ilu
+            _spec = _ilu.spec_from_file_location("_gi", _HERE / "generate_index.py")
+            _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
+            _gi.build_index(base_dir)
+            _log("  Index updated -> " + str(trend_dir / "index.html"))
+        except Exception as _idx_e:
+            _log("  WARNING: index update failed: " + str(_idx_e))
 
-        if not args.dry_run and ok and out_html.exists():
-            shutil.copy2(str(out_html), str(latest_html))
-            _log(f"  Latest: {latest_html.name}  ({out_html.stat().st_size:,} bytes)")
-
-        # ── 3b. Regenerate index.html ───────────────────────────────────────
-        if not args.dry_run and ok:
-            try:
-                import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "generate_index.py")
-                _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-                _gi.build_index(base_dir)
-                _log(f"  Index updated → {trend_dir / 'index.html'}")
-            except Exception as _idx_e:
-                _log(f"  WARNING: index update failed: {_idx_e}")
-
-        # ── 4. Send email ───────────────────────────────────────────────────
+        # ── 4. Send combined email ───────────────────────────────────
         email_cfg: dict = {}
         if _EMAIL_CFG.exists():
             try:
@@ -407,25 +501,30 @@ def main() -> None:
                     or email_cfg.get("email_to")
                     or _EMAIL_TO)
 
-        subject = f"NVL816-BLLC Yield Trend Report {ts_label}"
-        body    = _build_email_body(run_ts, out_html if (ok and not args.dry_run) else Path(""), args.interval)
-
+        att_tmp     = Path(tempfile.mkdtemp(prefix="nvl_att_"))
         attachments = []
-        if ok and not args.dry_run and out_html.exists():
-            att_tmp  = Path(tempfile.mkdtemp(prefix="nvl_att_"))
-            att_file = att_tmp / out_html.name
-            shutil.copy2(str(out_html), str(att_file))
-            attachments = [str(att_file)]
+        for _out_html, _ok in generated:
+            if _ok and not args.dry_run and _out_html.exists():
+                _att = att_tmp / _out_html.name
+                shutil.copy2(str(_out_html), str(_att))
+                attachments.append(str(_att))
 
-        _log(f"\nRecipient: {email_to}")
+        n_ok    = sum(1 for _, ok in generated if ok)
+        n_fail  = len(generated) - n_ok
+        subject = "NVL816 Yield Trend Reports " + ts_label + " (" + str(n_ok) + " chart(s))"
+        first_ok = next((h for h, ok in generated if ok and not args.dry_run and h.exists()), Path(""))
+        body     = _build_email_body(run_ts, first_ok, args.interval)
+
+        _log("\nRecipient: " + email_to)
         send_email(to=email_to, subject=subject, body_html=body,
                    dry_run=args.dry_run, attachments=attachments)
 
         _log("\n" + "=" * 65)
-        _log(f"Trend report : {out_html}")
-        _log(f"Latest       : {latest_html}")
+        for _out_html, _ok in generated:
+            _log("  " + ("OK" if _ok else "FAIL") + " " + _out_html.name)
+        if n_fail:
+            _log("  " + str(n_fail) + " chart(s) failed.")
         _log("=" * 65)
-
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
