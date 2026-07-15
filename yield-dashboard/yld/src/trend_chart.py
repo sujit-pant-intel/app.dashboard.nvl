@@ -513,8 +513,9 @@ def load_csv(path: Path, log=None, grouping_mode: str = 'wafer') -> list[dict]:
                     ib_mod[fbin][bdesc] = ib_mod[fbin].get(bdesc, 0) + cnt
             except (ValueError, TypeError):
                 pass
-        # Store [ibin, upm_pct] per die so JS can classify HP/LP correctly
-        if upm950_s:
+        # Store [ibin, upm_pct] per die for DLCP CDF — cap at 2000 per run to keep
+        # JS processing fast (sorting large arrays blocks the browser thread).
+        if upm950_s and len(grp['upm_950']) < 2000:
             try:
                 upm_pct = round(float(upm950_s) / _upm950_divisor * 100, 2)
                 grp['upm_950'].append([ibin, upm_pct])
