@@ -1867,7 +1867,11 @@ function showTab(name, btn) {{
       updateParetoTable(paretoV.tableRows);
       _paretoRendered = true;
     }}
-    if (runs && name === 'dlcp') updateDlcp(runs);
+    if (runs && name === 'dlcp') {{
+      updateDlcp(runs);
+      // Re-render CDF after browser layout completes (canvas needs non-zero clientWidth)
+      setTimeout(function() {{ if (_activeTab === 'dlcp') _dlcpRenderCdfT(); }}, 50);
+    }}
   }} catch(e) {{ console.warn('showTab lazy render error:', e); }}
 }}
 
