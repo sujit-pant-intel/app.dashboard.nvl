@@ -1814,10 +1814,6 @@ function ibinLabel(ib) {{
 }}
 
 // ═══════════════════════════════════════ TABS ══════════════════════════════
-  return n ? `iBin ${{ib}} \u2014 ${{n}}` : `iBin ${{ib}}`;
-}}
-
-// ═══════════════════════════════════════ TABS ══════════════════════════════
 let _activeTab = 'trend';
 let _firstLoad = true;  // skip redundant Plotly.react on initial load (static embed already shows chart)
 const _PLOTLY_CFG     = {{displayModeBar:true, scrollZoom:true}};
@@ -1838,16 +1834,10 @@ const _ro = new ResizeObserver(entries => {{
 }});
 document.querySelectorAll('.chart-wrap').forEach(el => _ro.observe(el));
 function showTab(name, btn) {{
-  try {{
-    if (window._diagLog) window._diagLog('showTab('+name+') called');
-  }} catch(x) {{}}
   document.querySelectorAll('#tab-content > div').forEach(d => d.style.display = 'none');
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   var tabEl = document.getElementById('tab-' + name);
-  if (!tabEl) {{
-    if (window._diagLog) window._diagLog('tab-'+name+' element NOT FOUND', true);
-    return;
-  }}
+  if (!tabEl) return;
   tabEl.style.display = 'flex';
   tabEl.style.flexDirection = 'column';
   // Use passed element (this) — avoids reliance on global event object (broken in Firefox)
