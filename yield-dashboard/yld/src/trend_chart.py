@@ -2972,20 +2972,22 @@ function _dlcpRenderCdfT(){{
   cv.width=W;cv.height=H;
   var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   var hp=[],lp=[],ff=[],df=[];
-  // Trend data: per-run dies = [[ib, upm_pct], ...]. Total count per lot is already
-  // aggregated so can be large; use a higher cap to avoid over-sampling IB 1-4 entries.
-  var MAX_CDF=500000,_cdfTot=0;
+  // Only count IB 1-4 dies for sampling budget (fail bins IB>4 don't contribute to CDF)
+  var MAX_CDF=80000,_cdfTot=0;
   var runs=window._dlcpRuns||[];
-  runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;_cdfTot+=run.dies.length;}});
+  runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
+    run.dies.forEach(function(d){{var ib=d[0];if(ib!=null&&ib>=1&&ib<=4)_cdfTot++;}});}});
   var _cdfStep=_cdfTot>MAX_CDF?Math.ceil(_cdfTot/MAX_CDF):1,_cdfI=0;
   runs.forEach(function(run){{
     if(!run||!run.dies)return;
     var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
     run.dies.forEach(function(d){{
+      var ib=d[0],up=d[1];
+      // Only sample and count IB 1-4 (the only bins that contribute to CDF)
+      if(ib==null||ib<1||ib>4||up==null)return;
       _cdfI++;if(_cdfI%_cdfStep!==0)return;
-      var ib=d[0],up=d[1];if(up==null)return;
       if(ib===1||ib===2){{ff.push(up);if(up>=_dlcpT)hp.push(up);else lp.push(up);}}
-      else if(ib===3||ib===4){{df.push(up);lp.push(up);}}
+      else{{df.push(up);lp.push(up);}}  // ib===3||ib===4
     }});
   }});
   hp.sort(function(a,b){{return a-b;}});lp.sort(function(a,b){{return a-b;}});
