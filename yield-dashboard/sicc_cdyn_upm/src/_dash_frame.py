@@ -159,8 +159,8 @@ def build_page_open(display_title: str, tabs_html: str) -> str:
     </div>
     <div class="wfr-tbl-wrap">
       <table class="ftbl">
-        <thead id="wfr-thead"></thead>
-        <tbody id="wfr-tbody"></tbody>
+        <thead id="filter-thead"></thead>
+        <tbody id="filter-tbody"></tbody>
       </table>
     </div>
   </div>

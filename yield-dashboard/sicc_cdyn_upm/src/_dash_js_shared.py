@@ -30,6 +30,30 @@ SHARED_JS = (
 window.toggleRow=toggleRow;window.selectAllRows=selectAllRows;window.clearRows=clearRows;
 window.selAll=selectAllRows;window.clrAll=clearRows;
 window.ftDdOpen=ftDdOpen;window.sortFilter=sortFilter;window.rFilter=rFilter;
+// exportCsv for the CSV button in the filter panel sidebar
+function exportCsv(){
+  var active=[];DATA.rows.forEach(function(r,i){if(SEL_WFR.has(i))active.push(i);});
+  active.sort(function(a,b){return a-b;});
+  var hdrs=['Program','Lot','Wafer'].concat(DATA.hasMaterial?['Material']:[])
+    .concat(DATA.hasUpmMed?['UPM_Med']:[]).concat(DATA.hasDate?['DateTested']:[])
+    .concat(['FF%','FFDF%','Total']);
+  var lines=[hdrs.join(',')];
+  active.forEach(function(i){
+    var r=DATA.rows[i];var tot=r.total||0;
+    var bc=r.binCounts||{};
+    var ff=(bc['1']||0)+(bc['2']||0),ffdf=ff+(bc['3']||0)+(bc['4']||0);
+    var row=[r.program||'',r.lot||'',r.wafer||''].concat(DATA.hasMaterial?[r.material||']':[])
+      .concat(DATA.hasUpmMed?(r.upmMed||[]).map(function(v){return v!=null?v:''}):[])
+      .concat(DATA.hasDate?[r.date||'']:[])
+      .concat([tot>0?(ff/tot*100).toFixed(1):0,tot>0?(ffdf/tot*100).toFixed(1):0,tot]);
+    lines.push(row.map(function(v){var s=String(v);return s.indexOf(',')>=0?'"'+s+'"':s;}).join(','));
+  });
+  var blob=new Blob([lines.join('\r\n')],{type:'text/csv'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='filter_rows.csv';document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},100);
+}
+window.exportCsv=exportCsv;
 '''
     + r'''
 var IS_CDYN=false;
