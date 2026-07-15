@@ -1869,8 +1869,26 @@ function showTab(name, btn) {{
     }}
     if (runs && name === 'dlcp') {{
       updateDlcp(runs);
-      // Re-render CDF after browser layout completes (canvas needs non-zero clientWidth)
-      setTimeout(function() {{ if (_activeTab === 'dlcp') _dlcpRenderCdfT(); }}, 50);
+      // Replicate bin_distribution_html pattern: set up ResizeObserver *after* tab is
+      // visible so the first callback fires with the real canvas dimensions.
+      // Also use double-rAF to guarantee at least one layout cycle has completed.
+      (function() {{
+        var _cv = document.getElementById('dlcp-cv-t');
+        if (!_cv) return;
+        // Double-rAF: first rAF queues before paint; second runs after layout
+        requestAnimationFrame(function() {{
+          requestAnimationFrame(function() {{
+            if (_activeTab === 'dlcp') _dlcpRenderCdfT();
+          }});
+        }});
+        // Also (re-)attach ResizeObserver so subsequent resizes keep CDF current
+        if (window.ResizeObserver && !_cv._dlcpRO2) {{
+          _cv._dlcpRO2 = true;
+          new ResizeObserver(function() {{
+            if (_activeTab === 'dlcp' && _cv.clientWidth > 0) _dlcpRenderCdfT();
+          }}).observe(_cv);
+        }}
+      }})();
     }}
   }} catch(e) {{ console.warn('showTab lazy render error:', e); }}
 }}
@@ -3238,13 +3256,8 @@ function _dlcpRenderHistT(){{
   ctx.save();ctx.translate(12,MT2+PH2/2);ctx.rotate(-Math.PI/2);ctx.fillText('Count',0,0);ctx.restore();
 }}
 
-(function(){{
-  var cv=document.getElementById('dlcp-cv-t');
-  if(cv&&window.ResizeObserver&&!cv._dlcpRO){{
-    cv._dlcpRO=true;
-    new ResizeObserver(function(){{if(_activeTab==='dlcp')requestAnimationFrame(_dlcpRenderCdfT);}}).observe(cv);
-  }}
-}})();
+// ResizeObserver for CDF canvas is now set up in showTab('dlcp') after the tab
+// is visible, so it fires with the real canvas dimensions (see showTab).
 
 // ═══════════════════════════════════════ PARETO COMMENTS ══════════════════
 const COMMENT_KEY = 'pareto_comments';
