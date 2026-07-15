@@ -1063,7 +1063,7 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
                   cfg: dict | None = None,
                   pareto_vertical_fig: 'go.Figure | None' = None,
                   pareto_table_rows: list | None = None,
-                  grouping_mode: str = 'wafer') -> None:
+                  grouping_mode: str = 'lot') -> None:
     """Generate a fully interactive self-contained HTML report.
 
     The report embeds all run data as JSON and uses JavaScript + Plotly.react()
@@ -1316,18 +1316,38 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
 
     pareto_table_html = _build_pareto_table(pareto_table_rows or [])
 
-    # ── Embed initial Plotly charts (SSR for fast first paint) ─────────────
+    # ── Plotly JS: embed inline (no CDN/network dependency) ─────────────────
+    _lib_dir = Path(__file__).resolve().parents[3] / 'shared' / 'library'
+    _plotly_js_files = sorted(_lib_dir.glob('plotly*.min.js')) if _lib_dir.exists() else []
+    if _plotly_js_files:
+        _plotly_js_content = _plotly_js_files[-1].read_text(encoding='utf-8')
+        _plotly_inline = f'<script>{_plotly_js_content}</script>'
+        _plotly_inline_at_end = ''
+        print(f'Using local Plotly: {_plotly_js_files[-1].name}')
+    else:
+        _plotly_inline = '<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>'
+        _plotly_inline_at_end = ''
+        print('Using Plotly CDN fallback')
+
+    # ── Static chart embeds ───────────────────────────────────────────────────
+    # Plotly 6.x injects "responsive":true into Plotly.newPlot configs.
+    # Plotly.js 3.x handles this correctly, so strip is just a safety measure.
     from plotly.offline import plot as _plotly_plot
-    trend_div  = _plotly_plot(trend_fig,  output_type='div',
-                              include_plotlyjs='cdn',
-                              config={'displayModeBar': True, 'scrollZoom': True})
-    pareto_div = _plotly_plot(pareto_fig, output_type='div',
-                              include_plotlyjs=False,
-                              config={'displayModeBar': True})
-    pareto_vert_div = (_plotly_plot(pareto_vertical_fig, output_type='div',
-                                    include_plotlyjs=False,
-                                    config={'displayModeBar': True})
-                       if pareto_vertical_fig is not None else '<p style="color:#888">Not available</p>')
+    import re as _re
+    def _make_div(fig, cfg=None):
+        d = _plotly_plot(fig, output_type='div', include_plotlyjs=False,
+                         config=cfg or {'displayModeBar': True})
+        d = _re.sub(r',?\s*"responsive"\s*:\s*true', '', d)
+        m = _re.search(r'<div id="([^"]+)"[^>]*class="plotly-graph-div"', d)
+        return d, (m.group(1) if m else '')
+
+    trend_div,      _trend_id    = _make_div(trend_fig,
+                                              {'displayModeBar': True, 'scrollZoom': True})
+    pareto_div,     _pareto_h_id = _make_div(pareto_fig)
+    if pareto_vertical_fig is not None:
+        pareto_vert_div, _pareto_v_id = _make_div(pareto_vertical_fig)
+    else:
+        pareto_vert_div, _pareto_v_id = '<p style="color:#888">Not available</p>', ''
 
     html = f'''<!doctype html>
 <html lang="en">
@@ -1335,6 +1355,7 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>iBin Fail vs Yield Trend — {csv_path.name}</title>
+{_plotly_inline}
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:Arial,sans-serif;background:#f0f3f7;display:flex;height:100vh;overflow:hidden}}
@@ -1435,7 +1456,7 @@ body{{font-family:Arial,sans-serif;background:#f0f3f7;display:flex;height:100vh;
   box-shadow:0 1px 4px rgba(0,0,0,.08);display:flex;flex-direction:column}}
 .chart-card h2{{font-size:15px;color:#2c3e50;margin-bottom:8px;flex-shrink:0}}
 .chart-wrap{{width:100%;height:520px;min-height:200px;min-width:300px;
-  resize:both;overflow:hidden;box-sizing:border-box;
+  position:relative;resize:both;overflow:hidden;box-sizing:border-box;
   border:1px solid #e0e0e0;border-radius:4px}}
 .chart-wrap > div{{width:100% !important;height:100% !important}}
 
@@ -1477,6 +1498,63 @@ th.resizable{{position:relative;overflow:visible}}
 th.resizable .col-resizer{{position:absolute;right:0;top:0;bottom:0;width:5px;
   cursor:col-resize;user-select:none;z-index:3;background:transparent}}
 th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
+
+/* ── DLCP (exact match to bin_distribution_html.py) ─────────────────── */
+.dlcp-ctrl{{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;padding:7px 12px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.1);flex-shrink:0}}
+.dlcp-sumbox{{background:transparent;border-radius:0;padding:0;box-shadow:none;flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:stretch}}
+.dlcp-sum-panel{{background:#fff;border-radius:6px;padding:8px 14px;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;flex-direction:column;gap:4px;min-width:0}}
+.dlcp-sum-panel-ttl{{font-size:15px;font-weight:bold;text-transform:uppercase;letter-spacing:.7px;color:#fff;background:#5d6d7e;border-radius:3px;padding:1px 8px;margin-bottom:4px;align-self:flex-start}}
+.dlcp-sumrow{{display:flex;gap:10px;flex-wrap:wrap;align-items:center}}
+.dlcp-sum-grp{{display:flex;flex-direction:column;padding:4px 14px;border-left:3px solid #dde;min-width:110px}}
+.dlcp-sum-grp.pass{{border-color:#2980b9}}.dlcp-sum-grp.marg{{border-color:#d4ac0d}}.dlcp-sum-grp.fail{{border-color:#c0392b}}
+.dlcp-sum-lbl{{font-size:17px;color:#000;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}}
+.dlcp-sum-val{{font-size:26px;font-weight:bold;color:#2c3e50}}.dlcp-sum-pct{{font-size:17px;color:#666;margin-left:4px}}
+.dlcp-sum-pct-big{{font-size:33px;font-weight:bold;line-height:1.1}}
+.dlcp-sum-sub{{font-size:15px;color:#aaa;margin-top:1px}}
+.dlcp-inner{{display:flex;gap:0;flex:1;min-height:0}}
+.dlcp-left{{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;overflow:hidden}}
+.dlcp-panel-hdr{{display:flex;align-items:center;gap:5px;flex-shrink:0}}
+.dlcp-pbtn{{background:#ecf0f1;border:1px solid #bdc3c7;border-radius:3px;font-size:11px;padding:1px 7px;cursor:pointer;color:#2c3e50;white-space:nowrap}}
+.dlcp-pbtn:hover{{background:#d5dbde}}
+.dlcp-flt-row input{{width:100%;box-sizing:border-box;font-size:11px;padding:2px 4px;border:1px solid #ccd;border-radius:2px}}
+.dlcp-sec-ttl{{font-size:11px;font-weight:bold;color:#5d6d7e;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}}
+.dlcp-tw{{overflow:auto;background:#fff;border-radius:6px;padding:6px;box-shadow:0 1px 4px rgba(0,0,0,.1);flex:1;min-height:0}}
+#dlcp-tbl-pane{{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}}
+.dlcp-t{{border-collapse:collapse;font-size:12px;white-space:nowrap;width:100%}}
+.dlcp-t th{{background:#2c3e50;color:#ecf0f1;padding:5px 10px;text-align:left;position:sticky;top:0;z-index:1}}
+.dlcp-t td{{padding:4px 10px;border-bottom:1px solid #eee}}
+.dlcp-t tr:nth-child(even) td{{background:#f7f9fc}}.dlcp-t tr:hover td{{background:#eaf3fb}}
+.dlcp-t tr.dlcp-rsel td{{background:#d0eaff!important;font-weight:bold}}
+.dlcp-t tr.dlcp-runsel td{{opacity:.4}}
+.dlcp-t tr{{cursor:pointer}}
+.dlcp-ddbtn{{background:none;border:none;color:#aed6f1;cursor:pointer;font-size:10px;padding:0 2px;vertical-align:middle;margin-left:3px}}
+.dlcp-ddbtn.on{{color:#f1c40f}}
+.dlcp-dd{{position:fixed;background:#fff;border:1px solid #aaa;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:30000;min-width:160px;max-width:260px;font-size:12px;color:#2c3e50}}
+.dlcp-dd-srch{{width:100%;box-sizing:border-box;padding:5px 8px;border:none;border-bottom:1px solid #ddd;font-size:12px;outline:none}}
+.dlcp-dd-acts{{display:flex;gap:4px;padding:4px 6px;border-bottom:1px solid #eee}}
+.dlcp-dd-acts button{{flex:1;padding:2px 6px;font-size:11px;cursor:pointer;border:1px solid #bdc3c7;background:#ecf0f1;border-radius:3px}}
+.dlcp-dd-list{{max-height:200px;overflow-y:auto;padding:4px 0}}
+.dlcp-dd-item{{display:flex;align-items:center;gap:6px;padding:3px 10px;cursor:pointer}}
+.dlcp-dd-item:hover{{background:#eaf0fb}}
+.dlcp-dd-foot{{padding:4px 8px;border-top:1px solid #eee;text-align:right}}
+.dlcp-dd-foot button{{padding:3px 12px;font-size:11px;cursor:pointer;background:#2c3e50;color:#fff;border:none;border-radius:3px}}
+.dlcp-splitter{{width:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#e8ecf0;border-left:1px solid #d0d8e8;border-right:1px solid #d0d8e8;transition:background .15s;user-select:none}}
+.dlcp-splitter:hover{{background:#c8d4e8}}
+.dlcp-split-arrow{{font-size:12px;color:#5d6d7e}}
+.dlcp-cw{{flex:1;background:#fff;border-radius:6px;padding:8px;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;flex-direction:column;min-width:0;overflow:hidden;margin-left:8px}}
+.dlcp-t .num{{text-align:right}}
+.dlcp-note{{font-size:10px;color:#666;background:#f8f9fa;border:1px solid #e4e4e4;border-radius:4px;padding:5px 10px;line-height:1.8;flex-shrink:0}}
+.dlcp-note b{{color:#444}}
+.upm-hist-overlay{{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:32000;align-items:center;justify-content:center}}
+.upm-hist-overlay.open{{display:flex}}
+.upm-hist-box{{background:#f0f2f5;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.4);width:800px;max-width:96vw;height:540px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;resize:both;min-width:420px;min-height:340px}}
+.upm-hist-drag{{cursor:move;background:#1f618d;color:#fff;padding:7px 14px;display:flex;align-items:center;justify-content:space-between;user-select:none;flex-shrink:0}}
+.upm-hist-body{{display:flex;flex-direction:column;flex:1;padding:10px;gap:8px;min-height:0;overflow:hidden}}
+.upm-hist-stats{{display:flex;flex-wrap:wrap;gap:6px;background:#fff;border-radius:6px;padding:8px 12px;box-shadow:0 1px 4px rgba(0,0,0,.1);flex-shrink:0}}
+.upm-hist-stat-grp{{display:flex;flex-direction:column;padding:3px 12px;border-left:3px solid #dde;min-width:100px}}
+.upm-hist-stat-lbl{{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.4px;font-weight:bold}}
+.upm-hist-stat-val{{font-size:14px;font-weight:bold;color:#2c3e50}}
+.upm-hist-cv-wrap{{flex:1;min-height:0;display:flex}}
 </style>
 </head>
 <body>
@@ -1593,11 +1671,11 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
 <!-- ═══ MAIN ═══ -->
 <div id="main">
   <div id="tabs">
-    <div class="tab active" onclick="showTab('trend')">&#128204; Trend</div>
-    <div class="tab" onclick="showTab('pareto-h')">&#128202; Pareto (horizontal)</div>
-    <div class="tab" onclick="showTab('pareto-v')">&#128202; Pareto (by bin)</div>
-    <div class="tab" onclick="showTab('table')">&#128209; Run Table</div>
-    <div class="tab" onclick="showTab('dlcp')">&#9889; DLCP</div>
+    <div class="tab active" onclick="showTab('trend',this)">&#128204; Trend</div>
+    <div class="tab" onclick="showTab('pareto-h',this)">&#128202; Pareto (horizontal)</div>
+    <div class="tab" onclick="showTab('pareto-v',this)">&#128202; Pareto (by bin)</div>
+    <div class="tab" onclick="showTab('table',this)">&#128209; Run Table</div>
+    <div class="tab" onclick="showTab('dlcp',this)">&#9889; DLCP</div>
   </div>
   <div id="tab-content">
     <div id="tab-trend">
@@ -1659,64 +1737,61 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
         </table>
       </div>
     </div>
-    <div id="tab-dlcp" style="display:none">
-      <div class="chart-card" style="overflow:hidden;flex:1;padding-bottom:8px">
-        <!-- Toolbar -->
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;flex-wrap:wrap;flex-shrink:0">
-          <h2 style="margin:0">&#9889; DLCP Split Analysis — UPM 107 @ 950 mV</h2>
-          <label style="font-size:13px;font-weight:600;margin-left:auto">Threshold:
-            <input id="dlcp-thresh" type="range" min="70" max="100" step="0.5" value="92.5"
-              style="vertical-align:middle;width:140px" oninput="dlcpThreshChanged(this.value)">
-            <span id="dlcp-thresh-val" style="min-width:38px;display:inline-block">92.5%</span>
-          </label>
-          <button onclick="dlcpDownloadCsv()"
-            style="font-size:12px;padding:4px 12px;background:#27ae60;color:white;
-                   border:none;border-radius:4px;cursor:pointer" title="Download table as CSV">&#8659; CSV</button>
-        </div>
-        <div style="font-size:11px;color:#666;margin-bottom:6px;flex-shrink:0">
-          HP = iBin 1-2 &amp; UPM&ge;threshold &nbsp;|&nbsp; LP = iBin 1-4 &amp; UPM&lt;threshold &nbsp;|&nbsp; Fail = iBin &gt;4
-        </div>
-        <div id="dlcp-no-data" style="display:none;color:#c0392b;font-weight:bold;margin:24px 0">
-          No UPM 107 @ 950 mV data found in this CSV.
-        </div>
-        <!-- Vertical split: CDF top, drag handle, table bottom -->
-        <div id="dlcp-content" style="display:flex;flex-direction:column;overflow:hidden">
-          <!-- Top: CDF panel -->
-          <div id="dlcp-cdf-panel" style="height:300px;min-height:80px;overflow:hidden;position:relative">
-            <div style="font-size:11px;color:#666;position:absolute;top:2px;left:4px;z-index:1;pointer-events:none">
-              CDF — <span style="color:#2980b9;font-weight:bold">HP (blue)</span> vs
-              <span style="color:#e67e22;font-weight:bold">LP (orange)</span> | red dashed = threshold
-            </div>
-            <canvas id="dlcp-cdf" style="display:block;width:100%;height:100%;border:1px solid #ddd;border-radius:4px;background:#fafafa"></canvas>
+    <div id="tab-dlcp" style="display:none;flex-direction:column;padding:8px;gap:6px;overflow:hidden">
+      <div class="dlcp-ctrl">
+        <label style="font-weight:bold">UPM Threshold:</label>
+        <input type="range" id="dlcp-sl" min="70" max="100" step="0.5" value="92.5" style="width:180px" oninput="dlcpSliderT()">
+        <input type="number" id="dlcp-tv-inp" min="70" max="100" step="0.5" value="92.5" style="width:64px;font-size:13px;padding:2px 4px;border:1px solid #aac;border-radius:3px;text-align:right" oninput="dlcpTxtT(this.value)" onchange="dlcpTxtT(this.value)">
+        <span style="color:#1a5276;font-size:13px">%</span>
+        <button onclick="dlcpOpenHistT()" style="margin-left:12px;padding:4px 16px;font-size:13px;font-weight:bold;background:linear-gradient(135deg,#1a5276,#2980b9);color:#fff;border:none;border-radius:5px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)">&#128202; UPM Distribution</button>
+        <span id="dlcp-no-data-msg" style="color:#c0392b;font-weight:bold;display:none">No UPM die data available.</span>
+      </div>
+      <div class="dlcp-sumbox" id="dlcp-sumbox"></div>
+      <div class="dlcp-inner" style="flex:1;min-height:300px">
+        <div class="dlcp-left" id="dlcp-left-pane">
+          <div class="dlcp-panel-hdr">
+            <span class="dlcp-sec-ttl" style="flex:1">Per-Wafer Detail</span>
+            <button class="dlcp-pbtn" onclick="dlcpSelAllT()">&#9745; All</button>
+            <button class="dlcp-pbtn" onclick="dlcpSelNoneT()">&#9746; None</button>
+            <button class="dlcp-pbtn" onclick="dlcpDownloadCsvT()">&#8681; CSV</button>
+            <button class="dlcp-pbtn" onclick="dlcpClearFiltersT()">&#10005; Filters</button>
           </div>
-          <!-- Row drag handle -->
-          <div id="dlcp-divider"
-            style="height:8px;background:#dde3ea;cursor:row-resize;flex-shrink:0;
-                   display:flex;align-items:center;justify-content:center;user-select:none"
-            title="Drag to resize panels">
-            <div style="height:2px;width:60px;background:#95a5a6;border-radius:1px;pointer-events:none"></div>
+          <div id="dlcp-tbl-pane"><div class="dlcp-tw"><table class="dlcp-t"><thead>
+            <tr>
+              <th rowspan="2">Lot <button class="dlcp-ddbtn" id="dlcp-dd-btn-0" onclick="event.stopPropagation();dlcpDdOpenT(0,this)">&#9660;</button></th>
+              <th rowspan="2">Wafer <button class="dlcp-ddbtn" id="dlcp-dd-btn-1" onclick="event.stopPropagation();dlcpDdOpenT(1,this)">&#9660;</button></th>
+              <th rowspan="2">Material <button class="dlcp-ddbtn" id="dlcp-dd-btn-2" onclick="event.stopPropagation();dlcpDdOpenT(2,this)">&#9660;</button></th>
+              <th class="num" rowspan="2">Total</th><th class="num" rowspan="2">Med UPM%</th>
+              <th class="num" colspan="2" style="background:#1a5276">HP (IB1/2, UPM&ge;thr)</th>
+              <th class="num" colspan="2" style="background:#7d6608">LP (IB1-4, below thr)</th>
+              <th class="num" colspan="2" style="background:#7b241c">Fail (IB&gt;4)</th>
+              <th class="num" colspan="2" style="background:#1a7a4a">FF+DF (IB1-4)</th>
+              <th class="num" colspan="2" style="background:#1e8449">FF (IB 1,2)</th>
+              <th class="num" colspan="2" style="background:#117a65">DF (IB 3-4)</th>
+              <th class="num" colspan="2" style="background:#7d3c98">ATOM DF (IB 3)</th>
+              <th class="num" colspan="2" style="background:#922b21">CORE DF (IB 4)</th></tr>
+            <tr>
+              <th class="num" style="background:#1a5276">#</th><th class="num" style="background:#1a5276">% of IB1-4</th>
+              <th class="num" style="background:#7d6608">#</th><th class="num" style="background:#7d6608">% of IB1-4</th>
+              <th class="num" style="background:#7b241c">#</th><th class="num" style="background:#7b241c">% of total</th>
+              <th class="num" style="background:#1a7a4a">#</th><th class="num" style="background:#1a7a4a">% of total</th>
+              <th class="num" style="background:#1e8449">#</th><th class="num" style="background:#1e8449">% of IB1-4</th>
+              <th class="num" style="background:#117a65">#</th><th class="num" style="background:#117a65">% of IB1-4</th>
+              <th class="num" style="background:#7d3c98">#</th><th class="num" style="background:#7d3c98">% of IB1-4</th>
+              <th class="num" style="background:#922b21">#</th><th class="num" style="background:#922b21">% of IB1-4</th>
+            </tr>
+          </thead><tbody id="dlcp-flt-row-t"></tbody><tbody id="dlcp-tb-t"></tbody></table></div></div>
+          <div class="dlcp-note" id="dlcp-note-t"></div>
+        </div>
+        <div class="dlcp-splitter" id="dlcp-splitter-t" onclick="dlcpSplitterToggleT()">
+          <span class="dlcp-split-arrow" id="dlcp-split-arrow-t">&#9654;</span>
+        </div>
+        <div class="dlcp-cw" id="dlcp-right-pane-t">
+          <div class="dlcp-panel-hdr" style="margin-bottom:4px">
+            <div style="font-size:11px;color:#666;flex:1">CDF of UPM% &mdash; HP/LP (solid) | FF IB1,2 / DF IB3,4 (dashed) | red dashed = threshold</div>
+            <button class="dlcp-pbtn" onclick="dlcpSavePngT()">&#128247; PNG</button>
           </div>
-          <!-- Bottom: table panel -->
-          <div id="dlcp-table-panel" style="height:280px;min-height:80px;overflow:auto;flex-shrink:0">
-            <table id="dlcp-table" style="font-size:12px;border-collapse:collapse;min-width:700px;width:100%">
-              <thead>
-                <tr id="dlcp-thead" style="background:#2c3e50;color:white;position:sticky;top:0;z-index:1">
-                  <th style="padding:5px 8px;text-align:left">Lot</th>
-                  <th style="padding:5px 8px;text-align:left">Wafer</th>
-                  <th style="padding:5px 8px;text-align:left">Material</th>
-                  <th style="padding:5px 8px;text-align:right">Total</th>
-                  <th style="padding:5px 8px;text-align:right">Med UPM%</th>
-                  <th style="padding:5px 8px;text-align:right;color:#74b9ff">HP#</th>
-                  <th style="padding:5px 8px;text-align:right;color:#74b9ff">HP%</th>
-                  <th style="padding:5px 8px;text-align:right;color:#fdcb6e">LP#</th>
-                  <th style="padding:5px 8px;text-align:right;color:#fdcb6e">LP%</th>
-                  <th style="padding:5px 8px;text-align:right;color:#ff7675">Fail#</th>
-                  <th style="padding:5px 8px;text-align:right;color:#ff7675">Fail%</th>
-                </tr>
-              </thead>
-              <tbody id="dlcp-tbody"></tbody>
-            </table>
-          </div>
+          <canvas id="dlcp-cv-t" style="display:block;width:100%;flex:1;border:1px solid #dde;border-radius:4px;min-height:180px"></canvas>
         </div>
       </div>
     </div>
@@ -1724,6 +1799,23 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
 <script>
 // ═══════════════════════════════════════ DATA ═══════════════════════════════
 const DATA = {data_js};
+// Plot element IDs — static embeds use UUIDs; JS targets those same elements
+const _TREND_EL   = '{_trend_id}'   || 'trend-chart';
+const _PARETO_H_EL= '{_pareto_h_id}'|| 'pareto-h-chart';
+const _PARETO_V_EL= '{_pareto_v_id}'|| 'pareto-v-chart';
+const PASS_BINS  = new Set(DATA.pass_bins);
+const FF_BINS    = new Set(DATA.ff_bins);
+const FF_DF_BINS = new Set(DATA.ff_df_bins);
+const PALETTE    = DATA.palette;
+
+function ibinLabel(ib) {{
+  const n = DATA.ibin_names[String(ib)];
+  return n ? `iBin ${{ib}} \u2014 ${{n}}` : `iBin ${{ib}}`;
+}}
+
+// ═══════════════════════════════════════ TABS ══════════════════════════════
+const _PARETO_H_EL= '{_pareto_h_id}'|| 'pareto-h-chart';
+const _PARETO_V_EL= '{_pareto_v_id}'|| 'pareto-v-chart';
 const PASS_BINS  = new Set(DATA.pass_bins);
 const FF_BINS    = new Set(DATA.ff_bins);
 const FF_DF_BINS = new Set(DATA.ff_df_bins);
@@ -1736,54 +1828,66 @@ function ibinLabel(ib) {{
 
 // ═══════════════════════════════════════ TABS ══════════════════════════════
 let _activeTab = 'trend';
+let _firstLoad = true;  // skip redundant Plotly.react on initial load (static embed already shows chart)
+const _PLOTLY_CFG     = {{displayModeBar:true, scrollZoom:true}};
+const _PLOTLY_CFG_STD = {{displayModeBar:true}};
 function resizeActiveChart() {{
-  const ids = {{'trend':'trend-chart','pareto-h':'pareto-h-chart','pareto-v':'pareto-v-chart'}};
+  if (typeof Plotly === 'undefined') return;
+  const ids = {{'trend':_TREND_EL,'pareto-h':_PARETO_H_EL,'pareto-v':_PARETO_V_EL}};
   const el = document.getElementById(ids[_activeTab]);
   if (el) Plotly.Plots.resize(el);
 }}
-window.addEventListener('resize', function() {{ resizeActiveChart(); drawDlcpCdf(_lastHpVals, _lastLpVals); }});
+window.addEventListener('resize', function() {{ resizeActiveChart(); if(_activeTab==='dlcp') requestAnimationFrame(_dlcpRenderCdfT); }});
 // ResizeObserver: fires when user drags the chart-wrap handle
 const _ro = new ResizeObserver(entries => {{
   for (const e of entries) {{
     const el = e.target;
-    if (el.querySelector('.plotly')) Plotly.Plots.resize(el);
-    if (el.id === 'dlcp-cdf-panel') drawDlcpCdf(_lastHpVals, _lastLpVals);
+    if (typeof Plotly !== 'undefined' && el.querySelector('.plotly')) Plotly.Plots.resize(el);
   }}
 }});
 document.querySelectorAll('.chart-wrap').forEach(el => _ro.observe(el));
-const _dlcpPanel = document.getElementById('dlcp-cdf-panel');
-if (_dlcpPanel) _ro.observe(_dlcpPanel);
-function showTab(name) {{
+function showTab(name, btn) {{
+  try {{
+    if (window._diagLog) window._diagLog('showTab('+name+') called');
+  }} catch(x) {{}}
   document.querySelectorAll('#tab-content > div').forEach(d => d.style.display = 'none');
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + name).style.display = 'flex';
-  document.getElementById('tab-' + name).style.flexDirection = 'column';
-  event.currentTarget.classList.add('active');
+  var tabEl = document.getElementById('tab-' + name);
+  if (!tabEl) {{
+    if (window._diagLog) window._diagLog('tab-'+name+' element NOT FOUND', true);
+    return;
+  }}
+  tabEl.style.display = 'flex';
+  tabEl.style.flexDirection = 'column';
+  // Use passed element (this) — avoids reliance on global event object (broken in Firefox)
+  if (btn) btn.classList.add('active');
   _activeTab = name;
   resizeActiveChart();
-  // Lazy render: flush pending data for tabs not rendered on initial load
-  const runs = window._pendingRuns;
-  if (runs && (name === 'pareto-h' || name === 'pareto-v') && !_paretoRendered) {{
-    const pareto = buildParetoTraces(runs, 20);
-    Plotly.react('pareto-h-chart', pareto.traces, pareto.layout, {{ responsive:true }}).then(() => {{
-      document.getElementById('pareto-h-chart').on('plotly_click', function(d) {{
-        const pt = d.points[0];
-        const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
-        if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-h', window._lastFilteredRuns);
+  // Lazy render — wrapped in try/catch so errors never block tab switching
+  try {{
+    const runs = window._pendingRuns;
+    if (runs && (name === 'pareto-h' || name === 'pareto-v') && !_paretoRendered) {{
+      const pareto = buildParetoTraces(runs, 20);
+      Plotly.react(_PARETO_H_EL, pareto.traces, pareto.layout, _PLOTLY_CFG_STD).then(() => {{
+        document.getElementById(_PARETO_H_EL).on('plotly_click', function(d) {{
+          const pt = d.points[0];
+          const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
+          if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-h', window._lastFilteredRuns);
+        }});
       }});
-    }});
-    const paretoV = buildParetoVertTraces(runs, 20);
-    Plotly.react('pareto-v-chart', paretoV.traces, paretoV.layout, {{ responsive:true }}).then(() => {{
-      document.getElementById('pareto-v-chart').on('plotly_click', function(d) {{
-        const pt = d.points[0];
-        const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
-        if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-v', window._lastFilteredRuns);
+      const paretoV = buildParetoVertTraces(runs, 20);
+      Plotly.react(_PARETO_V_EL, paretoV.traces, paretoV.layout, _PLOTLY_CFG_STD).then(() => {{
+        document.getElementById(_PARETO_V_EL).on('plotly_click', function(d) {{
+          const pt = d.points[0];
+          const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
+          if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-v', window._lastFilteredRuns);
+        }});
       }});
-    }});
-    updateParetoTable(paretoV.tableRows);
-    _paretoRendered = true;
-  }}
-  if (runs && name === 'dlcp') updateDlcp(runs);
+      updateParetoTable(paretoV.tableRows);
+      _paretoRendered = true;
+    }}
+    if (runs && name === 'dlcp') updateDlcp(runs);
+  }} catch(e) {{ console.warn('showTab lazy render error:', e); }}
 }}
 
 // ═══════════════════════════════════════ FILTER HELPERS ════════════════════
@@ -2310,20 +2414,21 @@ function updateParetoTable(tableRows) {{
 // ═══════════════════════════════════════ TABLE + STATS ═════════════════════
 function updateTable(flat) {{
   const tbody = document.getElementById('run-table-body');
-  tbody.innerHTML = '';
-  if (!flat || !flat.length) return;
+  if (!flat || !flat.length) {{ tbody.innerHTML = ''; return; }}
+  // Build all rows at once (single innerHTML = much faster than 579 insertAdjacentHTML)
+  const rows = [];
   for (const {{ period, run, stats }} of flat) {{
     const top5 = Object.entries(stats.failIbins)
       .sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([ib, p]) => `iBin ${{ib}}: ${{parseFloat(p).toFixed(1)}}%`).join(' | ');
     const ffCls = stats.ffYield >= 80 ? 'yld-ok' : (stats.ffYield >= 50 ? 'yld-mid' : 'yld-low');
-    tbody.insertAdjacentHTML('beforeend',
-      `<tr><td>${{period}}</td><td>${{run.date}}</td><td>${{run.lot}}</td><td>${{run.wafer}}</td>
-       <td>${{run.program}}</td>
-       <td class="${{ffCls}}" style="text-align:right">${{stats.ffYield.toFixed(1)}}%</td>
-       <td style="text-align:right">${{stats.ffDfYield.toFixed(1)}}%</td>
-       <td style="font-size:11px;color:#555">${{top5}}</td></tr>`);
+    rows.push(`<tr><td>${{period}}</td><td>${{run.date}}</td><td>${{run.lot}}</td><td>${{run.wafer}}</td>`
+      + `<td>${{run.program}}</td>`
+      + `<td class="${{ffCls}}" style="text-align:right">${{stats.ffYield.toFixed(1)}}%</td>`
+      + `<td style="text-align:right">${{stats.ffDfYield.toFixed(1)}}%</td>`
+      + `<td style="font-size:11px;color:#555">${{top5}}</td></tr>`);
   }}
+  tbody.innerHTML = rows.join('');
   const runTbl = document.getElementById('run-table');
   if (runTbl) resizableCols(runTbl);
 }}
@@ -2392,43 +2497,47 @@ function rebuildCharts() {{
   const {{ traces, layout, flat }} = buildTrendTraces(groups, topN, thresh, groupMode);
   window._lastFlat = flat;
 
-  Plotly.react('trend-chart', traces, layout, {{ responsive:true }}).then(() => {{
-    document.getElementById('trend-chart').on('plotly_click', function(d) {{
-      const pt = d.points[0];
-      // Bar traces: fail ibins
-      if (pt.data.type === 'bar') {{
-        const ibNum = parseInt((pt.data.name || '').match(/\\d+/)?.[0]);
-        if (!isNaN(ibNum)) {{
-          const entry = (window._lastFlat || [])[pt.pointIndex];
-          const barRuns = entry ? (entry.run._sourceRuns || [entry.run]) : window._lastFilteredRuns;
-          showFbDrilldown(ibNum, barRuns, 'trend', window._lastFilteredRuns);
+  // Guard all Plotly calls — if CDN fails, tables/DLCP/tabs still work
+  if (typeof Plotly !== 'undefined') {{
+    if (!_firstLoad) {{
+      Plotly.react(_TREND_EL, traces, layout, _PLOTLY_CFG).then(() => {{
+      document.getElementById(_TREND_EL).on('plotly_click', function(d) {{
+        const pt = d.points[0];
+        if (pt.data.type === 'bar') {{
+          const ibNum = parseInt((pt.data.name || '').match(/\\d+/)?.[0]);
+          if (!isNaN(ibNum)) {{
+            const entry = (window._lastFlat || [])[pt.pointIndex];
+            const barRuns = entry ? (entry.run._sourceRuns || [entry.run]) : window._lastFilteredRuns;
+            showFbDrilldown(ibNum, barRuns, 'trend', window._lastFilteredRuns);
+          }}
+        }} else if (pt.data.type === 'scatter' && pt.data.hoverinfo === 'text') {{
+          const htArr = pt.data.hovertext;
+          const hoverText = Array.isArray(htArr) ? (htArr[pt.pointIndex] || '') : (htArr || '');
+          const ex = d.event ? d.event.pageX : (pt.xaxis ? pt.xaxis._offset : 200);
+          const ey = d.event ? d.event.pageY : 200;
+          if (hoverText) showStickyTooltip(hoverText, ex, ey);
         }}
-      }}
-      // Scatter traces: FF/FF+DF lines - show persistent tooltip for copy-paste
-      else if (pt.data.type === 'scatter' && pt.data.hoverinfo === 'text') {{
-        const htArr = pt.data.hovertext;
-        const hoverText = Array.isArray(htArr) ? (htArr[pt.pointIndex] || '') : (htArr || '');
-        const ex = d.event ? d.event.pageX : (pt.xaxis ? pt.xaxis._offset : 200);
-        const ey = d.event ? d.event.pageY : 200;
-        if (hoverText) showStickyTooltip(hoverText, ex, ey);
-      }}
+      }});
     }});
-  }});
+  }} else {{
+    // Plotly not loaded — show inline warning in the trend chart area
+    var tc = document.getElementById('trend-chart');
+    if (tc) tc.innerHTML = '<div style="padding:20px;color:#e74c3c;font-family:Arial;font-size:13px">&#9888; Plotly chart library failed to load.<br>Check shared/library/ path.</div>';
+  }}
 
   const pareto = buildParetoTraces(filteredRuns, 20);
   // Lazy: only render pareto/DLCP charts if their tab is currently visible
-  if (_activeTab === 'pareto-h' || _activeTab === 'pareto-v' || !_paretoRendered) {{
-    const pareto = buildParetoTraces(filteredRuns, 20);
-    Plotly.react('pareto-h-chart', pareto.traces, pareto.layout, {{ responsive:true }}).then(() => {{
-      document.getElementById('pareto-h-chart').on('plotly_click', function(d) {{
+  if ((typeof Plotly !== 'undefined') && !_firstLoad && (_activeTab === 'pareto-h' || _activeTab === 'pareto-v' || !_paretoRendered)) {{
+    Plotly.react(_PARETO_H_EL, pareto.traces, pareto.layout, _PLOTLY_CFG_STD).then(() => {{
+      document.getElementById(_PARETO_H_EL).on('plotly_click', function(d) {{
         const pt = d.points[0];
         const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
         if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-h', window._lastFilteredRuns);
       }});
     }});
     const paretoV = buildParetoVertTraces(filteredRuns, 20);
-    Plotly.react('pareto-v-chart', paretoV.traces, paretoV.layout, {{ responsive:true }}).then(() => {{
-      document.getElementById('pareto-v-chart').on('plotly_click', function(d) {{
+    Plotly.react(_PARETO_V_EL, paretoV.traces, paretoV.layout, _PLOTLY_CFG_STD).then(() => {{
+      document.getElementById(_PARETO_V_EL).on('plotly_click', function(d) {{
         const pt = d.points[0];
         const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
         if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-v', window._lastFilteredRuns);
@@ -2439,11 +2548,23 @@ function rebuildCharts() {{
   }}
   if (_activeTab === 'dlcp') updateDlcp(filteredRuns);
 
+  // On first load: skip heavy DOM/Plotly ops — static embed already shows chart.
+  // Only update stats (fast). Table + pareto charts render lazily on user action.
+  if (_firstLoad) {{
+    updateStats(filteredRuns, flat);
+    window._lastFilteredRuns = filteredRuns;
+    window._lastFlat = flat;
+    window._pendingRuns = filteredRuns;
+    _firstLoad = false;
+    return;
+  }}
+
   // Always update table/stats (cheap DOM ops)
   updateTable(flat);
   updateStats(filteredRuns, flat);
   // Stash filtered runs so lazy tabs can render on first show
   window._pendingRuns = filteredRuns;
+  _firstLoad = false;
 }}
 
 // ═══════════════════════════════════════ STICKY TOOLTIP (FF/FF+DF HOVER) ═
@@ -2655,288 +2776,490 @@ function showFbDrilldown(ibNum, runs, tabPrefix, selectedRuns) {{
   if (tbl) resizableCols(tbl);
 }}
 
-// ═══════════════════════════════════════ DLCP SPLIT ANALYSIS ═══════════════
-var _dlcpT = 92.5;  // threshold %
+// ═══════════════════════════════════════ DLCP SPLIT ANALYSIS (bin_distribution layout) ═══════
 
-function dlcpThreshChanged(v) {{
-  _dlcpT = parseFloat(v);
-  document.getElementById('dlcp-thresh-val').textContent = parseFloat(v).toFixed(1) + '%';
-  rebuildCharts();
-}}
+// ── State ──────────────────────────────────────────────────────────────────
+var _dlcpT = 92.5;
+var _dlcpDeselT = new Set();
+var _dlcpFltValsT = {{}};
+var _dlcpDdFltT = {{}};
+var _dlcpDdCurColT = -1;
+var _dlcpDdPendingT = null;
 
 function updateDlcp(runs) {{
-  const hasData = runs.some(r => r.dies && r.dies.length > 0);
-  document.getElementById('dlcp-no-data').style.display = hasData ? 'none' : '';
-  document.getElementById('dlcp-content').style.display = hasData ? '' : 'none';
-  if (!hasData) return;
-
-  const tbody = document.getElementById('dlcp-tbody');
-  tbody.innerHTML = '';
-  let totalHP = 0, totalLP = 0, totalFail = 0, totalAll = 0;
-  const allHpUpm = [], allLpUpm = [];
-
-  for (const run of runs) {{
-    const dies = run.dies || [];  // [[ibin, upm_pct], ...]
-    const binCounts = run.bin_counts || {{}};
-    let hp = 0, lp = 0;
-    const hpUpm = [], lpUpm = [], medArr = [];
-
-    for (const [ib, upm] of dies) {{
-      medArr.push(upm);
-      if ((ib === 1 || ib === 2) && upm >= _dlcpT) {{
-        hp++;  hpUpm.push(upm);
-      }} else if (ib >= 1 && ib <= 4) {{
-        lp++;  lpUpm.push(upm);
-      }}
-      // ib > 4 = fail — no UPM contribution to HP/LP
-    }}
-
-    // Count fail dies from bin_counts (iBin > pass threshold)
-    const fail = Object.entries(binCounts)
-      .filter(([ib]) => !PASS_BINS.has(parseInt(ib)))
-      .reduce((s, [, c]) => s + c, 0);
-
-    const total = run.total_dies || (hp + lp + fail) || 1;
-    medArr.sort((a, b) => a - b);
-    const medUpm = medArr.length ? medArr[Math.floor(medArr.length / 2)] : null;
-
-    totalHP   += hp;
-    totalLP   += lp;
-    totalFail += fail;
-    totalAll  += total;
-    allHpUpm.push(...hpUpm);
-    allLpUpm.push(...lpUpm);
-
-    const hpPct   = (hp   / total * 100).toFixed(1);
-    const lpPct   = (lp   / total * 100).toFixed(1);
-    const failPct = (fail / total * 100).toFixed(1);
-    const medStr  = medUpm !== null ? medUpm.toFixed(2) + '%' : '—';
-
-    tbody.insertAdjacentHTML('beforeend',
-      `<tr style="border-bottom:1px solid #eee">
-        <td style="padding:4px 8px">${{run.lot}}</td>
-        <td style="padding:4px 8px">${{run.wafer || '—'}}</td>
-        <td style="padding:4px 8px;color:#555">${{run.material || '—'}}</td>
-        <td style="padding:4px 8px;text-align:right">${{total}}</td>
-        <td style="padding:4px 8px;text-align:right">${{medStr}}</td>
-        <td style="padding:4px 8px;text-align:right;color:#2980b9">${{hp}}</td>
-        <td style="padding:4px 8px;text-align:right;color:#2980b9"><b>${{hpPct}}%</b></td>
-        <td style="padding:4px 8px;text-align:right;color:#e67e22">${{lp}}</td>
-        <td style="padding:4px 8px;text-align:right;color:#e67e22"><b>${{lpPct}}%</b></td>
-        <td style="padding:4px 8px;text-align:right;color:#c0392b">${{fail}}</td>
-        <td style="padding:4px 8px;text-align:right;color:#c0392b"><b>${{failPct}}%</b></td>
-      </tr>`);
-  }}
-
-  // Summary row
-  if (runs.length > 1) {{
-    const t = totalAll || 1;
-    tbody.insertAdjacentHTML('beforeend',
-      `<tr style="background:#f0f4f8;font-weight:bold;border-top:2px solid #bdc3c7">
-        <td colspan="3" style="padding:4px 8px">TOTAL (${{runs.length}} wafers)</td>
-        <td style="padding:4px 8px;text-align:right">${{totalAll}}</td>
-        <td style="padding:4px 8px;text-align:right">—</td>
-        <td style="padding:4px 8px;text-align:right;color:#2980b9">${{totalHP}}</td>
-        <td style="padding:4px 8px;text-align:right;color:#2980b9">${{(totalHP/t*100).toFixed(1)}}%</td>
-        <td style="padding:4px 8px;text-align:right;color:#e67e22">${{totalLP}}</td>
-        <td style="padding:4px 8px;text-align:right;color:#e67e22">${{(totalLP/t*100).toFixed(1)}}%</td>
-        <td style="padding:4px 8px;text-align:right;color:#c0392b">${{totalFail}}</td>
-        <td style="padding:4px 8px;text-align:right;color:#c0392b">${{(totalFail/t*100).toFixed(1)}}%</td>
-      </tr>`);
-  }}
-
-  drawDlcpCdf(allHpUpm, allLpUpm);
+  window._dlcpRuns = runs;
+  _dlcpRenderT();
 }}
 
-function drawDlcpCdf(hpVals, lpVals) {{
-  _lastHpVals = hpVals; _lastLpVals = lpVals;
-  const canvas = document.getElementById('dlcp-cdf');
-  if (!canvas) return;
-  const W = canvas.offsetWidth  || 600;
-  const H = canvas.offsetHeight || 300;
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
+function _dlcpRowKeyT(lot, wafer) {{ return String(lot) + '|' + String(wafer); }}
+function _dlcpIsRowSelT(key) {{ return !_dlcpDeselT.has(key); }}
 
-  const hp = hpVals.slice().sort((a, b) => a - b);
-  const lp = lpVals.slice().sort((a, b) => a - b);
-
-  if (!hp.length && !lp.length) {{
-    ctx.fillStyle = '#999'; ctx.font = '13px Arial'; ctx.textAlign = 'center';
-    ctx.fillText('No UPM die data in selected wafers', W / 2, H / 2);
-    return;
-  }}
-
-  const ML = 52, MR = 16, MT = 22, MB = 42;
-  const PW = W - ML - MR, PH = H - MT - MB;
-  const all = hp.concat(lp);
-  let xMn = Math.floor(Math.min(...all) * 2) / 2 - 1;
-  let xMx = Math.ceil(Math.max(...all) * 2) / 2 + 1;
-  if (xMx - xMn < 4) {{ xMn -= 2; xMx += 2; }}
-
-  function xp(v) {{ return ML + (v - xMn) / (xMx - xMn) * PW; }}
-  function yp(v) {{ return MT + PH - v / 100 * PH; }}
-
-  // Grid
-  ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 1;
-  for (let yi = 0; yi <= 4; yi++) {{
-    ctx.beginPath(); ctx.moveTo(ML, yp(yi * 25)); ctx.lineTo(ML + PW, yp(yi * 25)); ctx.stroke();
-  }}
-
-  // Threshold line
-  if (_dlcpT >= xMn && _dlcpT <= xMx) {{
-    const tx = xp(_dlcpT);
-    ctx.save(); ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
-    ctx.beginPath(); ctx.moveTo(tx, MT); ctx.lineTo(tx, MT + PH); ctx.stroke();
-    ctx.setLineDash([]); ctx.fillStyle = '#e74c3c'; ctx.font = '11px Arial'; ctx.textAlign = 'center';
-    ctx.fillText(_dlcpT.toFixed(1) + '%', tx, MT - 5); ctx.restore();
-  }}
-
-  // CDF drawing helper — step-style like bin_distribution_html.py
-  function drawCdf(arr, col) {{
-    if (!arr.length) return;
-    const n = arr.length;
-    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(xp(arr[0]), yp(0));
-    for (let i = 0; i < n; i++) {{
-      ctx.lineTo(xp(arr[i]), yp((i + 1) / n * 100));
-      if (i < n - 1) ctx.lineTo(xp(arr[i + 1]), yp((i + 1) / n * 100));
+function _dlcpComputeRowsT() {{
+  var res = [], hasDie = false;
+  var runs = window._dlcpRuns || [];
+  runs.forEach(function(run) {{
+    if (!run) return;
+    var dies = run.dies || [];
+    if (dies.length) hasDie = true;
+    var nA=0, nB=0, nC=0, nFF=0, nDF3=0, nDF4=0, uv=[];
+    dies.forEach(function(d) {{
+      var ib=d[0], up=d[1];
+      if (up != null) uv.push(up);
+      if ((ib===1||ib===2) && up!=null && up>=_dlcpT) nA++;
+      else if (ib!=null && ib>=1 && ib<=4) nB++;
+      else nC++;
+      if (ib===1||ib===2) nFF++;
+      else if (ib===3) nDF3++;
+      else if (ib===4) nDF4++;
+    }});
+    if (!dies.length) {{
+      var bc = run.bin_counts || {{}};
+      Object.keys(bc).forEach(function(b) {{
+        var ibv=parseInt(b), cnt=bc[b]||0;
+        if (ibv>=1&&ibv<=4) {{ if(ibv===1||ibv===2)nFF+=cnt; else if(ibv===3)nDF3+=cnt; else if(ibv===4)nDF4+=cnt; nB+=cnt; }}
+        else nC+=cnt;
+      }});
     }}
-    ctx.lineTo(ML + PW, yp(100)); ctx.stroke(); ctx.restore();
-  }}
-
-  drawCdf(lp, '#e67e22');   // LP orange first (behind)
-  drawCdf(hp, '#2980b9');   // HP blue on top
-
-  // Axes
-  ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(ML, MT); ctx.lineTo(ML, MT + PH); ctx.lineTo(ML + PW, MT + PH); ctx.stroke();
-
-  // Y-axis labels
-  ctx.fillStyle = '#555'; ctx.font = '11px Arial'; ctx.textAlign = 'right';
-  for (let yi = 0; yi <= 4; yi++) ctx.fillText(yi * 25 + '%', ML - 4, yp(yi * 25) + 4);
-
-  // X-axis labels
-  ctx.textAlign = 'center';
-  const rng = xMx - xMn, stp = rng > 20 ? 5 : rng > 10 ? 2 : 1;
-  const xs = Math.ceil(xMn / stp) * stp;
-  for (let xv = xs; xv <= xMx; xv += stp) ctx.fillText(xv.toFixed(0) + '%', xp(xv), MT + PH + 14);
-
-  // Axis titles
-  ctx.fillStyle = '#2c3e50'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
-  ctx.fillText('UPM 107 @ 950 mV (%)', ML + PW / 2, H - 4);
-  ctx.save(); ctx.translate(13, MT + PH / 2); ctx.rotate(-Math.PI / 2);
-  ctx.fillText('Cumulative %', 0, 0); ctx.restore();
-
-  // Legend
-  const ly = MT + 8;
-  ctx.fillStyle = '#2980b9'; ctx.fillRect(ML, ly, 22, 3);
-  ctx.fillStyle = '#2c3e50'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
-  ctx.fillText('HP (n=' + hp.length + ')', ML + 26, ly + 4);
-  ctx.fillStyle = '#e67e22'; ctx.fillRect(ML + 130, ly, 22, 3);
-  ctx.fillText('LP (n=' + lp.length + ')', ML + 156, ly + 4);
+    var med=null;
+    if (uv.length) {{
+      uv.sort(function(a,b){{return a-b;}});
+      var m=Math.floor(uv.length/2);
+      med=uv.length%2===0?(uv[m-1]+uv[m])/2:uv[m];
+    }}
+    res.push({{
+      lot:run.lot||'', wafer:run.wafer||'', mat:run.material||'',
+      tot:run.total_dies||(nA+nB+nC), med:med,
+      nA:nA, nB:nB, nC:nC, nFF:nFF, nDF34:nDF3+nDF4, nDF3:nDF3, nDF4:nDF4
+    }});
+  }});
+  return {{rows:res, noDies:!hasDie}};
 }}
 
-// ── Drag-to-resize DLCP divider (row) ───────────────────────────────────────
-(function() {{
-  const divider   = document.getElementById('dlcp-divider');
-  const cdfPanel  = document.getElementById('dlcp-cdf-panel');
-  const tblPanel  = document.getElementById('dlcp-table-panel');
-  if (!divider || !cdfPanel || !tblPanel) return;
-  let dragging = false, startY = 0, startCdfH = 0, startTblH = 0;
-  divider.addEventListener('mousedown', function(e) {{
-    dragging   = true;
-    startY     = e.clientY;
-    startCdfH  = cdfPanel.offsetHeight;
-    startTblH  = tblPanel.offsetHeight;
-    document.body.style.cursor     = 'row-resize';
-    document.body.style.userSelect = 'none';
-    e.preventDefault();
+function _dlcpRenderSummaryT(tA,tB,tC,tN,medAll,tFF,tDF34,tDF3,tDF4) {{
+  var sb=document.getElementById('dlcp-sumbox'); if(!sb)return;
+  if(!tN){{sb.innerHTML='<span style="color:#999;font-size:12px">No data</span>';return;}}
+  var mTxt=medAll!=null?medAll.toFixed(2)+'%':'\u2014';
+  var tIB14=tFF+(tDF3||0)+(tDF4||0);
+  var row1='<div class="dlcp-sum-panel">'
+    +'<div class="dlcp-sum-panel-ttl" style="background:#34495e">Overview</div>'
+    +'<div class="dlcp-sumrow">'
+    +'<div class="dlcp-sum-grp"><div class="dlcp-sum-lbl">Total Die</div><div class="dlcp-sum-val">'+tN+'</div></div>'
+    +'<div class="dlcp-sum-grp"><div class="dlcp-sum-lbl">Med UPM%</div><div class="dlcp-sum-val">'+mTxt+'</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#1a7a4a"><div class="dlcp-sum-lbl">FF+DF Yield</div><div class="dlcp-sum-pct-big" style="color:#1a7a4a">'+(tN>0?((tIB14||0)/tN*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+(tIB14||0)+' \u00b7 of total</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#1e8449"><div class="dlcp-sum-lbl">FF (IB 1,2) Yield</div><div class="dlcp-sum-pct-big" style="color:#1e8449">'+(tN>0?((tFF||0)/tN*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+(tFF||0)+' \u00b7 of total</div></div>'
+    +'<div class="dlcp-sum-grp fail"><div class="dlcp-sum-lbl">Fail (IB&gt;4)</div><div class="dlcp-sum-pct-big" style="color:#c0392b">'+(tN>0?(tC/tN*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+tC+' \u00b7 of total</div></div>'
+    +'</div></div>';
+  var row2='<div class="dlcp-sum-panel">'
+    +'<div class="dlcp-sum-panel-ttl" style="background:#1a5276">DLCP Split</div>'
+    +'<div class="dlcp-sumrow">'
+    +'<div class="dlcp-sum-grp pass"><div class="dlcp-sum-lbl">HP (IB1/2, UPM\u2265thr)</div><div class="dlcp-sum-pct-big" style="color:#1a5276">'+(tA+tB>0?(tA/(tA+tB)*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+tA+' \u00b7 of IB1-4</div></div>'
+    +'<div class="dlcp-sum-grp marg"><div class="dlcp-sum-lbl">LP (IB1-4, below thr)</div><div class="dlcp-sum-pct-big" style="color:#ba6b0a">'+(tA+tB>0?(tB/(tA+tB)*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub">N='+tB+' \u00b7 of IB1-4</div></div>'
+    +'</div>'
+    +'<div style="font-size:13px;font-weight:bold;color:#555;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 3px 4px;border-bottom:1px solid #e0e0e0;padding-bottom:3px">FF/DF Breakdown</div>'
+    +'<div class="dlcp-sumrow">'
+    +'<div class="dlcp-sum-grp" style="border-color:#1e8449"><div class="dlcp-sum-lbl" style="font-size:13px">FF (IB 1,2)</div><div class="dlcp-sum-pct-big" style="color:#1e8449;font-size:26px">'+(tIB14>0?((tFF||0)/tIB14*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub" style="font-size:12px">N='+(tFF||0)+' \u00b7 of IB1-4</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#117a65"><div class="dlcp-sum-lbl" style="font-size:13px">DF (IB 3-4)</div><div class="dlcp-sum-pct-big" style="color:#117a65;font-size:26px">'+(tIB14>0?((tDF34||0)/tIB14*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub" style="font-size:12px">N='+(tDF34||0)+' \u00b7 of IB1-4</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#7d3c98"><div class="dlcp-sum-lbl" style="font-size:13px">ATOM DF (IB 3)</div><div class="dlcp-sum-pct-big" style="color:#7d3c98;font-size:26px">'+(tIB14>0?((tDF3||0)/tIB14*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub" style="font-size:12px">N='+(tDF3||0)+' \u00b7 of IB1-4</div></div>'
+    +'<div class="dlcp-sum-grp" style="border-color:#a04000"><div class="dlcp-sum-lbl" style="font-size:13px">CORE DF (IB 4)</div><div class="dlcp-sum-pct-big" style="color:#a04000;font-size:26px">'+(tIB14>0?((tDF4||0)/tIB14*100).toFixed(1):0)+'%</div><div class="dlcp-sum-sub" style="font-size:12px">N='+(tDF4||0)+' \u00b7 of IB1-4</div></div>'
+    +'</div></div>';
+  sb.innerHTML=row1+row2;
+}}
+
+function _dlcpBuildFilterRowT() {{
+  var fr=document.getElementById('dlcp-flt-row-t'); if(!fr)return;
+  var nc=21, html='<tr style="background:#f0f4ff">';
+  for(var ci=0;ci<nc;ci++) {{
+    if(ci<3){{html+='<td></td>';continue;}}
+    html+='<td style="padding:1px 3px"><input data-ci="'+ci+'" placeholder="e.g. &gt;50" style="width:100%;box-sizing:border-box;font-size:10px;padding:1px 3px;border:1px solid #ccd;border-radius:2px" oninput="dlcpFltInputT('+ci+',this.value)"></td>';
+  }}
+  fr.innerHTML=html+'</tr>';
+}}
+function _dlcpNumValT(txt){{var s=txt.replace(/%/g,'').replace(/\u2014/g,'').trim();var n=parseFloat(s);return isNaN(n)?null:n;}}
+function _dlcpNumTestT(fv,cellTxt){{
+  var m=fv.match(/^(>=|<=|!=|>|<|=)?\s*([\d.]+)$/);if(!m)return true;
+  var op=m[1]||'=',thr=parseFloat(m[2]);var val=_dlcpNumValT(cellTxt);if(val===null)return false;
+  if(op==='>') return val>thr;if(op==='<') return val<thr;if(op==='>=') return val>=thr;
+  if(op==='<=') return val<=thr;if(op==='!=') return val!==thr;return val===thr;
+}}
+function dlcpFltInputT(ci,val){{_dlcpFltValsT[ci]=(val||'').trim();_dlcpApplyFilterT();}}
+function _dlcpApplyFilterT(){{
+  var tb=document.getElementById('dlcp-tb-t');if(!tb)return;
+  var rows=tb.getElementsByTagName('tr');
+  for(var i=0;i<rows.length;i++){{
+    var cells=rows[i].getElementsByTagName('td');var show=true;
+    var colVals=[cells[0]?cells[0].textContent:'',cells[1]?cells[1].textContent:'',cells[2]?cells[2].textContent:''];
+    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(colVals[ci]))show=false;}});
+    Object.keys(_dlcpFltValsT).forEach(function(ci){{
+      var fv=_dlcpFltValsT[ci];if(!fv)return;
+      var cellTxt=cells[parseInt(ci)]?cells[parseInt(ci)].textContent:'';
+      if(!_dlcpNumTestT(fv,cellTxt))show=false;
+    }});
+    rows[i].style.display=show?'':'none';
+  }}
+}}
+function _dlcpEscT(s){{return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}
+
+function _dlcpRenderTableT(){{
+  var r=_dlcpComputeRowsT();
+  var tb=document.getElementById('dlcp-tb-t');if(!tb)return;
+  var nd=document.getElementById('dlcp-no-data-msg');
+  if(nd)nd.style.display=r.noDies?'':'none';
+  if(r.noDies){{tb.innerHTML='<tr><td colspan="21" style="padding:14px;color:#7f8c8d;text-align:center">No die-level UPM data available.</td></tr>';_dlcpRenderSummaryT(0,0,0,0,null,0,0,0,0);return;}}
+  var tA=0,tB=0,tC=0,tN=0,tFF=0,tDF34=0,tDF3=0,tDF4=0,allUv=[],html='';
+  r.rows.forEach(function(x){{
+    var t=x.nA+x.nB+x.nC;if(!t)return;
+    var key=_dlcpRowKeyT(x.lot,x.wafer);
+    var isSel=_dlcpIsRowSelT(key);
+    var ddOk=true;
+    var ddVals=[x.lot,x.wafer,x.mat];
+    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
+    var visStyle=ddOk?'':'display:none';
+    var f12=x.nA+x.nB, f14=x.nFF+x.nDF3+x.nDF4;
+    if(ddOk){{tA+=isSel?x.nA:0;tB+=isSel?x.nB:0;tC+=isSel?x.nC:0;tN+=isSel?t:0;
+              tFF+=isSel?x.nFF:0;tDF34+=isSel?x.nDF34:0;tDF3+=isSel?x.nDF3:0;tDF4+=isSel?x.nDF4:0;}}
+    html+='<tr data-key="'+_dlcpEscT(key)+'" class="'+(isSel?'dlcp-rsel':'dlcp-runsel')+'" style="'+visStyle+'" onclick="dlcpRowClickT(\''+key.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">'+
+      '<td>'+_dlcpEscT(x.lot)+'</td>'+'<td>'+_dlcpEscT(x.wafer)+'</td>'+'<td style="color:#555;font-size:11px">'+_dlcpEscT(x.mat)+'</td>'+
+      '<td class="num">'+t+'</td>'+'<td class="num">'+(x.med!=null?x.med.toFixed(2)+'%':'\u2014')+'</td>'+
+      '<td class="num" style="color:#1a5276;font-weight:bold">'+x.nA+'</td>'+'<td class="num" style="color:#1a5276">'+(f12>0?(x.nA/f12*100).toFixed(1):'\u2014')+'%</td>'+
+      '<td class="num" style="color:#ba6b0a">'+x.nB+'</td>'+'<td class="num" style="color:#ba6b0a">'+(f12>0?(x.nB/f12*100).toFixed(1):'\u2014')+'%</td>'+
+      '<td class="num" style="color:#922b21">'+x.nC+'</td>'+'<td class="num" style="color:#922b21">'+(t>0?(x.nC/t*100).toFixed(1):'\u2014')+'%</td>'+
+      '<td class="num" style="color:#1a7a4a;font-weight:bold">'+f14+'</td>'+'<td class="num" style="color:#1a7a4a">'+(t>0?(f14/t*100).toFixed(1):'\u2014')+'%</td>'+
+      '<td class="num" style="color:#1e8449;font-weight:bold">'+x.nFF+'</td>'+'<td class="num" style="color:#1e8449">'+(f14>0?(x.nFF/f14*100).toFixed(1):'\u2014')+'%</td>'+
+      '<td class="num" style="color:#117a65;font-weight:bold">'+x.nDF34+'</td>'+'<td class="num" style="color:#117a65">'+(f14>0?(x.nDF34/f14*100).toFixed(1):'\u2014')+'%</td>'+
+      '<td class="num" style="color:#7d3c98">'+x.nDF3+'</td>'+'<td class="num" style="color:#7d3c98">'+(f14>0?(x.nDF3/f14*100).toFixed(1):'\u2014')+'%</td>'+
+      '<td class="num" style="color:#a04000">'+x.nDF4+'</td>'+'<td class="num" style="color:#a04000">'+(f14>0?(x.nDF4/f14*100).toFixed(1):'\u2014')+'%</td>'+
+      '</tr>';
   }});
-  document.addEventListener('mousemove', function(e) {{
-    if (!dragging) return;
-    const delta   = e.clientY - startY;
-    const newCdfH = Math.max(80, startCdfH + delta);
-    const newTblH = Math.max(80, startTblH - delta);
-    cdfPanel.style.height = newCdfH + 'px';
-    tblPanel.style.height = newTblH + 'px';
+  tb.innerHTML=html;
+  _dlcpBuildFilterRowT();
+  var visKeys=new Set();
+  var tbEl=document.getElementById('dlcp-tb-t');
+  if(tbEl){{var trs=tbEl.getElementsByTagName('tr');for(var vi=0;vi<trs.length;vi++){{if(trs[vi].style.display!=='none'){{var vk=trs[vi].getAttribute('data-key');if(vk&&!_dlcpDeselT.has(vk))visKeys.add(vk);}}}};}}
+  (window._dlcpRuns||[]).forEach(function(run){{
+    var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');
+    if(!visKeys.has(k))return;
+    (run.dies||[]).forEach(function(d){{if(d[1]!=null)allUv.push(d[1]);}});
   }});
-  document.addEventListener('mouseup', function() {{
-    if (!dragging) return;
-    dragging = false;
-    document.body.style.cursor     = '';
-    document.body.style.userSelect = '';
-    drawDlcpCdf(_lastHpVals, _lastLpVals);
+  allUv.sort(function(a,b){{return a-b;}});
+  var medAll=null;
+  if(allUv.length){{var m2=Math.floor(allUv.length/2);medAll=allUv.length%2===0?(allUv[m2-1]+allUv[m2])/2:allUv[m2];}}
+  _dlcpRenderSummaryT(tA,tB,tC,tN,medAll,tFF,tDF34,tDF3,tDF4);
+  var noteEl=document.getElementById('dlcp-note-t');
+  if(noteEl)noteEl.innerHTML='<b>HP%</b> = HP / (HP+LP) &nbsp;|&nbsp; <b>LP%</b> = LP / (HP+LP) &nbsp;|&nbsp; <b>Fail%</b> = Fail / Total &nbsp;|&nbsp; <b>FF/DF%</b> = count / IB1-4 total &nbsp;|&nbsp; Threshold: <b>'+_dlcpT.toFixed(1)+'%</b>';
+}}
+
+function _dlcpRenderCdfT(){{
+  var cv=document.getElementById('dlcp-cv-t');if(!cv)return;
+  var W=cv.clientWidth||560,H=cv.clientHeight||280;
+  cv.width=W;cv.height=H;
+  var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
+  var hp=[],lp=[],ff=[],df=[];
+  var MAX_CDF=80000,_cdfTot=0;
+  var runs=window._dlcpRuns||[];
+  runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;_cdfTot+=run.dies.length;}});
+  var _cdfStep=_cdfTot>MAX_CDF?Math.ceil(_cdfTot/MAX_CDF):1,_cdfI=0;
+  runs.forEach(function(run){{
+    if(!run||!run.dies)return;
+    var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
+    run.dies.forEach(function(d){{
+      _cdfI++;if(_cdfI%_cdfStep!==0)return;
+      var ib=d[0],up=d[1];if(up==null)return;
+      if(ib===1||ib===2){{ff.push(up);if(up>=_dlcpT)hp.push(up);else lp.push(up);}}
+      else if(ib===3||ib===4){{df.push(up);lp.push(up);}}
+    }});
   }});
+  hp.sort(function(a,b){{return a-b;}});lp.sort(function(a,b){{return a-b;}});
+  ff.sort(function(a,b){{return a-b;}});df.sort(function(a,b){{return a-b;}});
+  if(!hp.length&&!lp.length){{
+    ctx.fillStyle='#999';ctx.font='13px Arial';ctx.textAlign='center';
+    ctx.fillText('No UPM die data in selected wafers',W/2,H/2);return;
+  }}
+  var ML=52,MR=16,MT=22,MB=42,PW=W-ML-MR,PH=H-MT-MB;
+  var all=hp.concat(lp).concat(ff).concat(df);
+  var xMn=Math.floor(Math.min.apply(null,all)*2)/2-1,xMx=Math.ceil(Math.max.apply(null,all)*2)/2+1;
+  if(xMx-xMn<4){{xMn-=2;xMx+=2;}}
+  function xp(v){{return ML+(v-xMn)/(xMx-xMn)*PW;}}
+  function yp(v){{return MT+PH-v/100*PH;}}
+  ctx.strokeStyle='#e8e8e8';ctx.lineWidth=1;
+  for(var yi=0;yi<=4;yi++){{ctx.beginPath();ctx.moveTo(ML,yp(yi*25));ctx.lineTo(ML+PW,yp(yi*25));ctx.stroke();}}
+  if(_dlcpT>=xMn&&_dlcpT<=xMx){{
+    var tx=xp(_dlcpT);ctx.save();ctx.strokeStyle='#e74c3c';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(tx,MT);ctx.lineTo(tx,MT+PH);ctx.stroke();
+    ctx.setLineDash([]);ctx.fillStyle='#e74c3c';ctx.font='11px Arial';ctx.textAlign='center';
+    ctx.fillText(_dlcpT.toFixed(1)+'%',tx,MT-5);ctx.restore();
+  }}
+  function drawCdf(arr,col,dash){{
+    if(!arr.length)return;var n=arr.length;
+    ctx.save();ctx.strokeStyle=col;ctx.lineWidth=2;if(dash)ctx.setLineDash([6,3]);
+    ctx.beginPath();ctx.moveTo(xp(arr[0]),yp(0));
+    for(var i=0;i<n;i++){{ctx.lineTo(xp(arr[i]),yp((i+1)/n*100));if(i<n-1)ctx.lineTo(xp(arr[i+1]),yp((i+1)/n*100));}}
+    ctx.lineTo(ML+PW,yp(100));ctx.stroke();ctx.restore();
+  }}
+  drawCdf(df,'#8e44ad',true);drawCdf(ff,'#27ae60',true);drawCdf(lp,'#e67e22',false);drawCdf(hp,'#2980b9',false);
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(ML,MT);ctx.lineTo(ML,MT+PH);ctx.lineTo(ML+PW,MT+PH);ctx.stroke();
+  ctx.fillStyle='#555';ctx.font='11px Arial';ctx.textAlign='right';
+  for(var yi2=0;yi2<=4;yi2++)ctx.fillText(yi2*25+'%',ML-4,yp(yi2*25)+4);
+  ctx.textAlign='center';
+  var rng=xMx-xMn,stp=rng>20?5:rng>10?2:1,xs=Math.ceil(xMn/stp)*stp;
+  for(var xv=xs;xv<=xMx;xv+=stp)ctx.fillText(xv.toFixed(0)+'%',xp(xv),MT+PH+14);
+  ctx.fillStyle='#2c3e50';ctx.font='bold 11px Arial';ctx.textAlign='center';
+  ctx.fillText('UPM %',ML+PW/2,H-4);
+  ctx.save();ctx.translate(13,MT+PH/2);ctx.rotate(-Math.PI/2);ctx.fillText('Cumulative %',0,0);ctx.restore();
+  var ib14=ff.length+df.length;
+  function lgPct(n,d){{return d>0?(n/d*100).toFixed(1)+'%':'0%';}}
+  function drawLgEntry(x,y,lineCol,lineDash,pctTxt,nTxt,pctCol){{
+    if(lineDash){{ctx.save();ctx.strokeStyle=lineCol;ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.beginPath();ctx.moveTo(x,y+2);ctx.lineTo(x+22,y+2);ctx.stroke();ctx.restore();}}
+    else{{ctx.fillStyle=lineCol;ctx.fillRect(x,y+1,22,3);}}
+    ctx.font='bold 12px Arial';ctx.fillStyle=pctCol||lineCol;ctx.textAlign='left';ctx.fillText(pctTxt,x+26,y+8);
+    var pw=ctx.measureText(pctTxt).width;ctx.font='10px Arial';ctx.fillStyle='#aaa';ctx.fillText(' '+nTxt,x+26+pw,y+8);
+  }}
+  var ly=MT+8;
+  drawLgEntry(ML,ly,'#2980b9',false,lgPct(hp.length,ib14),'HP  n='+hp.length,'#2980b9');
+  drawLgEntry(ML+210,ly,'#e67e22',false,lgPct(lp.length,ib14),'LP  n='+lp.length,'#e67e22');
+  var ly2=ly+16;
+  drawLgEntry(ML,ly2,'#27ae60',true,lgPct(ff.length,ib14),'FF IB1,2  n='+ff.length,'#27ae60');
+  drawLgEntry(ML+210,ly2,'#8e44ad',true,lgPct(df.length,ib14),'DF IB3,4  n='+df.length,'#8e44ad');
+}}
+
+function _dlcpRenderT(){{
+  _dlcpRenderTableT();
+  requestAnimationFrame(_dlcpRenderCdfT);
+}}
+
+function dlcpSliderT(){{
+  var sl=document.getElementById('dlcp-sl');if(!sl)return;
+  _dlcpT=parseFloat(sl.value);
+  var inp=document.getElementById('dlcp-tv-inp');if(inp)inp.value=_dlcpT.toFixed(1);
+  _dlcpRenderT();rebuildCharts();
+}}
+function dlcpTxtT(val){{
+  var v=parseFloat(val);if(isNaN(v))return;
+  v=Math.max(70,Math.min(100,v));_dlcpT=v;
+  var sl=document.getElementById('dlcp-sl');if(sl)sl.value=v;
+  _dlcpRenderT();rebuildCharts();
+}}
+
+function dlcpRowClickT(key){{
+  if(_dlcpDeselT.has(key))_dlcpDeselT.delete(key);else _dlcpDeselT.add(key);
+  var tb=document.getElementById('dlcp-tb-t');if(!tb)return;
+  var rows=tb.getElementsByTagName('tr');
+  for(var i=0;i<rows.length;i++){{
+    var k=rows[i].getAttribute('data-key');
+    if(k===key){{rows[i].classList.toggle('dlcp-runsel',_dlcpDeselT.has(key));rows[i].classList.toggle('dlcp-rsel',!_dlcpDeselT.has(key));}}
+  }}
+  _dlcpRenderT();
+}}
+function dlcpSelAllT(){{_dlcpDeselT.clear();_dlcpRenderTableT();_dlcpRenderT();}}
+function dlcpSelNoneT(){{
+  var r=_dlcpComputeRowsT();r.rows.forEach(function(x){{_dlcpDeselT.add(_dlcpRowKeyT(x.lot,x.wafer));}});
+  _dlcpRenderTableT();_dlcpRenderT();
+}}
+
+function dlcpDdOpenT(col,btn){{
+  if(_dlcpDdCurColT===col){{_dlcpDdCloseT();return;}}
+  _dlcpDdCurColT=col;
+  var panel=document.getElementById('dlcp-dd-panel-t');if(!panel)return;
+  var srch=document.getElementById('dlcp-dd-srch-t');if(srch)srch.value='';
+  var r=_dlcpComputeRowsT(),vals=[],seen=new Set();
+  r.rows.forEach(function(x){{var v=col===0?x.lot:col===1?x.wafer:x.mat;if(!seen.has(v)){{seen.add(v);vals.push(v);}}}});
+  vals.sort();
+  var cur=_dlcpDdFltT[col]||null;
+  _dlcpDdPendingT=cur?new Set(cur):null;
+  var lst=document.getElementById('dlcp-dd-list-t');if(!lst)return;
+  lst.innerHTML=vals.map(function(v){{
+    var chk=(!_dlcpDdPendingT||_dlcpDdPendingT.has(v))?'checked':'';
+    return '<label class="dlcp-dd-item"><input type="checkbox" value="'+_dlcpEscT(v)+'" '+chk+' onchange="dlcpDdChkT(this)"> <span>'+_dlcpEscT(v)+'</span></label>';
+  }}).join('');
+  var r2=btn.getBoundingClientRect();
+  panel.style.display='block';panel.style.left=r2.left+'px';panel.style.top=(r2.bottom+2)+'px';
+  document.querySelectorAll('.dlcp-ddbtn').forEach(function(b){{b.classList.remove('on');}});
+  btn.classList.add('on');
+  setTimeout(function(){{document.addEventListener('click',_dlcpDdOutsideT,{{once:true}});}},0);
+}}
+function _dlcpDdOutsideT(){{dlcpDdApplyT();}}
+function _dlcpDdCloseT(){{
+  _dlcpDdCurColT=-1;
+  var panel=document.getElementById('dlcp-dd-panel-t');if(panel)panel.style.display='none';
+  document.querySelectorAll('.dlcp-ddbtn').forEach(function(b){{b.classList.remove('on');}});
+}}
+function dlcpDdChkT(inp){{
+  var v=inp.value,chk=inp.checked;
+  if(!_dlcpDdPendingT){{
+    var r=_dlcpComputeRowsT();_dlcpDdPendingT=new Set();
+    r.rows.forEach(function(x){{_dlcpDdPendingT.add(_dlcpDdCurColT===0?x.lot:_dlcpDdCurColT===1?x.wafer:x.mat);}});
+  }}
+  if(chk)_dlcpDdPendingT.add(v);else _dlcpDdPendingT.delete(v);
+}}
+function dlcpDdSelAllT(){{
+  _dlcpDdPendingT=null;
+  var lst=document.getElementById('dlcp-dd-list-t');if(!lst)return;
+  lst.querySelectorAll('input[type=checkbox]').forEach(function(cb){{cb.checked=true;}});
+}}
+function dlcpDdSelNoneT(){{
+  _dlcpDdPendingT=new Set();
+  var lst=document.getElementById('dlcp-dd-list-t');if(!lst)return;
+  lst.querySelectorAll('input[type=checkbox]').forEach(function(cb){{cb.checked=false;}});
+}}
+function dlcpDdSearchT(q){{
+  q=(q||'').toLowerCase();
+  var lst=document.getElementById('dlcp-dd-list-t');if(!lst)return;
+  lst.querySelectorAll('.dlcp-dd-item').forEach(function(el){{el.style.display=(!q||el.textContent.toLowerCase().indexOf(q)>=0)?'':'none';}});
+}}
+function dlcpDdApplyT(){{
+  if(_dlcpDdCurColT>=0){{
+    _dlcpDdFltT[_dlcpDdCurColT]=(_dlcpDdPendingT&&_dlcpDdPendingT.size>0)?_dlcpDdPendingT:null;
+    var btn2=document.getElementById('dlcp-dd-btn-'+_dlcpDdCurColT);
+    if(btn2)btn2.classList.toggle('on',!!_dlcpDdFltT[_dlcpDdCurColT]);
+  }}
+  _dlcpDdCloseT();_dlcpRenderTableT();_dlcpRenderT();
+}}
+function dlcpClearFiltersT(){{
+  _dlcpFltValsT={{}};_dlcpDdFltT={{}};
+  document.querySelectorAll('.dlcp-ddbtn').forEach(function(b){{b.classList.remove('on');}});
+  var fr=document.getElementById('dlcp-flt-row-t');if(fr){{var inps=fr.getElementsByTagName('input');for(var i=0;i<inps.length;i++)inps[i].value='';}}
+  var tb=document.getElementById('dlcp-tb-t');if(tb){{var rows=tb.getElementsByTagName('tr');for(var i=0;i<rows.length;i++)rows[i].style.display='';}}
+  _dlcpRenderT();
+}}
+function dlcpSplitterToggleT(){{
+  var rp=document.getElementById('dlcp-right-pane-t');
+  var arr=document.getElementById('dlcp-split-arrow-t');
+  if(!rp||!arr)return;
+  var hidden=rp.style.display==='none';
+  rp.style.display=hidden?'':'none';
+  arr.innerHTML=hidden?'&#9654;':'&#9664;';
+  if(!hidden)requestAnimationFrame(_dlcpRenderCdfT);
+}}
+function dlcpSavePngT(){{
+  var cv=document.getElementById('dlcp-cv-t');if(!cv)return;
+  var a=document.createElement('a');a.href=cv.toDataURL('image/png');a.download='dlcp_cdf.png';a.click();
+}}
+function dlcpDownloadCsv(){{dlcpDownloadCsvT();}}
+function dlcpDownloadCsvT(){{
+  var r=_dlcpComputeRowsT();
+  var hdr=['Lot','Wafer','Material','Total','Med UPM%','HP#','HP%','LP#','LP%','Fail#','Fail%','FF+DF#','FF+DF%','FF#','FF%','DF#','DF%','ATOM DF#','ATOM DF%','CORE DF#','CORE DF%'];
+  var tb=document.getElementById('dlcp-tb-t'),visKeys=new Set();
+  if(tb){{var trs=tb.getElementsByTagName('tr');for(var vi=0;vi<trs.length;vi++){{if(trs[vi].style.display!=='none'){{var vk=trs[vi].getAttribute('data-key');if(vk)visKeys.add(vk);}}}};}}
+  function q(s){{var v=String(s==null?'':s);return(v.indexOf(',')>=0||v.indexOf('"')>=0)?'"'+v.replace(/"/g,'""')+'"':v;}}
+  var lines=[hdr.join(',')];
+  r.rows.forEach(function(x){{
+    var k=_dlcpRowKeyT(x.lot,x.wafer);
+    if(visKeys.size>0&&!visKeys.has(k))return;
+    var t=x.nA+x.nB+x.nC;if(!t)return;
+    var f12=x.nA+x.nB,f14=x.nFF+x.nDF3+x.nDF4;
+    lines.push([x.lot,x.wafer,x.mat,t,x.med!=null?x.med.toFixed(2):'',
+      x.nA,f12>0?(x.nA/f12*100).toFixed(1):'',x.nB,f12>0?(x.nB/f12*100).toFixed(1):'',
+      x.nC,t>0?(x.nC/t*100).toFixed(1):'',f14,t>0?(f14/t*100).toFixed(1):'',
+      x.nFF,f14>0?(x.nFF/f14*100).toFixed(1):'',x.nDF34,f14>0?(x.nDF34/f14*100).toFixed(1):'',
+      x.nDF3,f14>0?(x.nDF3/f14*100).toFixed(1):'',x.nDF4,f14>0?(x.nDF4/f14*100).toFixed(1):''].map(q).join(','));
+  }});
+  var blob=new Blob([lines.join('\n')],{{type:'text/csv'}});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dlcp_table.csv';a.click();
+}}
+
+function dlcpOpenHistT(){{
+  var ov=document.getElementById('upm-hist-overlay-t');if(!ov)return;
+  ov.classList.add('open');
+  var box=document.getElementById('upm-hist-box-t'),drag=document.getElementById('upm-hist-drag-t');
+  if(box&&drag&&!drag._histDrag){{
+    drag._histDrag=true;
+    drag.addEventListener('mousedown',function(e){{
+      e.preventDefault();var startX=e.clientX,startY=e.clientY,r=box.getBoundingClientRect();
+      var startL=r.left,startT2=r.top;box.style.position='fixed';box.style.margin='0';
+      function mm(e2){{box.style.left=(startL+e2.clientX-startX)+'px';box.style.top=(startT2+e2.clientY-startY)+'px';}}
+      function mu(){{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);}}
+      document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+    }});
+  }}
+  requestAnimationFrame(_dlcpRenderHistT);
+}}
+function dlcpCloseHistT(){{
+  var ov=document.getElementById('upm-hist-overlay-t');if(ov)ov.classList.remove('open');
+}}
+function _dlcpHistStatsT(arr){{
+  if(!arr||!arr.length)return null;
+  var n=arr.length,sorted=arr.slice().sort(function(a,b){{return a-b;}});
+  var mean=sorted.reduce(function(s,v){{return s+v;}},0)/n;
+  var sigma=Math.sqrt(sorted.reduce(function(s,v){{return s+(v-mean)*(v-mean);}},0)/n);
+  var med=n%2===0?(sorted[n/2-1]+sorted[n/2])/2:sorted[Math.floor(n/2)];
+  function pct(p){{var i=(p/100)*(n-1),lo=Math.floor(i),hi=Math.ceil(i);return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo);}}
+  return{{n:n,mean:mean,med:med,sigma:sigma,min:sorted[0],max:sorted[n-1],p5:pct(5),p25:pct(25),p75:pct(75),p95:pct(95)}};
+}}
+function _dlcpRenderHistT(){{
+  var cv=document.getElementById('upm-hist-cv-t');if(!cv)return;
+  var W=cv.clientWidth||740,H=cv.clientHeight||260;cv.width=W;cv.height=H;
+  var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
+  var MAX_HIST=80000,_hTot=0;
+  var runs=window._dlcpRuns||[];
+  runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;_hTot+=run.dies.length;}});
+  var _hStep=_hTot>MAX_HIST?Math.ceil(_hTot/MAX_HIST):1,_hI=0,hp2=[],lp2=[];
+  runs.forEach(function(run){{
+    if(!run||!run.dies)return;
+    var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
+    run.dies.forEach(function(d){{
+      _hI++;if(_hI%_hStep!==0)return;
+      var ib=d[0],up=d[1];if(up==null)return;
+      if((ib===1||ib===2)&&up>=_dlcpT)hp2.push(up);else if(ib!=null&&ib>=1&&ib<=4)lp2.push(up);
+    }});
+  }});
+  var all2=hp2.concat(lp2);
+  if(!all2.length){{
+    ctx.fillStyle='#999';ctx.font='13px Arial';ctx.textAlign='center';ctx.fillText('No UPM data in selected wafers',W/2,H/2);
+    var sd=document.getElementById('upm-hist-stats-t');if(sd)sd.innerHTML='<span style="color:#999">No data</span>';return;
+  }}
+  var asP=_dlcpHistStatsT(all2),hsP=_dlcpHistStatsT(hp2),lsP=_dlcpHistStatsT(lp2);
+  function fmt(v){{return v==null?'\u2014':v.toFixed(2);}}
+  function sCard(lbl,s,col){{
+    if(!s)return '<div class="upm-hist-stat-grp" style="border-color:'+col+'"><div class="upm-hist-stat-lbl" style="color:'+col+'">'+lbl+'</div><div class="upm-hist-stat-val">N=0</div></div>';
+    return'<div class="upm-hist-stat-grp" style="border-color:'+col+'"><div class="upm-hist-stat-lbl" style="color:'+col+'">'+lbl+'</div><div class="upm-hist-stat-val" style="color:'+col+'">N='+s.n+'</div>'
+      +'<div style="font-size:11px;color:#444">Median: <b>'+fmt(s.med)+'%</b> &nbsp; Mean: <b>'+fmt(s.mean)+'%</b></div>'
+      +'<div style="font-size:11px;color:#444">\u03c3: <b>'+fmt(s.sigma)+'%</b> &nbsp; Min: '+fmt(s.min)+'% &nbsp; Max: '+fmt(s.max)+'%</div>'
+      +'<div style="font-size:10px;color:#777">P5: '+fmt(s.p5)+'% &nbsp; P25: '+fmt(s.p25)+'% &nbsp; P75: '+fmt(s.p75)+'% &nbsp; P95: '+fmt(s.p95)+'%</div></div>';
+  }}
+  var sd2=document.getElementById('upm-hist-stats-t');
+  if(sd2)sd2.innerHTML=sCard('All IB1-4',asP,'#2c3e50')+sCard('HP (IB1/2 \u2265thr)',hsP,'#2980b9')+sCard('LP (IB1-4 <thr)',lsP,'#e67e22');
+  var xMn2=Math.floor(Math.min.apply(null,all2)),xMx2=Math.ceil(Math.max.apply(null,all2));
+  if(xMx2-xMn2<4){{xMn2-=2;xMx2+=2;}}
+  var bins=Math.min(80,Math.max(20,Math.round((xMx2-xMn2)*2))),bw2=(xMx2-xMn2)/bins;
+  function mBins2(arr2){{var b=new Array(bins).fill(0);arr2.forEach(function(v){{var i2=Math.min(bins-1,Math.floor((v-xMn2)/bw2));if(i2>=0)b[i2]++;}});return b;}}
+  var hpB2=mBins2(hp2),lpB2=mBins2(lp2),maxC2=0;
+  for(var i=0;i<bins;i++){{var s2=hpB2[i]+lpB2[i];if(s2>maxC2)maxC2=s2;}}
+  if(!maxC2)return;
+  var ML2=46,MR2=14,MT2=20,MB2=38,PW2=W-ML2-MR2,PH2=H-MT2-MB2;
+  function xp2(v){{return ML2+(v-xMn2)/(xMx2-xMn2)*PW2;}}
+  ctx.strokeStyle='#ececec';ctx.lineWidth=1;
+  for(var gi=0;gi<=4;gi++){{var gy=MT2+PH2*gi/4;ctx.beginPath();ctx.moveTo(ML2,gy);ctx.lineTo(ML2+PW2,gy);ctx.stroke();}}
+  for(var bi=0;bi<bins;bi++){{
+    var bx0=xp2(xMn2+bi*bw2)+0.5,bx1=xp2(xMn2+(bi+1)*bw2)-0.5,bW2=Math.max(1,bx1-bx0);
+    var lpH=lpB2[bi]/maxC2*PH2,hpH=hpB2[bi]/maxC2*PH2;
+    if(lpB2[bi]>0){{ctx.fillStyle='rgba(230,126,34,0.78)';ctx.fillRect(bx0,MT2+PH2-lpH,bW2,lpH);}}
+    if(hpB2[bi]>0){{ctx.fillStyle='rgba(41,128,185,0.82)';ctx.fillRect(bx0,MT2+PH2-lpH-hpH,bW2,hpH);}}
+  }}
+  if(_dlcpT>=xMn2&&_dlcpT<=xMx2){{
+    var tx2=xp2(_dlcpT);ctx.save();ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(tx2,MT2);ctx.lineTo(tx2,MT2+PH2);ctx.stroke();
+    ctx.setLineDash([]);ctx.fillStyle='#e74c3c';ctx.font='11px Arial';ctx.textAlign='center';
+    ctx.fillText(_dlcpT.toFixed(1)+'%',tx2,MT2-5);ctx.restore();
+  }}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(ML2,MT2);ctx.lineTo(ML2,MT2+PH2);ctx.lineTo(ML2+PW2,MT2+PH2);ctx.stroke();
+  ctx.fillStyle='#555';ctx.font='10px Arial';ctx.textAlign='right';
+  for(var yi3=0;yi3<=4;yi3++)ctx.fillText(Math.round(maxC2*yi3/4),ML2-4,MT2+PH2-PH2*yi3/4+4);
+  ctx.textAlign='center';
+  var rng2=xMx2-xMn2,xstp2=rng2>40?5:rng2>20?2:1,xs2=Math.ceil(xMn2/xstp2)*xstp2;
+  for(var xv2=xs2;xv2<=xMx2;xv2+=xstp2)ctx.fillText(xv2+'%',xp2(xv2),MT2+PH2+13);
+  ctx.fillStyle='#2c3e50';ctx.font='bold 11px Arial';ctx.textAlign='center';
+  ctx.fillText('UPM %',ML2+PW2/2,H-4);
+  ctx.save();ctx.translate(12,MT2+PH2/2);ctx.rotate(-Math.PI/2);ctx.fillText('Count',0,0);ctx.restore();
+}}
+
+(function(){{
+  var cv=document.getElementById('dlcp-cv-t');
+  if(cv&&window.ResizeObserver&&!cv._dlcpRO){{
+    cv._dlcpRO=true;
+    new ResizeObserver(function(){{if(_activeTab==='dlcp')requestAnimationFrame(_dlcpRenderCdfT);}}).observe(cv);
+  }}
 }})();
-var _lastHpVals = [], _lastLpVals = [];
 
-function exportTrendCsv() {{
-  const flat = window._lastFlat || [];
-  if (!flat.length) {{
-    alert('No trend data available to export');
-    return;
-  }}
-  function q(s) {{ return (String(s).indexOf(',')>=0||String(s).indexOf('"')>=0) ? '"'+String(s).replace(/"/g,'""')+'"' : s; }}
-  const lines = [];
-  lines.push(['Period', 'Date', 'Lot', 'Material', 'Wafer', 'Program', 'FF Yield %', 'FF+DF Yield %', 'Total Dies'].map(q).join(','));
-  for (const entry of flat) {{
-    const run = entry.run;
-    const stats = entry.stats;
-    const row = [
-      entry.period,
-      run.date || '',
-      run.lot || '',
-      run.material || '',
-      run.wafer || '',
-      run.program || '',
-      stats.ffYield.toFixed(2),
-      stats.ffDfYield.toFixed(2),
-      run.total_dies || ''
-    ];
-    lines.push(row.map(q).join(','));
-  }}
-  const csv = lines.join('\\n');
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = 'trend_' + new Date().toISOString().slice(0,10) + '.csv';
-  a.click();
-}}
-
-function exportFbDrilldownCsv(headId, bodyId, fname) {{
-  function cellText(td) {{ return td.textContent.replace(/\\s+/g,' ').trim(); }}
-  function q(s) {{ return (s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\\n')>=0) ? '"'+s.replace(/"/g,'""')+'"' : s; }}
-  const head = document.getElementById(headId);
-  const body = document.getElementById(bodyId);
-  if (!head || !body) return;
-  const lines = [];
-  Array.from(head.querySelectorAll('tr')).forEach(tr => {{
-    lines.push(Array.from(tr.querySelectorAll('th,td')).map(c => q(cellText(c))).join(','));
-  }});
-  Array.from(body.querySelectorAll('tr')).forEach(tr => {{
-    lines.push(Array.from(tr.querySelectorAll('th,td')).map(c => q(cellText(c))).join(','));
-  }});
-  const csv = lines.join('\\n');
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = fname + '.csv';
-  a.click();
-}}
-
-function dlcpDownloadCsv() {{
-  const rows = [['Lot','Wafer','Material','Total','Med UPM%','HP#','HP%','LP#','LP%','Fail#','Fail%']];
-  document.querySelectorAll('#dlcp-tbody tr').forEach(tr => {{
-    rows.push(Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
-  }});
-  const csv = rows.map(r => r.map(v => '"' + v.replace(/"/g,'""') + '"').join(',')).join('\\n');
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = 'dlcp_analysis.csv';
-  a.click();
-}}
-
-// Initial rebuild to populate table + stats
 // ═══════════════════════════════════════ PARETO COMMENTS ══════════════════
 const COMMENT_KEY = 'pareto_comments';
 function loadComments() {{
@@ -3050,8 +3373,8 @@ def main():
     ap.add_argument('--interval', choices=INTERVALS, default='weekly')
     ap.add_argument('--topn',   type=int,   default=8)
     ap.add_argument('--thresh', type=float, default=0.0)
-    ap.add_argument('--group',  choices=['wafer', 'lot'], default='wafer',
-                    help='Histogram grouping: wafer (default) = one bar per wafer, lot = one bar per lot')
+    ap.add_argument('--group',  choices=['wafer', 'lot'], default='lot',
+                    help='Histogram grouping: lot (default) = one bar per lot, wafer = one bar per wafer')
     ap.add_argument('--out',    default='',
                     help='Output HTML path (default: <csv>_trend.html)')
     args = ap.parse_args()
