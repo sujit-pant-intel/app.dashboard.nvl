@@ -3134,7 +3134,7 @@ function dlcpDownloadCsvT(){{
       x.nFF,f14>0?(x.nFF/f14*100).toFixed(1):'',x.nDF34,f14>0?(x.nDF34/f14*100).toFixed(1):'',
       x.nDF3,f14>0?(x.nDF3/f14*100).toFixed(1):'',x.nDF4,f14>0?(x.nDF4/f14*100).toFixed(1):''].map(q).join(','));
   }});
-  var blob=new Blob([lines.join('\n')],{{type:'text/csv'}});
+  var blob=new Blob([lines.join('\\n')],{{type:'text/csv'}});
   var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dlcp_table.csv';a.click();
 }}
 
