@@ -2963,7 +2963,12 @@ function _dlcpRenderTableT(){{
 
 function _dlcpRenderCdfT(){{
   var cv=document.getElementById('dlcp-cv-t');if(!cv)return;
-  var W=cv.clientWidth||560,H=cv.clientHeight||280;
+  // Self-retry: if canvas not yet laid out, reschedule until dimensions are real
+  if(cv.clientWidth===0||cv.clientHeight===0){{
+    setTimeout(function(){{if(_activeTab==='dlcp')_dlcpRenderCdfT();}},80);
+    return;
+  }}
+  var W=cv.clientWidth,H=cv.clientHeight;
   cv.width=W;cv.height=H;
   var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   var hp=[],lp=[],ff=[],df=[];
