@@ -2972,7 +2972,9 @@ function _dlcpRenderCdfT(){{
   cv.width=W;cv.height=H;
   var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   var hp=[],lp=[],ff=[],df=[];
-  var MAX_CDF=80000,_cdfTot=0;
+  // Trend data: per-run dies = [[ib, upm_pct], ...]. Total count per lot is already
+  // aggregated so can be large; use a higher cap to avoid over-sampling IB 1-4 entries.
+  var MAX_CDF=500000,_cdfTot=0;
   var runs=window._dlcpRuns||[];
   runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;_cdfTot+=run.dies.length;}});
   var _cdfStep=_cdfTot>MAX_CDF?Math.ceil(_cdfTot/MAX_CDF):1,_cdfI=0;
