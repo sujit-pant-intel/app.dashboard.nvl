@@ -460,8 +460,15 @@ def main() -> None:
                     help="Plan only — do not pull AQUA, run trend_chart, or send email")
     args = ap.parse_args()
 
-    base_dir = Path(args.base_dir)           # original path for file I/O (preserves NFS permissions)
-    unc_base = _resolve_unc(base_dir)        # UNC path used only for link construction
+    unc_base = _resolve_unc(Path(args.base_dir))   # always UNC — used for link construction
+    # For file I/O, prefer the original path (mapped drive preserves NFS permissions).
+    # Fall back to UNC if the mapped drive is unavailable (e.g. scheduled task, no login session).
+    _raw = Path(args.base_dir)
+    if _raw != unc_base and not _raw.exists():
+        _log(f"  NOTE: {_raw} not accessible — falling back to UNC path for I/O")
+        base_dir = unc_base
+    else:
+        base_dir = _raw
     data_dir = base_dir / "data"
     trend_dir = base_dir / "reports"
     unc_trend_dir = unc_base / "reports"    # UNC version for email links
