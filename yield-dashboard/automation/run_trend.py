@@ -460,9 +460,11 @@ def main() -> None:
                     help="Plan only — do not pull AQUA, run trend_chart, or send email")
     args = ap.parse_args()
 
-    base_dir = _resolve_unc(Path(args.base_dir))
+    base_dir = Path(args.base_dir)           # original path for file I/O (preserves NFS permissions)
+    unc_base = _resolve_unc(base_dir)        # UNC path used only for link construction
     data_dir = base_dir / "data"
     trend_dir = base_dir / "reports"
+    unc_trend_dir = unc_base / "reports"    # UNC version for email links
     run_ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ts_label = _ts()
 
@@ -522,13 +524,14 @@ def main() -> None:
 
         generated = []
         for _pfx, _csv_file in split_map.items():
-            _out_html = trend_dir / (_csv_file.stem + ".html")
+            _out_html = trend_dir / (_csv_file.stem + ".html")         # I/O path (Y: drive)
+            _unc_html = unc_trend_dir / (_csv_file.stem + ".html")     # UNC path for links
             _cfg = _find_product_config_for(_pfx)
             if _cfg:
                 _log("[" + _pfx + "] Product config: " + Path(_cfg).name)
             _log("[" + _pfx + "] Running trend_chart.py -> " + _out_html.name)
             _ok = run_trend_chart(_csv_file, _out_html, args.interval, _cfg, args.dry_run)
-            generated.append((_out_html, _ok))
+            generated.append((_unc_html, _ok))  # use UNC path so email links are network-accessible
             _log("  " + ("OK" if _ok else "FAIL") + " " + _pfx)
 
         # ── 3b. Compress split input CSVs ────────────────────────────
@@ -559,7 +562,7 @@ def main() -> None:
             import importlib.util as _ilu
             _spec = _ilu.spec_from_file_location("_gi", _HERE / "generate_index.py")
             _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-            _gi.build_index(base_dir)
+            _gi.build_index(base_dir, unc_base=unc_base)
             _log("  Index updated -> " + str(trend_dir / "index.html"))
         except Exception as _idx_e:
             _log("  WARNING: index update failed: " + str(_idx_e))
