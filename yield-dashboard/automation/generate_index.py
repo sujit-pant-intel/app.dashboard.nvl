@@ -25,8 +25,26 @@ def build_index(base_dir: Path) -> Path:
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    # Derive UNC path from base_dir (works for both yield and trend dirs)
-    unc_reports = str(base_dir / "reports") if str(base_dir).startswith("\\\\") else _UNC_REPORTS
+    # Derive UNC path from base_dir.
+    # If base_dir is a UNC path (\\server\...) use it directly.
+    # If it's a mapped drive (Y:\...) resolve to UNC via `net use`.
+    _base_str = str(base_dir)
+    if _base_str.startswith("\\\\"):
+        unc_reports = str(base_dir / "reports").replace("/", "\\")
+    else:
+        unc_reports = _UNC_REPORTS  # default fallback
+        try:
+            import subprocess as _sp
+            _r = _sp.run(["net", "use", _base_str[:2].upper()],
+                         capture_output=True, text=True, timeout=5)
+            for _line in _r.stdout.splitlines():
+                if "remote name" in _line.lower():
+                    unc_root = _line.split(None, 2)[-1].strip().rstrip("\\")
+                    if unc_root.startswith("\\\\"):
+                        unc_reports = unc_root + _base_str[2:].replace("/", "\\") + "\\reports"
+                    break
+        except Exception:
+            pass
 
     files = sorted(
         (f for f in reports_dir.glob("*.html")
@@ -50,7 +68,8 @@ def build_index(base_dir: Path) -> Path:
         except OSError:
             sz    = "–"
             mtime = "–"
-        unc   = "file:////" + unc_reports.replace("\\", "/").lstrip("/") + "/" + f.name
+        unc   = (reports_dir / f.name).as_uri()  # file:////server/... for UNC, matches run_automation.py
+        unc_display = str(reports_dir / f.name)
         badge = '<span class="badge">latest</span>' if i == 0 else ""
         rows += (f'\n      <tr data-n="{f.name}">'
                  f'<td class="mono"><a href="{unc}" target="_blank">{f.name}</a> {badge}</td>'
@@ -135,7 +154,6 @@ def build_index(base_dir: Path) -> Path:
     import time as _time
     for _attempt in range(3):
         try:
-            out.unlink(missing_ok=True)
             out.write_text(html, encoding="utf-8")
             break
         except (PermissionError, OSError):

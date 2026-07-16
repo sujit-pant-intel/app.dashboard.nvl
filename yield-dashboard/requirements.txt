@@ -23,3 +23,6 @@ py7zr>=0.20           # read/write .7z TP cache archives
 # ── SharePoint publishing (Graph API + MSAL device-code auth) ─────────────────
 msal>=1.28
 requests>=2.31
+
+# ── Windows COM / Outlook email ───────────────────────────────────────────────
+pywin32>=306          # win32com.client — Outlook COM email (run_automation, run_trend)

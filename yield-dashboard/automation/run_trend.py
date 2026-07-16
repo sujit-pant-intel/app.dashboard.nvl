@@ -153,7 +153,7 @@ def pull_aqua(aqua_exe: str, report_config: Path, data_dir: Path, dry_run: bool)
 
 def _normalise_aqua_file(raw_path: Path, tmp_dir: Path) -> Path:
     """
-    If AQUA returned a zip/csv, extract and return a plain .csv path.
+    If AQUA returned a zip/csv/gz, extract and return a plain .csv path.
     If it's already a .csv, return as-is.
     """
     suffix = raw_path.suffix.lower()
@@ -166,6 +166,16 @@ def _normalise_aqua_file(raw_path: Path, tmp_dir: Path) -> Path:
             zf.extract(csvs[0], tmp_dir)
             _log(f"  Extracted: {out.name}  ({out.stat().st_size:,} bytes)")
             return out
+    if suffix == ".gz":
+        # AQUA may output a gzip-compressed CSV (e.g. trend_YYYYMMDD_HHMMSS.csv.gz)
+        inner_name = raw_path.stem  # drop .gz → e.g. trend_....csv
+        if not inner_name.lower().endswith(".csv"):
+            inner_name += ".csv"
+        out = tmp_dir / inner_name
+        with gzip.open(raw_path, "rb") as gz_in, open(out, "wb") as csv_out:
+            csv_out.write(gz_in.read())
+        _log(f"  Extracted gz: {out.name}  ({out.stat().st_size:,} bytes)")
+        return out
     # plain .csv or .CSV
     return raw_path
 
@@ -286,15 +296,22 @@ def _send_via_outlook(to: str, subject: str, body_html: str, attachments: list[s
     _log("  Email sent via Outlook COM.")
 
 
+_SMTP_SERVER = "smtpauth.intel.com"
+_SMTP_PORT   = 587
+_SMTP_FROM   = "sujit.n.pant@intel.com"
+
+
 def _send_via_smtp(to: str, subject: str, body_html: str, attachments: list[str]) -> None:
     import smtplib
     import time
+    import os
+    import socket
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
     from email.mime.application import MIMEApplication
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
-    msg["From"]    = "yield-trend-automation@intel.com"
+    msg["From"]    = _SMTP_FROM
     msg["To"]      = to
     msg.attach(MIMEText(body_html, "html", "utf-8"))
     for att_path in attachments:
@@ -302,24 +319,43 @@ def _send_via_smtp(to: str, subject: str, body_html: str, attachments: list[str]
             part = MIMEApplication(f.read(), Name=Path(att_path).name)
         part["Content-Disposition"] = f'attachment; filename="{Path(att_path).name}"'
         msg.attach(part)
-    
+
+    recipients = [a.strip() for a in to.split(";")]
     msg_str = msg.as_string()
-    # Retry with exponential backoff (account for network issues)
+    proxy = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY") or "http://proxy-dmz.intel.com:912"
+
     max_retries = 3
-    base_delay = 2  # seconds
+    base_delay = 2
     for attempt in range(1, max_retries + 1):
         try:
             _log(f"  SMTP attempt {attempt}/{max_retries}...")
-            with smtplib.SMTP("smtpauth.intel.com", 587, timeout=60) as s:
-                s.starttls()
-                s.sendmail(msg["From"], [to], msg_str)
-            _log("  Email sent via SMTP.")
-            return
+            try:
+                with smtplib.SMTP(_SMTP_SERVER, _SMTP_PORT, timeout=60) as s:
+                    s.starttls()
+                    s.sendmail(_SMTP_FROM, recipients, msg_str)
+                _log(f"  Email sent via SMTP ({_SMTP_SERVER}) — direct.")
+                return
+            except (smtplib.SMTPException, OSError, TimeoutError) as direct_err:
+                _log(f"  Direct SMTP failed ({direct_err}), trying via proxy…")
+                try:
+                    import socks
+                    proxy_addr = proxy[7:] if proxy.startswith("http://") else proxy
+                    proxy_host, proxy_port_str = proxy_addr.rsplit(":", 1)
+                    sock = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.set_proxy(socks.HTTP, proxy_host, int(proxy_port_str))
+                    sock.connect((_SMTP_SERVER, _SMTP_PORT))
+                    with smtplib.SMTP(sock=sock, timeout=60) as s:
+                        s.starttls()
+                        s.sendmail(_SMTP_FROM, recipients, msg_str)
+                    _log(f"  Email sent via SMTP ({_SMTP_SERVER}) — via proxy.")
+                    return
+                except ImportError:
+                    raise direct_err
         except (smtplib.SMTPException, OSError, TimeoutError) as e:
             if attempt < max_retries:
                 delay = base_delay * (2 ** (attempt - 1))
                 _log(f"  SMTP attempt {attempt} failed: {e}")
-                _log(f"  Retrying in {delay}s...")
+                _log(f"  Retrying in {delay}s…")
                 time.sleep(delay)
             else:
                 _log(f"  SMTP all {max_retries} attempts failed: {e}")
@@ -354,11 +390,13 @@ def _build_email_body(run_ts: str, reports: list, interval: str) -> str:
     for html_path, ok in reports:
         status = "OK" if ok else "FAILED"
         color  = "#1f7a3f" if ok else "#c0392b"
-        unc    = str(html_path).replace("/", "\\")
+        # html_path is already UNC (base_dir resolved via _resolve_unc in main)
+        href = html_path.as_uri()  # file:////server/share/... for UNC, matches run_automation.py
+        unc  = str(html_path)
         rows += (
             f'<tr><td style="color:{color};font-weight:bold">{status}</td>'
             f'<td style="font-family:monospace;font-size:12px">{html_path.name}</td>'
-            f'<td style="font-size:12px"><a href="file:///{unc.replace(chr(92), "/")}">{unc}</a></td></tr>\n'
+            f'<td style="font-size:12px"><a href="{href}">{unc}</a></td></tr>\n'
         )
     return f"""<!DOCTYPE html><html><body style="font-family:sans-serif">
 <h2 style="color:#1a5276">NVL816 Yield Trend Reports</h2>
@@ -370,6 +408,33 @@ def _build_email_body(run_ts: str, reports: list, interval: str) -> str:
 <hr/>
 <p style="font-size:0.85em;color:#888">Pant, Sujit N — GEMS FTE &nbsp;|&nbsp; auto-generated by run_trend.py</p>
 </body></html>"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _resolve_unc(p: Path) -> Path:
+    """If p is a mapped drive (e.g. Y:\\...) and _BASE_DIR shares the same
+    relative suffix, swap the drive root for the _BASE_DIR UNC root so all
+    downstream paths (links, index.html) are UNC from the start."""
+    s = str(p)
+    if not (len(s) >= 2 and s[1] == ":" and s[0].isalpha()):
+        return p  # already UNC or relative
+    # Try net use to resolve drive letter → UNC root
+    try:
+        import subprocess as _sp
+        r = _sp.run(["net", "use", s[0].upper() + ":"],
+                    capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            # "Remote name       \\server\share"
+            if "remote name" in line.lower():
+                unc_root = line.split(None, 2)[-1].strip().rstrip("\\")
+                if unc_root.startswith("\\\\"):
+                    return Path(unc_root + s[2:])
+    except Exception:
+        pass
+    return p
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -395,7 +460,7 @@ def main() -> None:
                     help="Plan only — do not pull AQUA, run trend_chart, or send email")
     args = ap.parse_args()
 
-    base_dir = Path(args.base_dir)
+    base_dir = _resolve_unc(Path(args.base_dir))
     data_dir = base_dir / "data"
     trend_dir = base_dir / "reports"
     run_ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
