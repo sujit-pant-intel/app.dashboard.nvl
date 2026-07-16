@@ -466,6 +466,19 @@ def process_csv(csv_path: str,
     _pair_map: dict[str, str] = {}  # sicc_or_cdyn_col → upm_col
     # Build set of actual UPM column names in DataFrame for fuzzy fallback
     _upm_cols_in_df = set(_upm_dist_cols)
+
+    # Auto-detect UPM% columns in the DataFrame (0-100 range, 'UPM' in name)
+    # These supplement any explicitly listed UPM columns from config.
+    _auto_upm_candidates: list[str] = []
+    for _c in df.columns:
+        if 'upm' in _c.lower() and _c not in _upm_cols_in_df:
+            _s = pd.to_numeric(df[_c], errors='coerce').dropna()
+            if len(_s) > 0:
+                _med = float(_s.median())
+                if 0 <= _med <= 105:          # looks like a percentage
+                    _auto_upm_candidates.append(_c)
+                    _upm_cols_in_df.add(_c)
+
     def _resolve_upm_col(name: str) -> str | None:
         """Return actual UPM column name in df, or None."""
         if name in _upm_cols_in_df:
@@ -477,6 +490,33 @@ def process_csv(csv_path: str,
                 return u
         return None
 
+    def _auto_pair_upm(col: str) -> str | None:
+        """Try to find a UPM partner for a SICC/CDYN column by name substitution."""
+        if not _upm_cols_in_df:
+            return None
+        cu = col.upper()
+        # Try replacing SICC/CDYN token with UPM and finding a match
+        import re as _re2
+        for token in ('SICC', 'CDYN'):
+            if token not in cu:
+                continue
+            candidate = _re2.sub(token, 'UPM', cu, count=1)
+            for u in _upm_cols_in_df:
+                if u.upper() == candidate:
+                    return u
+        # Fuzzy: longest common suffix match among UPM candidates
+        best, best_len = None, 0
+        cl = col.lower()
+        for u in _upm_cols_in_df:
+            ul = u.lower()
+            # common suffix length
+            i = 0
+            while i < min(len(cl), len(ul)) and cl[-(i+1)] == ul[-(i+1)]:
+                i += 1
+            if i > best_len and i >= 6:   # require at least 6 chars in common suffix
+                best_len, best = i, u
+        return best
+
     for cfg_entry in config.get('SiccTableConfig', []):
         if len(cfg_entry) >= 4 and cfg_entry[2] and cfg_entry[3]:
             resolved = _resolve_upm_col(cfg_entry[3])
@@ -487,6 +527,20 @@ def process_csv(csv_path: str,
             resolved = _resolve_upm_col(cfg_entry[3])
             if resolved:
                 _pair_map[cfg_entry[2]] = resolved
+
+    # Auto-pair any SICC/CDYN columns not yet in _pair_map
+    # Since UPM is per-die (same value for SICC and CDYN on the same die),
+    # prefer re-using the UPM column already paired with any SICC column.
+    _any_sicc_upm = next((v for k, v in _pair_map.items() if k in sicc_col_names), None)
+    for _col in list(sicc_col_names) + list(cdyn_col_names):
+        if _col not in _pair_map:
+            # For CDYN: first try the same UPM column already used by SICC
+            if _col in cdyn_col_names and _any_sicc_upm:
+                _pair_map[_col] = _any_sicc_upm
+            else:
+                _ap = _auto_pair_upm(_col)
+                if _ap:
+                    _pair_map[_col] = _ap
 
     # ── Step 9: Per-wafer medians + histograms ─────────────────────────────
     rows = []

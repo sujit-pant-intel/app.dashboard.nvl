@@ -194,13 +194,13 @@ function _ptShowDist(rowIdx,showUpm){
     modal=document.createElement('div');
     modal.id='pt-dist-modal';
     modal.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center';
-    modal.innerHTML='<div style="background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.35);padding:0;min-width:560px;max-width:90vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">'
+    modal.innerHTML='<div style="background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.35);padding:0;width:620px;height:520px;min-width:320px;min-height:260px;max-width:95vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;resize:both">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#2c3e50;color:#fff;flex-shrink:0">'
         +'<span id="pt-dist-modal-title" style="font-size:13px;font-weight:bold"></span>'
         +'<button onclick="_ptCloseModal()" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px">&#10005;</button>'
       +'</div>'
-      +'<div style="padding:12px;overflow:auto;flex:1">'
-        +'<div id="pt-dist-modal-content"></div>'
+      +'<div style="padding:12px;overflow:auto;flex:1;display:flex;flex-direction:column;min-height:0">'
+        +'<div id="pt-dist-modal-content" style="flex:1;display:flex;flex-direction:column;min-height:0"></div>'
       +'</div>'
     +'</div>';
     document.body.appendChild(modal);
@@ -212,11 +212,11 @@ function _ptShowDist(rowIdx,showUpm){
   /* Inject SVG container into modal */
   var content=document.getElementById('pt-dist-modal-content');
   if(showUpm){
-    content.innerHTML='<svg id="pt-modal-upm-svg" height="240" style="width:100%;display:block;border:1px solid #f5e0c3;border-radius:4px;background:#fffaf4"></svg><div id="pt-modal-upm-note" style="font-size:10px;color:#c0650a;margin-top:3px"></div>';
+    content.innerHTML='<svg id="pt-modal-upm-svg" style="width:100%;flex:1;min-height:0;display:block;border:1px solid #f5e0c3;border-radius:4px;background:#fffaf4"></svg><div id="pt-modal-upm-note" style="font-size:10px;color:#c0650a;margin-top:3px"></div><div id="pt-modal-upm-stats" style="margin-top:6px"></div>';
     modal.style.display='flex';
     if(typeof drawMiniUpm!=='undefined')drawMiniUpm(active,testName,isCdyn,'pt-modal-upm-svg','pt-dist-modal-title','pt-modal-upm-note');
   }else{
-    content.innerHTML='<h3 id="pt-modal-dist-title" style="font-size:12px;color:#2c3e50;margin:0 0 4px"></h3><svg id="pt-modal-hist-svg" height="297" style="width:100%;display:block;border:1px solid #eee;border-radius:4px;background:#fff"></svg><div id="pt-modal-chart-note" style="font-size:11px;color:#7f8c8d;margin-top:4px"></div><div id="pt-modal-stats-tbl" style="margin-top:8px"></div>';
+    content.innerHTML='<h3 id="pt-modal-dist-title" style="font-size:12px;color:#2c3e50;margin:0 0 4px"></h3><svg id="pt-modal-hist-svg" style="width:100%;flex:1;min-height:0;display:block;border:1px solid #eee;border-radius:4px;background:#fff"></svg><div id="pt-modal-chart-note" style="font-size:11px;color:#7f8c8d;margin-top:4px"></div><div id="pt-modal-stats-tbl" style="margin-top:8px"></div>';
     modal.style.display='flex';
     if(typeof _renderSiccHistOnly!=='undefined'){
       var _origHistSvg='upm-hist-svg',_origHistNote='upm-chart-note',_origStsTbl='upm-stats-tbl',_origTitle='sicc-dist-title';

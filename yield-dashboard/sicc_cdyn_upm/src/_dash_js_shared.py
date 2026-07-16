@@ -332,12 +332,13 @@ function drawMiniUpm(active,primaryCol,isCdyn,svgId,titleId,noteId){
     p.push('<rect x="'+bx.toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+(bw*0.85).toFixed(1)+'" height="'+Math.max(1,bh).toFixed(1)+'" fill="#e67e22" opacity="0.75"/>');
     if(counts[i]>0)p.push('<text x="'+(bx+bw*0.425).toFixed(1)+'" y="'+(by-2).toFixed(1)+'" text-anchor="middle" font-size="12" fill="#c0650a">'+counts[i]+'</text>');
   }
-  // Median line
+  // Median line — label as axis tick below X-axis
   if(med!=null&&hi>lo){
     var mx=pl+(med-lo)/(hi-lo)*cW;
     if(mx>=pl-2&&mx<=pl+cW+2){
       p.push('<line x1="'+mx.toFixed(1)+'" x2="'+mx.toFixed(1)+'" y1="'+pt+'" y2="'+(pt+cH)+'" stroke="#d35400" stroke-width="2" stroke-dasharray="4,3"/>');
-      p.push('<text x="'+(mx+3).toFixed(1)+'" y="'+(pt+15)+'" font-size="15" fill="#d35400" font-weight="bold">Med:'+med.toFixed(2)+'%</text>');
+      p.push('<line x1="'+mx.toFixed(1)+'" x2="'+mx.toFixed(1)+'" y1="'+(pt+cH)+'" y2="'+(pt+cH+6)+'" stroke="#d35400" stroke-width="2"/>');
+      p.push('<text x="'+mx.toFixed(1)+'" y="'+(H-2)+'" text-anchor="middle" font-size="11" fill="#d35400" font-weight="bold">Med:'+med.toFixed(2)+'%</text>');
     }
   }
   // Y-axis (count)
@@ -372,6 +373,22 @@ function drawMiniUpm(active,primaryCol,isCdyn,svgId,titleId,noteId){
   svg.setAttribute('viewBox','0 0 '+W+' '+H);
   svg.innerHTML=p.join('');
   if(noteEl)noteEl.textContent=allU.length+' die(s), median='+med.toFixed(2)+'%, range=['+lo.toFixed(2)+', '+hi.toFixed(2)+']';
+  /* Stats table */
+  var statsTblId=svgId.replace('-svg','-stats');
+  var stEl=document.getElementById(statsTblId);
+  if(stEl&&med!=null){
+    var _sum=allU.reduce(function(a,b){return a+b;},0);var _mean=_sum/allU.length;
+    var _sq=allU.reduce(function(a,v){return a+(v-_mean)*(v-_mean);},0);var _sd=Math.sqrt(_sq/allU.length);
+    stEl.innerHTML='<table style="border-collapse:collapse;font-size:11px;margin-top:2px">'
+      +'<thead><tr><th style="padding:2px 8px;background:#e67e22;color:#fff;text-align:left">Stat</th><th style="padding:2px 8px;background:#e67e22;color:#fff">Value</th></tr></thead>'
+      +'<tbody>'
+      +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Count (dies)</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right">'+allU.length+'</td></tr>'
+      +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Min</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right">'+lo.toFixed(2)+'%</td></tr>'
+      +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee;font-weight:bold;color:#d35400">Median</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:#d35400">'+med.toFixed(2)+'%</td></tr>'
+      +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Max</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right">'+hi.toFixed(2)+'%</td></tr>'
+      +'<tr><td style="padding:2px 8px">Std Dev</td><td style="padding:2px 8px;text-align:right">'+_sd.toFixed(2)+'%</td></tr>'
+      +'</tbody></table>';
+  }
 }
 function _buildUpmOverlay(active,primaryCol,isCdyn){
   var col=primaryCol||SEL_COL;
@@ -432,7 +449,7 @@ function _buildSiccCdynOverlay(active,isCdyn){
   return {edges:edges,counts:counts,med:medArr(sVals),colName:SEL_COL};
 }
 function computeStats(vals){if(!vals||!vals.length)return null;var s=vals.slice().sort(function(a,b){return a-b;});var n=s.length;var sum=s.reduce(function(a,b){return a+b;},0);var mean=sum/n;var med=n%2?s[Math.floor(n/2)]:(s[n/2-1]+s[n/2])/2;var vari=s.reduce(function(ac,v){var d=v-mean;return ac+d*d;},0)/n;return{min:s[0],max:s[n-1],median:med,stddev:Math.sqrt(vari),count:n};}
-function renderStatsTable(stats,containerId,dec){var el=document.getElementById(containerId);if(!el)return;if(!stats){el.innerHTML='';return;}var d=dec||4;el.innerHTML='<table class="cat-tbl" style="width:auto;max-width:420px;margin-top:6px;font-size:12px"><thead><tr><th>Stat</th><th>Value</th></tr></thead><tbody><tr><td style="text-align:left">Count</td><td>'+stats.count+'</td></tr><tr><td style="text-align:left">Min</td><td>'+stats.min.toFixed(d)+'</td></tr><tr><td style="text-align:left">Max</td><td>'+stats.max.toFixed(d)+'</td></tr><tr><td style="text-align:left">Median</td><td>'+stats.median.toFixed(d)+'</td></tr><tr><td style="text-align:left">Std Dev</td><td>'+stats.stddev.toFixed(d)+'</td></tr></tbody></table>';}
+function renderStatsTable(stats,containerId,dec){var el=document.getElementById(containerId);if(!el)return;if(!stats){el.innerHTML='';return;}var d=dec||4;el.innerHTML='<table class="cat-tbl" style="width:auto;max-width:420px;margin-top:6px;font-size:12px"><thead><tr><th>Stat</th><th>Value</th></tr></thead><tbody><tr><td style="text-align:left">Count</td><td>'+stats.count+'</td></tr><tr><td style="text-align:left">Min</td><td>'+stats.min.toFixed(d)+'</td></tr><tr><td style="text-align:left;font-weight:bold;color:#8B4513">Median</td><td style="font-weight:bold;color:#8B4513">'+stats.median.toFixed(d)+'</td></tr><tr><td style="text-align:left">Max</td><td>'+stats.max.toFixed(d)+'</td></tr><tr><td style="text-align:left">Std Dev</td><td>'+stats.stddev.toFixed(d)+'</td></tr></tbody></table>';}
 function drawSVG(edges,counts,medVal,tgt,ylabel,svgId,showCounts,overlay,barLabel){
   var svg=document.getElementById(svgId||'hist-svg');
   if(!svg)return;
@@ -482,14 +499,13 @@ function drawSVG(edges,counts,medVal,tgt,ylabel,svgId,showCounts,overlay,barLabe
           var cy=pt+cH-((binMeds[bi]-uMin)/uRange)*cH;
           var nw=binU[bi].length;
           p.push('<circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="5" fill="#e67e22" stroke="#fff" stroke-width="1" opacity="0.85"><title>Bin '+bi+': '+nw+' die(s)\\nUPM Med: '+binMeds[bi].toFixed(2)+'%</title></circle>');
-          p.push('<text x="'+cx.toFixed(1)+'" y="'+(cy-7).toFixed(1)+'" text-anchor="middle" font-size="12" fill="#d35400">'+binMeds[bi].toFixed(1)+'%</text>');
         }
       }
-      // Overall UPM median horizontal dashed line
+      // Overall UPM median horizontal dashed line — label on right Y-axis only
       if(ov.uMed!=null){
         var umy=pt+cH-((ov.uMed-uMin)/uRange)*cH;
         p.push('<line x1="'+pl+'" x2="'+(pl+cW)+'" y1="'+umy.toFixed(1)+'" y2="'+umy.toFixed(1)+'" stroke="#d35400" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>');
-        p.push('<text x="'+(pl+cW+6)+'" y="'+(umy+4).toFixed(1)+'" text-anchor="start" font-size="13" fill="#d35400" font-weight="bold">Med:'+ov.uMed.toFixed(2)+'%</text>');
+        p.push('<text x="'+(pl+cW+6)+'" y="'+(umy+4).toFixed(1)+'" text-anchor="start" font-size="11" fill="#d35400" font-weight="bold">'+ov.uMed.toFixed(1)+'%</text>');
       }
       // Right Y-axis for UPM median
       var uTicks=5;
@@ -521,7 +537,9 @@ function drawSVG(edges,counts,medVal,tgt,ylabel,svgId,showCounts,overlay,barLabe
     var mx=pl+(medVal-lo)/(hi-lo)*cW;
     if(mx>=pl-2&&mx<=pl+cW+2){
       p.push('<line x1="'+mx.toFixed(1)+'" x2="'+mx.toFixed(1)+'" y1="'+pt+'" y2="'+(pt+cH)+'" stroke="#8B4513" stroke-width="2.5" stroke-dasharray="5,3"/>');
-      p.push('<text x="'+(mx+4).toFixed(1)+'" y="'+(pt+38)+'" font-size="17" fill="#8B4513" font-weight="bold">Med:'+medVal.toFixed(4)+'</text>');
+      /* Median label as a tick below X-axis */
+      p.push('<line x1="'+mx.toFixed(1)+'" x2="'+mx.toFixed(1)+'" y1="'+(pt+cH)+'" y2="'+(pt+cH+8)+'" stroke="#8B4513" stroke-width="2"/>');
+      p.push('<text x="'+mx.toFixed(1)+'" y="'+(H-4)+'" text-anchor="middle" font-size="13" fill="#8B4513" font-weight="bold">Med:'+medVal.toFixed(4)+'</text>');
     }
   }
   var yStep=Math.ceil(maxC/4);if(yStep<1)yStep=1;

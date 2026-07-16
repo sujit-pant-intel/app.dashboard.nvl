@@ -128,15 +128,7 @@ def generate_html_svg(data: dict, output_path: str, title: str = '') -> str:
             f'  <button class="tab-btn{active_cls}" id="btn-{btn_id}"'
             f' onclick="showTab(this,\'{tab.tab_id}\')">{tab.label}</button>\n'
         )
-    tabs_html += (
-        '  <a href="https://intel.sharepoint.com/:x:/r/sites/ftesdsexecution/_layouts/15/Doc.aspx'
-        '?sourcedoc=%7BB2A0D111-751C-4EEE-9F65-A43F2AC6D12F%7D'
-        '&file=NVL816_CDIE-N2P_PreSi_summary.xlsx&action=default&mobileredirect=true"'
-        ' target="_blank" rel="noopener noreferrer"'
-        ' style="margin-left:16px;align-self:center;font-size:13px;color:#ecf0f1;'
-        'text-decoration:underline;white-space:nowrap;opacity:0.85;"'
-        '>SICC/CDYN SPEC</a>\n'
-    )
+    tabs_html += '\n'
 
     # ── Tab panels ───────────────────────────────────────────────────────────
     tabs_panels_html = ''

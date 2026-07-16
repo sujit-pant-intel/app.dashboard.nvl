@@ -574,7 +574,8 @@ function _xyState(sid){
       x:(_XCOL[sid]||''), xgrp:null,
       ys:(_YCOL[sid]?[_YCOL[sid]]:[]), ygrp:null, ysSeeded:false,
       logX:false, logY:false, die:false, trend:'ols',
-      xmin:null, xmax:null, ymin:null, ymax:null, h:500, ysrch:'', gby:[]
+      xmin:null, xmax:null, ymin:null, ymax:null, h:500, ysrch:'', gby:[],
+      hiddenGrps:{}
     };
   }
   return _XY_ST[sid];
@@ -687,6 +688,19 @@ function _cMapForSid(sid){
   return{map:map,keys:keys};
 }
 
+function toggleGrpVis(sid,gk){
+  var st=_xyState(sid);
+  if(st.hiddenGrps[gk])delete st.hiddenGrps[gk];else st.hiddenGrps[gk]=1;
+  buildXYTab(sid);
+}
+function toggleAllGrps(sid,show){
+  var st=_xyState(sid);
+  if(show){st.hiddenGrps={};}else{
+    var cm=_cMapForSid(sid);
+    cm.keys.forEach(function(k){st.hiddenGrps[k]=1;});
+  }
+  buildXYTab(sid);
+}
 /* ── Theil-Sen ── */
 function _med(arr){
   var a=arr.slice().sort(function(a,b){return a-b;});
@@ -755,6 +769,7 @@ function buildXYTab(sid){
       var xv=r[xc],yv=r[yc];
       if(xv==null||yv==null||!isFinite(xv)||!isFinite(yv))return;
       var gk=multiY?yc:_grpKey(sid,r);
+      if(st.hiddenGrps[gk])return;
       var ti=_TIPS.length;
       _TIPS.push('<b>'+esc(r.lot)+' W'+esc(r.wafer)+'</b>\n'
         +'X ('+esc(labels[xc]||xc)+'): '+_fmtTk(xv)+'\n'
@@ -845,16 +860,24 @@ function buildXYTab(sid){
   p.push('<text x="'+(ML+plotW/2)+'" y="'+(svgH-8)+'" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">'+xLbl+'</text>');
   var yLbl=esc(validYs.length===1?(labels[validYs[0]]||validYs[0]):'Y');
   p.push('<text transform="translate(14,'+(MT+plotH/2)+') rotate(-90)" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">'+yLbl+'</text>');
-  /* Legend */
-  cm.keys.forEach(function(gk,li){
+  p.push('</svg>');
+  /* HTML legend with checkboxes */
+  var legendHtml='<div style="display:flex;flex-wrap:wrap;gap:4px 12px;padding:6px 10px 4px;border-top:1px solid #dde;align-items:center">';
+  legendHtml+='<span style="font-size:11px;font-weight:bold;color:#555;margin-right:4px">Groups:</span>';
+  legendHtml+='<button onclick="toggleAllGrps(\''+sid+'\',true)" style="font-size:10px;padding:1px 6px;border-radius:3px;border:1px solid #bbb;background:#e8f0fe;cursor:pointer">All</button>';
+  legendHtml+='<button onclick="toggleAllGrps(\''+sid+'\',false)" style="font-size:10px;padding:1px 6px;border-radius:3px;border:1px solid #bbb;background:#fef0e8;cursor:pointer">None</button>';
+  cm.keys.forEach(function(gk){
     var col=cm.map[gk];
     var lLabel=multiY?(labels[gk]||gk):gk;
-    var legX=ML+10,legY=MT+10+li*17;
-    p.push('<circle cx="'+(legX+5)+'" cy="'+(legY+5)+'" r="5" fill="'+col+'" opacity="0.85"/>');
-    p.push('<text x="'+(legX+14)+'" y="'+(legY+9)+'" font-size="11" fill="#333">'+esc(lLabel)+'</text>');
+    var hidden=!!st.hiddenGrps[gk];
+    var opacity=hidden?'0.35':'1';
+    legendHtml+='<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;opacity:'+opacity+'">';
+    legendHtml+='<input type="checkbox"'+(hidden?'':' checked')+' onchange="toggleGrpVis(\''+sid+'\',\''+gk.replace(/'/g,"\\\\'")+'\')" style="cursor:pointer;accent-color:'+col+'">';
+    legendHtml+='<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:'+col+';flex-shrink:0"></span>';
+    legendHtml+=esc(lLabel)+'</label>';
   });
-  p.push('</svg>');
-  cont.innerHTML=p.join('');
+  legendHtml+='</div>';
+  cont.innerHTML='<div style="overflow-x:auto">'+p.join('')+'</div>'+legendHtml;
 }
 
 /* CSV download */
