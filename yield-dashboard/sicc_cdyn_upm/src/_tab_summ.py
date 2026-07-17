@@ -50,6 +50,7 @@ function _ptBuildRows(){
     SICC_COLS.forEach(function(c){_ptRows.push({type:'SICC',cat:'SICC',testName:c,dispName:c,upmCol:'',isCdyn:false,catIdx:0});});
     CDYN_COLS.forEach(function(c){_ptRows.push({type:'CDYN',cat:'CDYN',testName:c,dispName:c,upmCol:'',isCdyn:true,catIdx:1});});
   }
+  _ptSelSet=new Set(); /* will be populated by _ptSyncFromSicc below */
 }
 
 function _ptComputeRow(row,ai){
@@ -112,6 +113,19 @@ function _ptRender(){
   });
   hdrHtml+='</tr>';
   hd.innerHTML=hdrHtml;
+  /* Restore header checkbox state */
+  var allCb=document.getElementById('pt-sel-all');
+  if(allCb){
+    var visCount=0,selCount=0;
+    idxArr.forEach(function(i){
+      var row=_ptRows[i];
+      var q=_ptQuery.toLowerCase();
+      if(q&&(row.dispName+row.cat+row.type+row.testName).toLowerCase().indexOf(q)<0)return;
+      visCount++;if(_ptSelSet.has(i))selCount++;
+    });
+    allCb.checked=visCount>0&&selCount===visCount;
+    allCb.indeterminate=selCount>0&&selCount<visCount;
+  }
   /* Body */
   var q=_ptQuery.toLowerCase();
   var body='';
@@ -159,6 +173,17 @@ function _ptSortVal(i,cv){
   return null;
 }
 
+/* Derive _ptSelSet entirely from SICC_CHECKED_ROWS — single source of truth */
+function _ptSyncFromSicc(){
+  if(typeof _siccAllRowKeys==='undefined'||typeof SICC_CHECKED_ROWS==='undefined')return;
+  _ptRows.forEach(function(row,i){
+    var anyChecked=_siccAllRowKeys.some(function(k){
+      return k.indexOf(row.testName+'||')===0&&SICC_CHECKED_ROWS.has(k);
+    });
+    if(anyChecked)_ptSelSet.add(i);else _ptSelSet.delete(i);
+  });
+}
+window._ptSyncFromSicc=_ptSyncFromSicc;
 function _ptSort(col){
   if(_ptSortCol===col)_ptSortDir*=-1;
   else{_ptSortCol=col;_ptSortDir=1;}
@@ -171,13 +196,59 @@ function _ptFilter(q){
 }
 
 function _ptToggleAll(checked){
-  _ptSelSet=new Set();
-  if(checked)_ptRows.forEach(function(_,i){_ptSelSet.add(i);});
+  /* Update SEL_COLS and SICC_CHECKED_ROWS for all rows of active mode, then mirror back */
+  var isCdyn=(typeof _siccScatterMode!=='undefined')&&_siccScatterMode==='cdyn';
+  if(typeof _siccAllRowKeys!=='undefined'&&typeof SICC_CHECKED_ROWS!=='undefined'&&
+     typeof SICC_SEL_COLS!=='undefined'&&typeof CDYN_SEL_COLS!=='undefined'){
+    var sc=isCdyn?CDYN_SEL_COLS:SICC_SEL_COLS;
+    _ptRows.forEach(function(row){
+      if(row.isCdyn!==isCdyn)return;
+      if(checked)sc.add(row.testName);else sc.delete(row.testName);
+      var found=false;
+      _siccAllRowKeys.forEach(function(k){
+        if(k.indexOf(row.testName+'||')===0){
+          found=true;
+          if(checked)SICC_CHECKED_ROWS.add(k);else SICC_CHECKED_ROWS.delete(k);
+        }
+      });
+      if(!found&&checked){
+        var dk=row.testName+'||All';
+        _siccAllRowKeys.push(dk);
+        SICC_CHECKED_ROWS.add(dk);
+      }
+    });
+  }
+  _ptSyncFromSicc();
+  if(typeof render_upm_dist!=='undefined')render_upm_dist();
   _ptRender();
 }
 
 function _ptCheckRow(i,checked){
-  if(checked)_ptSelSet.add(i);else _ptSelSet.delete(i);
+  var row=_ptRows[i];if(!row)return;
+  var isCdyn=row.isCdyn;
+  /* Add/remove from SEL_COLS so render_upm_dist picks it up */
+  if(typeof SICC_SEL_COLS!=='undefined'&&typeof CDYN_SEL_COLS!=='undefined'){
+    var sc=isCdyn?CDYN_SEL_COLS:SICC_SEL_COLS;
+    if(checked)sc.add(row.testName);else sc.delete(row.testName);
+  }
+  /* Update SICC_CHECKED_ROWS for all known group keys */
+  if(typeof _siccAllRowKeys!=='undefined'&&typeof SICC_CHECKED_ROWS!=='undefined'){
+    var found=false;
+    _siccAllRowKeys.forEach(function(k){
+      if(k.indexOf(row.testName+'||')===0){
+        found=true;
+        if(checked)SICC_CHECKED_ROWS.add(k);else SICC_CHECKED_ROWS.delete(k);
+      }
+    });
+    /* If no keys registered yet, pre-populate the default 'All' group key */
+    if(!found&&checked){
+      var dk=row.testName+'||All';
+      _siccAllRowKeys.push(dk);
+      SICC_CHECKED_ROWS.add(dk);
+    }
+  }
+  _ptSyncFromSicc();
+  if(typeof render_upm_dist!=='undefined')render_upm_dist();
 }
 
 function _ptCloseModal(){var m=document.getElementById('pt-dist-modal');if(m)m.style.display='none';}
@@ -193,20 +264,39 @@ function _ptShowDist(rowIdx,showUpm){
   if(!modal){
     modal=document.createElement('div');
     modal.id='pt-dist-modal';
-    modal.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center';
-    modal.innerHTML='<div style="background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.35);padding:0;width:620px;height:520px;min-width:320px;min-height:260px;max-width:95vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;resize:both">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#2c3e50;color:#fff;flex-shrink:0">'
+    modal.style.cssText='position:fixed;top:60px;right:20px;width:620px;height:520px;min-width:320px;min-height:260px;max-width:95vw;max-height:92vh;background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.35);z-index:9999;display:flex;flex-direction:column;overflow:hidden;resize:both';
+    modal.innerHTML='<div id="pt-dist-modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#2c3e50;color:#fff;flex-shrink:0;cursor:grab;user-select:none">'
         +'<span id="pt-dist-modal-title" style="font-size:13px;font-weight:bold"></span>'
         +'<button onclick="_ptCloseModal()" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px">&#10005;</button>'
       +'</div>'
       +'<div style="padding:12px;overflow:auto;flex:1;display:flex;flex-direction:column;min-height:0">'
         +'<div id="pt-dist-modal-content" style="flex:1;display:flex;flex-direction:column;min-height:0"></div>'
-      +'</div>'
-    +'</div>';
+      +'</div>';
     document.body.appendChild(modal);
-    modal.addEventListener('click',function(e){if(e.target===modal)modal.style.display='none';});
+    /* Drag logic */
+    (function(){
+      var hdr=document.getElementById('pt-dist-modal-header');
+      var dx=0,dy=0,mx=0,my=0;
+      hdr.addEventListener('mousedown',function(e){
+        if(e.target.tagName==='BUTTON')return;
+        e.preventDefault();
+        mx=e.clientX;my=e.clientY;
+        document.addEventListener('mousemove',onDrag);
+        document.addEventListener('mouseup',onUp);
+        hdr.style.cursor='grabbing';
+      });
+      function onDrag(e){
+        dx=e.clientX-mx;dy=e.clientY-my;mx=e.clientX;my=e.clientY;
+        modal.style.left=(modal.offsetLeft+dx)+'px';
+        modal.style.top=(modal.offsetTop+dy)+'px';
+        modal.style.right='auto';
+      }
+      function onUp(){document.removeEventListener('mousemove',onDrag);document.removeEventListener('mouseup',onUp);hdr.style.cursor='grab';}
+    })();
   }
   window.pt_modal_id='pt-dist-modal';
+  modal._ptRowIdx=rowIdx;
+  modal._ptShowUpm=showUpm;
   var titleEl=document.getElementById('pt-dist-modal-title');
   if(titleEl)titleEl.textContent=(showUpm?'UPM Distribution':'Distribution')+': '+testName;
   /* Inject SVG container into modal */
@@ -232,6 +322,43 @@ function _ptShowDist(rowIdx,showUpm){
   }
 }
 window._ptShowDist=_ptShowDist;
+/* Export parameter table as CSV */
+function _ptExportCsv(){
+  if(!_ptRows.length)_ptBuildRows();
+  var ai=SEL_WFR.size>0?Array.from(SEL_WFR):getFiltered();
+  var computed=_ptRows.map(function(r){return _ptComputeRow(r,ai);});
+  var q=_ptQuery.toLowerCase();
+  var hdrs=['Type','Category','Parameter','Median','Target','Ratio','UPM%','UPM_Target','Checked'];
+  var lines=[hdrs.join(',')];
+  _ptRows.forEach(function(row,i){
+    if(q&&(row.dispName+row.cat+row.type+row.testName).toLowerCase().indexOf(q)<0)return;
+    var cv=computed[i];
+    var checked=_ptSelSet.has(i)?'1':'0';
+    var vals=[row.type,row.cat,row.dispName,
+      cv.actual!=null?cv.actual.toFixed(6):'',
+      cv.tgt!=null?cv.tgt.toFixed(6):'',
+      cv.ratio!=null?cv.ratio.toFixed(4):'',
+      cv.upmMed!=null?cv.upmMed.toFixed(4):'',
+      cv.upmTgt!=null?cv.upmTgt.toFixed(4):'',
+      checked];
+    lines.push(vals.map(function(v){var s=String(v);return s.indexOf(',')>=0||s.indexOf('"')>=0?'"'+s.replace(/"/g,'""')+'"':s;}).join(','));
+  });
+  var blob=new Blob([lines.join(String.fromCharCode(13,10))],{type:'text/csv'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='parameter_table.csv';document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},100);
+}
+window._ptExportCsv=_ptExportCsv;
+/* Refresh the open dist/upm popup when lot/wafer selection changes */
+function _ptRefreshModal(){
+  var modal=document.getElementById('pt-dist-modal');
+  if(!modal||modal.style.display==='none')return;
+  var rowIdx=modal._ptRowIdx;
+  var showUpm=modal._ptShowUpm;
+  if(rowIdx==null||!_ptRows[rowIdx])return;
+  _ptShowDist(rowIdx,showUpm);
+}
+window._ptRefreshModal=_ptRefreshModal;
 window._ptSort=_ptSort;
 window._ptFilter=_ptFilter;
 window._ptToggleAll=_ptToggleAll;
@@ -261,6 +388,7 @@ function render_summ_if_open(){
 }
 function render_summ(){
   if(!_ptRows.length)_ptBuildRows();
+  _ptSyncFromSicc(); /* always mirror SICC_CHECKED_ROWS before rendering */
   _ptRender();
 }
 window.toggleSummPanel=toggleSummPanel;

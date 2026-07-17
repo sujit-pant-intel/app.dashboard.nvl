@@ -2889,7 +2889,7 @@ function _dlcpBuildFilterRowT() {{
 }}
 function _dlcpNumValT(txt){{var s=txt.replace(/%/g,'').replace(/\u2014/g,'').trim();var n=parseFloat(s);return isNaN(n)?null:n;}}
 function _dlcpNumTestT(fv,cellTxt){{
-  var m=fv.match(/^(>=|<=|!=|>|<|=)?\s*([\d.]+)$/);if(!m)return true;
+  var m=fv.match(/^(>=|<=|!=|>|<|=)?\\s*([\\d.]+)$/);if(!m)return true;
   var op=m[1]||'=',thr=parseFloat(m[2]);var val=_dlcpNumValT(cellTxt);if(val===null)return false;
   if(op==='>') return val>thr;if(op==='<') return val<thr;if(op==='>=') return val>=thr;
   if(op==='<=') return val<=thr;if(op==='!=') return val!==thr;return val===thr;

@@ -188,6 +188,7 @@ def build_page_open(display_title: str, tabs_html: str) -> str:
     <div style="padding:0 0 5px;display:flex;gap:4px;align-items:center">
       <input id="param-tbl-search" type="text" placeholder="&#128269; Search parameters..." oninput="_ptFilter(this.value)"
         style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #bdc3c7;border-radius:3px;background:#f8f9fa;color:#2c3e50">
+      <button onclick="_ptExportCsv()" title="Download parameter table as CSV" style="font-size:12px;padding:3px 7px;border:1px solid #bbb;border-radius:3px;background:#fff;cursor:pointer;white-space:nowrap">&#11015; CSV</button>
     </div>
     <div style="overflow:auto;max-height:calc(100vh - 200px)">
       <table id="param-unified-tbl" style="border-collapse:collapse;font-size:11px;white-space:nowrap;width:100%">

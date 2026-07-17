@@ -588,9 +588,14 @@ if __name__ == '__main__':
             '    print("[sicc] Written:", ' + repr(_sicc_html_out) + ')\n'
             'except Exception as _e:\n'
             '    print("[sicc] FAILED:", _e)\n'
+            '    import traceback as _tb; _tb.print_exc()\n'
         )
         _sicc_result = _sp.run([sys.executable, '-c', _sicc_script],
-                               capture_output=False, text=True, timeout=1800)
+                               capture_output=True, text=True, timeout=1800)
+        if _sicc_result.stdout:
+            print(_sicc_result.stdout, end='')
+        if _sicc_result.stderr:
+            print('[json] SICC stderr:\n', _sicc_result.stderr, end='')
         if _sicc_result.returncode != 0:
             print(f'[json] WARNING: SICC analysis exited with code {_sicc_result.returncode}')
 

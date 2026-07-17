@@ -443,6 +443,7 @@ def run_pipeline(
     alpha: float = 0.5,     # blending weight: 1.0 = pure IDW, 0.0 = pure shape
     idw_power: int = 2,
     material_csv: str = "",  # optional lot-definition CSV for material info merge
+    df_yield_cache=None,    # pre-loaded yield DataFrame (avoids re-reading CSV each lot)
     pcm_filter: str = "",   # wildcard(s) to select PCM columns, e.g. "*Con*" or "*Vts*,*Isat*"
 ):
     """
@@ -465,9 +466,14 @@ def run_pipeline(
     EPS = 1e-9
 
     # ── 1. Load yield CSV ─────────────────────────────────────────────────────
+    import time as _time
+    _t0 = _time.perf_counter()
     log(f"[Load ] Yield CSV: {os.path.basename(input_csv)}")
-    df_yield = _normalise_sort_cols(pd.read_csv(input_csv, low_memory=False))
-    log(f"        {len(df_yield):,} rows,  {len(df_yield.columns)} columns")
+    if df_yield_cache is not None:
+        df_yield = df_yield_cache
+    else:
+        df_yield = _normalise_sort_cols(pd.read_csv(input_csv, low_memory=False))
+    log(f"        {len(df_yield):,} rows,  {len(df_yield.columns)} columns  ({_time.perf_counter()-_t0:.1f}s)")
     if "SORT_X" not in df_yield.columns or "SORT_Y" not in df_yield.columns:
         raise ValueError("Input CSV must have SORT_X and SORT_Y columns (case-insensitive).")
 
@@ -479,9 +485,10 @@ def run_pipeline(
         log(f"[Load ] Input wafers ({_sw_col}): {_input_wafers}")
 
     # ── 2. Load reticle mapping ───────────────────────────────────────────────
+    _t1 = _time.perf_counter()
     log(f"[Load ] Reticle mapping: {os.path.basename(reticle_map_csv)}")
     df_map = pd.read_csv(reticle_map_csv)
-    log(f"        {len(df_map):,} rows")
+    log(f"        {len(df_map):,} rows  ({_time.perf_counter()-_t1:.1f}s)")
     if "SORT_X" not in df_map.columns or "SORT_Y" not in df_map.columns:
         x_mid = (df_map["DieX"].max() + df_map["DieX"].min()) / 2
         y_mid = (df_map["DieY"].max() + df_map["DieY"].min()) / 2
@@ -519,9 +526,10 @@ def run_pipeline(
     pcm_cols = []
     lot_reticle_pcm: dict = {}   # lot_str (or None) → {(LayoutX, LayoutY): {param: val}}
     if etest_csv and _zip_isfile(etest_csv):
+        _t2 = _time.perf_counter()
         log(f"[Load ] 9-site etest: {_zip_basename(etest_csv)}")
         df_9 = _read_csv(etest_csv)
-        log(f"        {len(df_9):,} rows")
+        log(f"        {len(df_9):,} rows  ({_time.perf_counter()-_t2:.1f}s)")
 
         # Identify primary lot and warn if etest filename doesn't match
         _primary_lot = _lots[0] if _lots else None
@@ -657,6 +665,7 @@ def run_pipeline(
             mode_str = "9-site IDW"
 
         # ── 8. Build reticle → PCM lookup ─────────────────────────────────────
+        _t3 = _time.perf_counter()
         reticle_pcm = {
             (float(row["LayoutX"]), float(row["LayoutY"])): {
                 p: V_IDW[i, j] for j, p in enumerate(pcm_cols)
@@ -664,6 +673,7 @@ def run_pipeline(
             for i, row in all_reticles.iterrows()
         }
         lot_reticle_pcm[_primary_lot] = reticle_pcm
+        log(f"[Time ] primary IDW+lookup: {_time.perf_counter()-_t3:.1f}s")
 
         # ── 8b. Supplementary lots — IDW for any additional SORT_LOTs ─────────
         _gui_prefix = _zip_basename(etest_csv)[:6]
@@ -689,6 +699,7 @@ def run_pipeline(
                 _extra_et = _auto_et
 
             try:
+                _t_extra = _time.perf_counter()
                 df_extra = _read_csv(_extra_et)
                 log(f"[Load ] Lot {_extra_lot!r} etest: {_zip_basename(_extra_et)}  "
                     f"({len(df_extra):,} rows)")
@@ -717,13 +728,14 @@ def run_pipeline(
                     _lot_pcm[_xy] = {c: _vidw[_i, j] for j, c in enumerate(_extra_pcm)}
                 lot_reticle_pcm[_extra_lot] = _lot_pcm
                 log(f"[IDW  ] Lot {_extra_lot!r}: IDW complete  "
-                    f"({len(_extra_pcm)} params,  {len(_sm)} sites)")
+                    f"({len(_extra_pcm)} params,  {len(_sm)} sites)  ({_time.perf_counter()-_t_extra:.1f}s)")
             except Exception as _ex:
                 log(f"[Warn ] Lot {_extra_lot!r}: etest processing failed — {_ex}")
 
         if len(_lots) > 1:
             log(f"[PCM  ] {len(pcm_cols)} params across {len(lot_reticle_pcm)} lot(s): "
                 + str(list(lot_reticle_pcm.keys())))
+        log(f"[Time ] all IDW (this lot): {_time.perf_counter()-_t2:.1f}s total")
     else:
         log("[PCM  ] No etest CSV provided — skipping PCM merge (reticle + material only)")
         mode_str = "Reticle+Material only"

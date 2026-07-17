@@ -12,6 +12,7 @@ _SICC_ON_CHANGE = (
     'render_sicc();render_cdyn();render_summ();'
     'var _ap=document.querySelector(\'.tab-panel.active\');'
     'if(_ap&&_ap.id===\'tab-dist\')renderHist();'
+    'if(typeof _ptRefreshModal!==\'undefined\')_ptRefreshModal();'
 )
 _SICC_FILTER_JS = _make_filter_js(
     on_change_calls=_SICC_ON_CHANGE,
@@ -135,14 +136,13 @@ function medArr(a){
   var m=Math.floor(s.length/2);
   return s.length%2?s[m]:(s[m-1]+s[m])/2;
 }
-/* Flatten die-level arrays from multiple wafer rows into a single flat array of valid numbers */
+/* Flatten die-level values from die_pairs across multiple wafer rows */
 function flatVals(indices,field,isCdyn){
   var out=[];
   for(var k=0;k<indices.length;k++){
     var r=ROWS[indices[k]];if(!r)continue;
-    var v=isCdyn?r.cdyn[field]:r.medians[field];
-    if(v==null)continue;
-    if(!isNaN(v))out.push(v);
+    var dp=r.die_pairs&&r.die_pairs[field];
+    if(dp&&dp.s){for(var j=0;j<dp.s.length;j++){if(dp.s[j]!=null&&!isNaN(dp.s[j])&&dp.s[j]>0)out.push(dp.s[j]);}}
   }
   return out;
 }
@@ -419,18 +419,7 @@ function _buildSiccCdynOverlay(active,isCdyn){
     var r=ROWS[i];
     var dp=r.die_pairs&&r.die_pairs[SEL_COL];
     if(dp&&dp.s&&dp.s.length){
-      for(var di=0;di<dp.s.length;di++) sVals.push(dp.s[di]);
-    }else{
-      var h=r.hists[SEL_COL];
-      if(h&&h.edges.length>1){
-        for(var bi=0;bi<h.counts.length;bi++){
-          var mid=(h.edges[bi]+h.edges[bi+1])/2;
-          for(var ci=0;ci<h.counts[bi];ci++)sVals.push(mid);
-        }
-      }else{
-        var fb=isCdyn?r.cdyn[SEL_COL]:r.medians[SEL_COL];
-        if(fb!=null&&!isNaN(fb))sVals.push(fb);
-      }
+      for(var di=0;di<dp.s.length;di++){if(dp.s[di]!=null&&!isNaN(dp.s[di]))sVals.push(dp.s[di]);}
     }
   });
   if(!sVals.length)return null;
@@ -761,11 +750,6 @@ function drawTabScatter(active,col,svgId,titleId,noteId){
       for(var di=0;di<dp.s.length;di++){
         if(dp.s[di]>0)pts.push({x:dp.u[di],y:dp.s[di],m:grp});
       }
-    }else{
-      // Fallback: wafer-level medians (CDYN has no die_pairs)
-      var yv=r.cdyn&&r.cdyn[col]!=null?r.cdyn[col]:(r.medians&&r.medians[col]!=null?r.medians[col]:null);
-      var xv=r.medians&&r.medians[uCol]!=null?r.medians[uCol]:null;
-      if(yv!=null&&xv!=null&&yv>0)pts.push({x:xv,y:yv,m:grp});
     }
   });
   if(!pts.length){svg.innerHTML='';if(noteEl)noteEl.textContent='No paired die data.';return;}
@@ -960,12 +944,7 @@ function _renderDistBody(active,col,cfg){
     var r=ROWS[i];
     var dp=r.die_pairs&&r.die_pairs[col];
     if(dp&&dp.s&&dp.s.length){
-      for(var di=0;di<dp.s.length;di++)allVals.push(dp.s[di]);
-    }else{
-      var h=r.hists[col];
-      if(h&&h.edges.length>1){
-        for(var bi=0;bi<h.counts.length;bi++){var mid=(h.edges[bi]+h.edges[bi+1])/2;for(var ci=0;ci<h.counts[bi];ci++)allVals.push(mid);}
-      }else{var v=cfg.isCdyn?r.cdyn[col]:r.medians[col];if(v!=null)allVals.push(v);}
+      for(var di=0;di<dp.s.length;di++){if(dp.s[di]!=null&&!isNaN(dp.s[di]))allVals.push(dp.s[di]);}
     }
   });
   allVals=filterOutliers(allVals.filter(function(v){return v>0;}),5);

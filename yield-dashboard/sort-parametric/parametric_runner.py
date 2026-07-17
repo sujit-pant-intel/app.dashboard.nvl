@@ -363,6 +363,10 @@ def run(args: argparse.Namespace) -> int:
                 except OSError as _e:
                     if getattr(_e, 'winerror', None) != 183:
                         raise
+                # Pre-load sort CSV once — avoids re-reading it for every lot
+                from pcm_merge_gui import _normalise_sort_cols as _nsc  # type: ignore
+                print(f"[parametric] Pre-loading sort CSV for IDW cache...")
+                _sort_df_cache = _nsc(pd.read_csv(sort_csv, low_memory=False))
                 for _lot, _pcm_csv in lot_csv_map.items():
                     _idw_path = os.path.join(deploy_dir, f"pcm_idw_{_lot}.csv")
                     if not os.path.isfile(_idw_path):
@@ -374,6 +378,7 @@ def run(args: argparse.Namespace) -> int:
                                 reticle_map_csv=_rmap,
                                 output_csv=_idw_path,
                                 log=print,
+                                df_yield_cache=_sort_df_cache,
                             )
                             print(f"[parametric] IDW done -> {_idw_path}")
                         except Exception as _ie:

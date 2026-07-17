@@ -167,8 +167,14 @@ def generate_html_svg(data: dict, output_path: str, title: str = '') -> str:
     )
     _PLOTLY_ABS = os.path.normpath(_PLOTLY_ABS)
     _html_dir = os.path.dirname(os.path.abspath(output_path))
-    _plotly_rel = os.path.relpath(_PLOTLY_ABS, _html_dir).replace('\\', '/')
-    _plotly_tag = f'<script src="{_plotly_rel}" charset="utf-8"></script>\n'
+    try:
+        _plotly_ref = os.path.relpath(_PLOTLY_ABS, _html_dir).replace('\\', '/')
+    except ValueError:
+        # Cross-mount (e.g. C: vs UNC path) — fall back to absolute file URI
+        _plotly_ref = _PLOTLY_ABS.replace('\\', '/')
+        if not _plotly_ref.startswith('//'):
+            _plotly_ref = 'file:///' + _plotly_ref.lstrip('/')
+    _plotly_tag = f'<script src="{_plotly_ref}" charset="utf-8"></script>\n'
 
     html = (
         build_page_open(display_title, tabs_html).replace(

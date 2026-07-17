@@ -101,8 +101,9 @@ function drawPareto(active,tgt){
   var _groups={};
   active.forEach(function(i){
     var r=ROWS[i];
-    var v=IS_CDYN?r.cdyn[SEL_COL]:r.medians[SEL_COL];
-    if(v!=null&&!isNaN(v)&&v>0){
+    var _dp=r.die_pairs&&r.die_pairs[SEL_COL];
+    var _dvals=(_dp&&_dp.s&&_dp.s.length)?_dp.s.filter(function(v){return v!=null&&!isNaN(v)&&v>0;}):[];
+    if(_dvals.length){
       var parts=[];
       if(PARETO_GROUP.indexOf('program')>=0)parts.push(r.program||'?');
       if(PARETO_GROUP.indexOf('lot')>=0)parts.push(r.lot);
@@ -110,7 +111,7 @@ function drawPareto(active,tgt){
       if(PARETO_GROUP.indexOf('material')>=0)parts.push(r.material||'?');
       var lbl=parts.length?parts.join('/'):r.lot+'/'+r.wafer;
       if(!_groups[lbl])_groups[lbl]={vals:[],indices:[]};
-      _groups[lbl].vals.push(v);
+      _dvals.forEach(function(v){_groups[lbl].vals.push(v);});
       _groups[lbl].indices.push(i);
     }
   });
@@ -172,8 +173,10 @@ function drawPareto(active,tgt){
     var uPts=[],uMax=-Infinity,uMin=Infinity;
     for(var i=0;i<n;i++){
       var r=ROWS[pts[i].idx];
-      var uv=r.medians[uCol];
-      if(uv!=null&&!isNaN(uv)){uPts.push({i:i,v:uv});if(uv>uMax)uMax=uv;if(uv<uMin)uMin=uv;}
+      var _udp=r.die_pairs&&r.die_pairs[SEL_COL];
+      var _uarr=(_udp&&_udp.u&&_udp.u.length)?_udp.u.filter(function(u){return u!=null&&!isNaN(u)&&u>=0;}):[];
+      var uv=_uarr.length?(_uarr.slice().sort(function(a,b){return a-b;})[Math.floor((_uarr.length-1)/2)]):null;
+      if(uv!=null){uPts.push({i:i,v:uv});if(uv>uMax)uMax=uv;if(uv<uMin)uMin=uv;}
     }
     if(uPts.length>1&&uMax>uMin){
       var uRange=uMax-uMin;if(uRange===0)uRange=1;
