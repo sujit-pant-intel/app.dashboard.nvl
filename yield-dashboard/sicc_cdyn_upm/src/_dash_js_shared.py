@@ -130,6 +130,9 @@ function _togCat(span,cat,legendId){
 }
 window._togCat=_togCat;
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+/* Safe min/max: avoids Function.apply stack overflow on large arrays (>65k items) */
+function _safeMin(a){var r=Infinity;for(var _i=0;_i<a.length;_i++){if(a[_i]<r)r=a[_i];}return r;}
+function _safeMax(a){var r=-Infinity;for(var _i=0;_i<a.length;_i++){if(a[_i]>r)r=a[_i];}return r;}
 function medArr(a){
   if(!a||!a.length)return null;
   var s=a.slice().sort(function(x,y){return x-y;});
@@ -310,7 +313,7 @@ function drawMiniUpm(active,primaryCol,isCdyn,svgId,titleId,noteId){
   allU=filterOutliers(allU.filter(function(v){return v!=null&&!isNaN(v);}),5);
   if(!allU.length){svg.innerHTML='';if(noteEl)noteEl.textContent='No UPM data.';return;}
   // Build histogram
-  var lo=Math.min.apply(null,allU),hi=Math.max.apply(null,allU);
+  var lo=_safeMin(allU),hi=_safeMax(allU);
   if(lo===hi){var d=Math.abs(lo*0.05)||0.5;lo-=d;hi+=d;}
   var nb=Math.max(6,Math.min(25,Math.round(Math.sqrt(allU.length))));
   var step=(hi-lo)/nb;
@@ -323,7 +326,7 @@ function drawMiniUpm(active,primaryCol,isCdyn,svgId,titleId,noteId){
   var W=Math.max(svg.clientWidth||480,240),H=parseInt(svg.getAttribute('height'))||200;
   var pl=48,pr=12,pt=18,pb=38;
   var cW=W-pl-pr,cH=H-pt-pb;
-  var maxC=Math.max.apply(null,counts)||1;
+  var maxC=_safeMax(counts)||1;
   var bw=cW/nb;
   var p=['<rect width="'+W+'" height="'+H+'" fill="#fffaf4"/>'];
   for(var i=0;i<nb;i++){
@@ -423,7 +426,7 @@ function _buildSiccCdynOverlay(active,isCdyn){
     }
   });
   if(!sVals.length)return null;
-  var lo=Math.min.apply(null,sVals),hi=Math.max.apply(null,sVals);
+  var lo=_safeMin(sVals),hi=_safeMax(sVals);
   if(lo===hi){var d=Math.abs(lo*0.05)||0.01;lo-=d;hi+=d;}
   var nb=Math.max(4,Math.min(25,Math.round(Math.sqrt(sVals.length))));
   var step=(hi-lo)/nb;
@@ -437,8 +440,34 @@ function _buildSiccCdynOverlay(active,isCdyn){
   });
   return {edges:edges,counts:counts,med:medArr(sVals),colName:SEL_COL};
 }
-function computeStats(vals){if(!vals||!vals.length)return null;var s=vals.slice().sort(function(a,b){return a-b;});var n=s.length;var sum=s.reduce(function(a,b){return a+b;},0);var mean=sum/n;var med=n%2?s[Math.floor(n/2)]:(s[n/2-1]+s[n/2])/2;var vari=s.reduce(function(ac,v){var d=v-mean;return ac+d*d;},0)/n;return{min:s[0],max:s[n-1],median:med,stddev:Math.sqrt(vari),count:n};}
-function renderStatsTable(stats,containerId,dec){var el=document.getElementById(containerId);if(!el)return;if(!stats){el.innerHTML='';return;}var d=dec||4;el.innerHTML='<table class="cat-tbl" style="width:auto;max-width:420px;margin-top:6px;font-size:12px"><thead><tr><th>Stat</th><th>Value</th></tr></thead><tbody><tr><td style="text-align:left">Count</td><td>'+stats.count+'</td></tr><tr><td style="text-align:left">Min</td><td>'+stats.min.toFixed(d)+'</td></tr><tr><td style="text-align:left;font-weight:bold;color:#8B4513">Median</td><td style="font-weight:bold;color:#8B4513">'+stats.median.toFixed(d)+'</td></tr><tr><td style="text-align:left">Max</td><td>'+stats.max.toFixed(d)+'</td></tr><tr><td style="text-align:left">Std Dev</td><td>'+stats.stddev.toFixed(d)+'</td></tr></tbody></table>';}
+function computeStats(vals){if(!vals||!vals.length)return null;var s=vals.slice().sort(function(a,b){return a-b;});var n=s.length;var sum=s.reduce(function(a,b){return a+b;},0);var mean=sum/n;var med=n%2?s[Math.floor(n/2)]:(s[n/2-1]+s[n/2])/2;var vari=s.reduce(function(ac,v){var d=v-mean;return ac+d*d;},0)/n;return{min:s[0],max:s[n-1],median:med,mean:mean,stddev:Math.sqrt(vari),count:n};}
+function renderStatsTable(stats,containerId,dec){
+  var el=document.getElementById(containerId);if(!el)return;
+  if(!stats){el.innerHTML='';return;}
+  var d=dec||4;var fv=function(v){return v!=null?v.toFixed(d):'--';};
+  var _th='padding:6px 14px;font-size:11px;font-weight:600;text-align:center;background:#2c3e50;color:#ecf0f1;letter-spacing:0.04em;white-space:nowrap;border-right:1px solid #3d5166';
+  var _thHL='padding:6px 14px;font-size:11px;font-weight:700;text-align:center;background:#1a4a7a;color:#fff;letter-spacing:0.04em;white-space:nowrap;border-right:1px solid #3d5166';
+  var _td='padding:6px 14px;font-size:12px;text-align:center;white-space:nowrap;border-right:1px solid #e8e8e8;color:#2c3e50';
+  var _tdHL='padding:6px 14px;font-size:13px;font-weight:700;text-align:center;white-space:nowrap;color:#1a4a7a;border-right:1px solid #c8ddf5;background:#eef6ff';
+  el.innerHTML=
+    '<table style="border-collapse:collapse;width:100%;margin-top:10px;border-radius:6px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.12)">'
+    +'<thead><tr>'
+    +'<th style="'+_th+'">N (dies)</th>'
+    +'<th style="'+_th+'">Min</th>'
+    +'<th style="'+_thHL+'">Median</th>'
+    +'<th style="'+_th+'">Mean</th>'
+    +'<th style="'+_th+'">Max</th>'
+    +'<th style="'+_th+';border-right:none">Std Dev</th>'
+    +'</tr></thead>'
+    +'<tbody><tr style="background:#fff">'
+    +'<td style="'+_td+'">'+stats.count.toLocaleString()+'</td>'
+    +'<td style="'+_td+'">'+fv(stats.min)+'</td>'
+    +'<td style="'+_tdHL+'">'+fv(stats.median)+'</td>'
+    +'<td style="'+_td+'">'+fv(stats.mean)+'</td>'
+    +'<td style="'+_td+'">'+fv(stats.max)+'</td>'
+    +'<td style="'+_td+';border-right:none">'+fv(stats.stddev)+'</td>'
+    +'</tr></tbody></table>';
+}
 function drawSVG(edges,counts,medVal,tgt,ylabel,svgId,showCounts,overlay,barLabel){
   var svg=document.getElementById(svgId||'hist-svg');
   if(!svg)return;
@@ -450,7 +479,7 @@ function drawSVG(edges,counts,medVal,tgt,ylabel,svgId,showCounts,overlay,barLabe
   var p=['<rect width="'+W+'" height="'+H+'" fill="#f8f9fa"/>'];
   if(!n){svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.innerHTML=p.join('');return;}
   var lo=edges[0],hi=edges[edges.length-1];
-  var maxC=Math.max.apply(null,counts)||1;
+  var maxC=_safeMax(counts)||1;
   var bw=cW/n;
   // Primary bars (SICC/CDYN - blue)
   for(var i=0;i<n;i++){
@@ -478,7 +507,7 @@ function drawSVG(edges,counts,medVal,tgt,ylabel,svgId,showCounts,overlay,barLabe
     var validMeds=binMeds.filter(function(v){return v!=null;});
     if(validMeds.length){
       // Dynamic UPM range so markers spread across chart height
-      var uMin=Math.min.apply(null,validMeds),uMax=Math.max.apply(null,validMeds);
+      var uMin=_safeMin(validMeds),uMax=_safeMax(validMeds);
       var uPad=(uMax-uMin)*0.1||1;uMin-=uPad;uMax+=uPad;
       var uRange=uMax-uMin;if(uRange===0)uRange=1;
       // Draw one dot per bin at bin center
@@ -757,15 +786,15 @@ function drawTabScatter(active,col,svgId,titleId,noteId){
   var yArr=pts.map(function(p){return p.y;});
   var xFilt=filterOutliers(xArr,5);
   var yFilt=filterOutliers(yArr,5);
-  var xMin2=Math.min.apply(null,xFilt),xMax2=Math.max.apply(null,xFilt);
-  var yMin2=Math.min.apply(null,yFilt),yMax2=Math.max.apply(null,yFilt);
+  var xMin2=_safeMin(xFilt),xMax2=_safeMax(xFilt);
+  var yMin2=_safeMin(yFilt),yMax2=_safeMax(yFilt);
   pts=pts.filter(function(p){return p.x>=xMin2&&p.x<=xMax2&&p.y>=yMin2&&p.y<=yMax2;});
   if(!pts.length){svg.innerHTML='';if(noteEl)noteEl.textContent='No data after filtering.';return;}
   var useLog=_SCATTER_Y_LOG&&pts.every(function(p){return p.y>0;});
   var xVals=pts.map(function(p){return p.x;});
   var yVals=pts.map(function(p){return p.y;});
-  var xLo=Math.min.apply(null,xVals),xHi=Math.max.apply(null,xVals);
-  var yLo=Math.min.apply(null,yVals),yHi=Math.max.apply(null,yVals);
+  var xLo=_safeMin(xVals),xHi=_safeMax(xVals);
+  var yLo=_safeMin(yVals),yHi=_safeMax(yVals);
   if(xLo===xHi){var d=Math.abs(xLo*0.05)||0.5;xLo-=d;xHi+=d;}
   if(yLo===yHi){var d=Math.abs(yLo*0.05)||0.01;yLo-=d;yHi+=d;}
   var xBuf=(xHi-xLo)*0.05;xLo-=xBuf;xHi+=xBuf;
@@ -949,7 +978,7 @@ function _renderDistBody(active,col,cfg){
   });
   allVals=filterOutliers(allVals.filter(function(v){return v>0;}),5);
   if(!allVals.length){drawSVG([],[],null,tgt,col,cfg.histSvg,false);renderStatsTable(null,cfg.statsTbl);if(ne)ne.textContent='No data.';return;}
-  var lo=Math.min.apply(null,allVals),hi=Math.max.apply(null,allVals);
+  var lo=_safeMin(allVals),hi=_safeMax(allVals);
   if(lo===hi){var d=Math.abs(lo*0.05)||0.01;lo-=d;hi+=d;}
   var nb=Math.max(6,Math.min(30,Math.round(Math.sqrt(allVals.length))));
   var step=(hi-lo)/nb;var edges=[],counts=[];

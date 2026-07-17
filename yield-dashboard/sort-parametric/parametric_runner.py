@@ -369,24 +369,27 @@ def run(args: argparse.Namespace) -> int:
                 _sort_df_cache = _nsc(pd.read_csv(sort_csv, low_memory=False))
                 for _lot, _pcm_csv in lot_csv_map.items():
                     _idw_path = os.path.join(deploy_dir, f"pcm_idw_{_lot}.csv")
+                    _idf_from_run = None
                     if not os.path.isfile(_idw_path):
                         print(f"[parametric] Running IDW for lot {_lot} ...")
                         try:
-                            _run_idw(
+                            _idf_from_run, _ = _run_idw(
                                 input_csv=sort_csv,
                                 etest_csv=_pcm_csv,
                                 reticle_map_csv=_rmap,
                                 output_csv=_idw_path,
                                 log=print,
                                 df_yield_cache=_sort_df_cache,
+                                write_csv=False,
                             )
                             print(f"[parametric] IDW done -> {_idw_path}")
                         except Exception as _ie:
                             print(f"[parametric] WARNING: IDW failed for {_lot}: {_ie}",
                                   file=sys.stderr)
-                    if os.path.isfile(_idw_path):
+                    if _idf_from_run is not None or os.path.isfile(_idw_path):
                         try:
-                            _idf = pd.read_csv(_idw_path, low_memory=False, encoding='utf-8')
+                            _idf = (_idf_from_run if _idf_from_run is not None
+                                    else pd.read_csv(_idw_path, low_memory=False, encoding='utf-8'))
                             # Normalise column names to what generate_pcm_html expects
                             _col_remap_idw = {
                                 "SORT_LOT": "Lot", "SORT_WAFER": "Wafer",
@@ -486,12 +489,13 @@ def run(args: argparse.Namespace) -> int:
                                 except Exception as _matjoin_ex:
                                     print(f"[parametric] WARNING: per-wafer material join "
                                           f"failed: {_matjoin_ex}", file=sys.stderr)
-                            # Write enriched CSV back so Material/normalised cols are persisted.
-                            try:
-                                _idf.to_csv(_idw_path, index=False, encoding='utf-8')
-                            except Exception as _wb_ex:
-                                print(f"[parametric] WARNING: IDW write-back failed: {_wb_ex}",
-                                      file=sys.stderr)
+                            # Write-back only needed when loaded from disk (resume path).
+                            if _idf_from_run is None:
+                                try:
+                                    _idf.to_csv(_idw_path, index=False, encoding='utf-8')
+                                except Exception as _wb_ex:
+                                    print(f"[parametric] WARNING: IDW write-back failed: {_wb_ex}",
+                                          file=sys.stderr)
                             _idw_frames.append(_idf)
                             print(f"[parametric] IDW loaded: {_idw_path} "
                                   f"({len(_idf):,} rows, {len(_idf.columns)} cols)")

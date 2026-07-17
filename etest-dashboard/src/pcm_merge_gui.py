@@ -445,6 +445,7 @@ def run_pipeline(
     material_csv: str = "",  # optional lot-definition CSV for material info merge
     df_yield_cache=None,    # pre-loaded yield DataFrame (avoids re-reading CSV each lot)
     pcm_filter: str = "",   # wildcard(s) to select PCM columns, e.g. "*Con*" or "*Vts*,*Isat*"
+    write_csv: bool = True,  # set False to skip disk write (caller uses returned DataFrame)
 ):
     """
     Full merge pipeline implementing the Hybrid Wafer Map Reconstruction spec.
@@ -871,7 +872,8 @@ def run_pipeline(
             log(f"[Mat  ] Columns added: {_MAT_KEEP}")
 
     # ── 11. Save ──────────────────────────────────────────────────────────────
-    merged.to_csv(output_csv, index=False, encoding='utf-8')
+    if write_csv:
+        merged.to_csv(output_csv, index=False, encoding='utf-8')
     log(f"[Done ] [{mode_str}]  {len(merged):,} rows × {len(merged.columns)} cols  →  {output_csv}", "ok")
 
     return merged, pcm_cols

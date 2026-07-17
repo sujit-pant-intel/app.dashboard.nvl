@@ -103,7 +103,7 @@ function _ptRender(){
   var hdrHtml='<tr>';
   cols.forEach(function(c){
     if(c.k==='sel'){
-      hdrHtml+='<th style="'+th+';cursor:default;width:'+c.w+'"><input type="checkbox" id="pt-sel-all" onchange="_ptToggleAll(this.checked)" style="cursor:pointer"></th>';
+      hdrHtml+='<th style="'+th+';cursor:default;width:'+c.w+'"><input type="checkbox" id="pt-sel-all" onmousedown="this._wasIndet=this.indeterminate" onclick="_ptHdrClick(this)" style="cursor:pointer"></th>';
     }else if(c.k==='actions'){
       hdrHtml+='<th style="'+th+';cursor:default;width:'+c.w+'">'+c.l+'</th>';
     }else{
@@ -214,12 +214,30 @@ function _ptToggleAll(checked){
       if(!found&&checked){
         var dk=row.testName+'||All';
         _siccAllRowKeys.push(dk);
+        if(typeof _siccAllRowKeysSet!=='undefined')_siccAllRowKeysSet.add(dk);
         SICC_CHECKED_ROWS.add(dk);
       }
     });
   }
   _ptSyncFromSicc();
-  if(typeof render_upm_dist!=='undefined')render_upm_dist();
+  if(!checked){
+    /* Fast path for deselect-all: restyle all traces + target lines invisible.
+       Do NOT call render_upm_dist (it would auto-repopulate SICC_SEL_COLS). */
+    var _el=typeof _siccTraceIndexMap!=='undefined'&&document.getElementById('sicc-scatter-div');
+    if(_el&&_el._spl&&typeof _siccTraceIndexMap!=='undefined'){
+      var _allIdxs=[];
+      Object.keys(_siccTraceIndexMap).forEach(function(k){_siccTraceIndexMap[k].forEach(function(i){_allIdxs.push(i);});});
+      if(typeof _siccTargetTraceIndices!=='undefined')_siccTargetTraceIndices.forEach(function(i){_allIdxs.push(i);});
+      if(_allIdxs.length)Plotly.restyle(_el,{visible:false},_allIdxs);
+    }
+    /* Clear the stats table — no rows should show when nothing is selected */
+    var _bd=document.getElementById('sicc-stats-body');
+    if(_bd){_bd.innerHTML='';}
+    var _hcb=document.getElementById('sicc-sel-all');
+    if(_hcb){_hcb.checked=false;_hcb.indeterminate=false;}
+  }else{
+    if(typeof render_upm_dist!=='undefined')render_upm_dist();
+  }
   _ptRender();
 }
 
@@ -244,6 +262,7 @@ function _ptCheckRow(i,checked){
     if(!found&&checked){
       var dk=row.testName+'||All';
       _siccAllRowKeys.push(dk);
+      if(typeof _siccAllRowKeysSet!=='undefined')_siccAllRowKeysSet.add(dk);
       SICC_CHECKED_ROWS.add(dk);
     }
   }
@@ -362,6 +381,17 @@ window._ptRefreshModal=_ptRefreshModal;
 window._ptSort=_ptSort;
 window._ptFilter=_ptFilter;
 window._ptToggleAll=_ptToggleAll;
+function _ptHdrClick(cb){
+  /* onmousedown captured the pre-click indeterminate state;
+     if it was indeterminate ('-'), treat click as deselect-all regardless of
+     what the browser set checked to. */
+  var deselect=cb._wasIndet===true||!cb.checked;
+  cb.indeterminate=false;
+  cb.checked=!deselect;
+  delete cb._wasIndet;
+  _ptToggleAll(!deselect);
+}
+window._ptHdrClick=_ptHdrClick;
 window._ptCheckRow=_ptCheckRow;
 
 function toggleSummPanel(){

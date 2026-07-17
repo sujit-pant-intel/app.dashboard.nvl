@@ -47,6 +47,9 @@ def tab_html() -> str:
     <input id="sicc-ymin" type="number" placeholder="min" title="Y-axis minimum (leave blank for auto)" oninput="render_upm_dist()" style="width:62px;font-size:11px;padding:2px 4px;border:1px solid #bbb;border-radius:3px">
     <input id="sicc-ymax" type="number" placeholder="max" title="Y-axis maximum (leave blank for auto)" oninput="render_upm_dist()" style="width:62px;font-size:11px;padding:2px 4px;border:1px solid #bbb;border-radius:3px">
     <button onclick="_siccResetAxisRange()" title="Reset axis ranges to auto" style="font-size:11px;padding:2px 6px;border:1px solid #bbb;border-radius:3px;background:#fff;cursor:pointer">&#8635; Reset</button>
+    <span style="color:#aaa">|</span>
+    <span style="font-weight:bold;color:#555">Group by:</span>
+    {_GROUP_BY_HTML_INLINE}
   </div>
   <div id="upm-dist-panel" style="flex:1;overflow-y:auto;padding:8px 10px">
     <div id="upm-dist-body">
@@ -58,6 +61,7 @@ def tab_html() -> str:
       <div id="sicc-scatter-note" style="font-size:11px;color:#7f8c8d;margin:2px 0 4px"></div>
       <div style="margin:4px 0 2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <div id="sicc-cat-panel" style="position:relative;display:inline-block"></div>
+        <button onclick="_siccDownloadStatsCsv()" title="Download stats table as CSV" style="font-size:11px;padding:3px 8px;border:1px solid #bbb;border-radius:3px;background:#fff;cursor:pointer;margin-left:auto;white-space:nowrap">&#11015; Table CSV</button>
       </div>
       <div style="overflow-x:auto;margin:4px 0 6px">
         <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;min-width:600px">
@@ -127,9 +131,22 @@ var CDYN_SEL_COLS=new Set();  /* selected CDYN column keys */
 var _siccColsBuilt=false,_cdynColsBuilt=false;
 var SICC_CHECKED_ROWS=new Set();
 var _siccAllRowKeys=[];            /* ordered list of all row keys for All/None */
+var _siccAllRowKeysSet=new Set();  /* O(1) lookup mirror of _siccAllRowKeys */
+var _siccTraceIndexMap={};         /* rowKey → [scatter_idx, trend_idx?] for fast Plotly.restyle */
+var _siccTargetTraceIndices=[];    /* target-line trace indices (one per col) */
 var SICC_TREND='ols';              /* 'ols' | 'ts' | 'none' */
 var SICC_Y_LOG=false;
 var SICC_CROSSHAIR=false;
+/* Debounce: coalesce rapid checkbox toggles into one render */
+var _upmRenderTimer=null;
+function _renderUpmDistDebounced(){clearTimeout(_upmRenderTimer);_upmRenderTimer=setTimeout(render_upm_dist,120);}
+/* Subsample: reduce scatter points to maxN using Fisher-Yates on indices */
+function _subsampleIdx(n,maxN){
+  if(n<=maxN)return null; /* null = use all */
+  var idx=new Array(n);for(var i=0;i<n;i++)idx[i]=i;
+  for(var i=n-1;i>=n-maxN;i--){var j=Math.floor(Math.random()*(i+1));var t=idx[i];idx[i]=idx[j];idx[j]=t;}
+  return idx.slice(n-maxN);
+}
 function _setSiccTrend(m){SICC_TREND=m;render_upm_dist();}
 function _setSiccYLog(v){SICC_Y_LOG=v;render_upm_dist();}
 function _setSiccCrosshair(v){SICC_CROSSHAIR=v;render_upm_dist();}
@@ -254,22 +271,49 @@ function _siccToggleAll(checked){
   });
   /* Sync → parameter table */
   if(typeof _ptSyncFromSicc!=='undefined'){_ptSyncFromSicc();if(typeof _ptRender!=='undefined')_ptRender();}
-  render_upm_dist();
+  if(!checked){
+    /* Fast path: hide all traces + target lines, clear table — same as _ptToggleAll(false) */
+    var _el=document.getElementById('sicc-scatter-div');
+    if(_el&&_el._spl&&typeof _siccTraceIndexMap!=='undefined'){
+      var _allIdxs=[];
+      Object.keys(_siccTraceIndexMap).forEach(function(k){_siccTraceIndexMap[k].forEach(function(i){_allIdxs.push(i);});});
+      if(typeof _siccTargetTraceIndices!=='undefined')_siccTargetTraceIndices.forEach(function(i){_allIdxs.push(i);});
+      if(_allIdxs.length)Plotly.restyle(_el,{visible:false},_allIdxs);
+    }
+    bd.innerHTML='';
+    var _allCb=document.getElementById('sicc-sel-all');
+    if(_allCb){_allCb.checked=false;_allCb.indeterminate=false;}
+  }else{
+    _renderUpmDistDebounced();
+  }
 }
 window._siccToggleAll=_siccToggleAll;
 function _toggleSiccRow(key){
   if(SICC_CHECKED_ROWS.has(key))SICC_CHECKED_ROWS.delete(key);else SICC_CHECKED_ROWS.add(key);
+  var vis=SICC_CHECKED_ROWS.has(key);
   var col=key.split('||')[0];
   var isCdyn=_siccScatterMode==='cdyn';
   var s=isCdyn?CDYN_SEL_COLS:SICC_SEL_COLS;
   var anyChecked=_siccAllRowKeys.some(function(k){return k.indexOf(col+'||')===0&&SICC_CHECKED_ROWS.has(k);});
   if(!anyChecked)s.delete(col);else s.add(col);
-  /* Update col panel checkbox list and button visually */
+  /* Update col panel dropdown if open */
   var panelId=isCdyn?'cdyn-col-panel':'sicc-col-panel';
-  _colDdRenderList(panelId,s,isCdyn,'');
+  var _ddEl=document.getElementById(panelId+'-drop');
+  if(_ddEl&&_ddEl.style.display!=='none'){_colDdRenderList(panelId,s,isCdyn,'');}
   _colDdUpdateBtn(panelId,s);
   /* Sync → parameter table */
   if(typeof _ptSyncFromSicc!=='undefined'){_ptSyncFromSicc();if(typeof _ptRender!=='undefined')_ptRender();}
+  /* Fast path: surgical restyle instead of full re-render */
+  var el=document.getElementById('sicc-scatter-div');
+  var idxs=_siccTraceIndexMap[key];
+  if(el&&el._spl&&idxs&&idxs.length){
+    Plotly.restyle(el,{visible:vis},idxs);
+    /* Update only this row's opacity in the table — no full DOM rebuild */
+    var bd=document.getElementById('sicc-stats-body');
+    if(bd){var _cbs=bd.querySelectorAll('input[type=checkbox][data-rk]');for(var _ci=0;_ci<_cbs.length;_ci++){if(_cbs[_ci].getAttribute('data-rk')===key){var _tr=_cbs[_ci].closest('tr');if(_tr)_tr.style.opacity=vis?'1':'0.45';break;}}}
+    return;
+  }
+  /* Fallback: full render if trace map not ready */
   render_upm_dist();
 }
 function _siccRowKey(col,gk){return col+'||'+gk;}
@@ -303,6 +347,48 @@ function _siccResetAxisRange(){
   render_upm_dist();
 }
 window._siccResetAxisRange=_siccResetAxisRange;
+/* Download the stats table as CSV */
+function _siccDownloadStatsCsv(){
+  var hd=document.getElementById('sicc-stats-head');
+  var bd=document.getElementById('sicc-stats-body');
+  if(!bd)return;
+  var rows=[];
+  /* Header row from thead */
+  if(hd){
+    var ths=hd.querySelectorAll('th');
+    var hdr=[];
+    ths.forEach(function(th){
+      /* skip the checkbox column */
+      if(th.querySelector('input[type=checkbox]'))return;
+      hdr.push(th.textContent.trim());
+    });
+    rows.push(hdr);
+  }
+  /* Data rows from tbody */
+  bd.querySelectorAll('tr').forEach(function(tr){
+    var tds=tr.querySelectorAll('td');
+    if(!tds.length)return;
+    var row=[];
+    tds.forEach(function(td){
+      /* skip checkbox cell */
+      if(td.querySelector('input[type=checkbox]'))return;
+      var v=td.textContent.trim();
+      /* quote cells containing commas or quotes */
+      if(v.indexOf(',')>=0||v.indexOf('"')>=0)v='"'+v.replace(/"/g,'""')+'"';
+      row.push(v);
+    });
+    if(row.length)rows.push(row);
+  });
+  if(rows.length<=1){alert('No data in table.');return;}
+  var csv=rows.map(function(r){return r.join(',');}).join('\\r\\n');
+  var blob=new Blob([csv],{type:'text/csv'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='sicc_stats.csv';
+  document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},100);
+}
+window._siccDownloadStatsCsv=_siccDownloadStatsCsv;
 /* Export XY scatter data as CSV */
 function _siccExportXyCsv(){
   var isCdyn=_siccScatterMode==='cdyn';
@@ -400,8 +486,12 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
   var el=document.getElementById('sicc-scatter-div');
   if(!el||typeof Plotly==='undefined')return;
   if(!active.length||!cols.length){if(el._spl)Plotly.purge(el);el._spl=false;return;}
+  _siccTraceIndexMap={};  /* reset map on full rebuild */
+  _siccTargetTraceIndices=[];
   var COLORS=['#1f77b4','#ff7f0e','#d62728','#9467bd','#8c564b','#e377c2','#00c853','#f39c12','#2e4057','#a93226'];
   var traces=[];var ti=0;var pts_have_upm=false;
+  var _xRangeLo=Infinity,_xRangeHi=-Infinity;
+  var _yRangeLo=Infinity,_yRangeHi=-Infinity;
   cols.forEach(function(col){
     var upmCol=_getUpmCol(col);
     var groups={},groupOrder=[];
@@ -446,13 +536,24 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
     groupOrder.forEach(function(gn){
       var rowKey=_siccRowKey(col,gn);
       /* Default: add to checked set on first encounter */
-      if(!_siccAllRowKeys.includes(rowKey)){_siccAllRowKeys.push(rowKey);SICC_CHECKED_ROWS.add(rowKey);}
-      if(!SICC_CHECKED_ROWS.has(rowKey))return;
+      if(!_siccAllRowKeysSet.has(rowKey)){_siccAllRowKeys.push(rowKey);_siccAllRowKeysSet.add(rowKey);SICC_CHECKED_ROWS.add(rowKey);}
+      var _isVisible=SICC_CHECKED_ROWS.has(rowKey);
       var g=groups[gn];
       var col2=COLORS[ti%COLORS.length];
-      traces.push({type:'scatter',mode:'markers',name:cols.length>1?col+(groupOrder.length>1?' ('+gn+')':''):gn,
-        x:g.x,y:g.y,text:g.t,hoverinfo:'text',
+      /* Subsample to max 3000 pts per trace — visually identical, 10x faster Plotly render */
+      var _sx=g.x,_sy=g.y,_st=g.t;
+      var _sidx=_subsampleIdx(_sx.length,3000);
+      if(_sidx){_sx=_sidx.map(function(i){return g.x[i];});_sy=_sidx.map(function(i){return g.y[i];});_st=_sidx.map(function(i){return g.t[i];});}
+      var _scatterIdx=traces.length;
+      traces.push({type:'scattergl',mode:'markers',name:cols.length>1?col+(groupOrder.length>1?' ('+gn+')':''):gn,
+        x:_sx,y:_sy,text:_st,hoverinfo:'text',visible:_isVisible,
         marker:{size:4,color:col2,opacity:0.75,line:{width:0.5,color:'#fff'}}});
+      _siccTraceIndexMap[rowKey]=[_scatterIdx];
+      /* Track x/y range for checked traces only */
+      if(_isVisible){
+        for(var _ri=0;_ri<g.x.length;_ri++){if(typeof g.x[_ri]==='number'){if(g.x[_ri]<_xRangeLo)_xRangeLo=g.x[_ri];if(g.x[_ri]>_xRangeHi)_xRangeHi=g.x[_ri];}}
+        for(var _ri=0;_ri<g.y.length;_ri++){if(g.y[_ri]!=null&&isFinite(g.y[_ri])&&g.y[_ri]>0){if(g.y[_ri]<_yRangeLo)_yRangeLo=g.y[_ri];if(g.y[_ri]>_yRangeHi)_yRangeHi=g.y[_ri];}}
+      }
       /* Trend line */
       if(SICC_TREND!=='none'&&g.x.length>=2){
         var numXs=g.x.filter(function(v){return typeof v==='number';});
@@ -460,10 +561,11 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
         if(numXs.length>=2){
           var reg=SICC_TREND==='ols'?_siccOLS(numXs,numYs):_siccTS(numXs,numYs);
           if(reg){
-            var xmin2=Math.min.apply(null,numXs),xmax2=Math.max.apply(null,numXs);
+            var xmin2=_safeMin(numXs),xmax2=_safeMax(numXs);
             var tx=[xmin2,xmax2],ty=[reg.slope*xmin2+reg.intercept,reg.slope*xmax2+reg.intercept];
             traces.push({type:'scatter',mode:'lines',name:'Trend ('+gn+')',x:tx,y:ty,
-              line:{color:col2,dash:'dot',width:1.5},hoverinfo:'skip',showlegend:false});
+              line:{color:col2,dash:'dot',width:1.5},hoverinfo:'skip',showlegend:false,visible:_isVisible});
+            _siccTraceIndexMap[rowKey].push(traces.length-1);
           }
         }
       }
@@ -474,17 +576,16 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
       var upmColT=_getUpmCol(col);
       var xs;
       if(pts_have_upm){
-        /* Use actual UPM X range from plotted scatter points for the target line */
-        var allXu=[];
-        traces.forEach(function(tr){if(tr.mode==='markers'&&tr.x)tr.x.forEach(function(v){if(typeof v==='number')allXu.push(v);});});
-        if(allXu.length){var xlo=Math.min.apply(null,allXu),xhi=Math.max.apply(null,allXu);xs=[xlo,xhi];}
+        /* Use pre-computed X range tracked during data-build — no second array pass */
+        if(_xRangeLo<=_xRangeHi){xs=[_xRangeLo,_xRangeHi];}
       }
       if(!xs||!xs.length){
         xs=active.map(function(i){var r=ROWS[i];return(!isCdyn&&upmColT)?r.medians[upmColT]:r.wafer||('W'+i);});
         xs=xs.filter(function(x){return x!=null;});
       }
-      if(xs.length)traces.push({type:'scatter',mode:'lines',name:'target',x:xs,y:xs.map(function(){return tgt;}),
+      if(xs.length){traces.push({type:'scatter',mode:'lines',name:'target',x:xs,y:xs.map(function(){return tgt;}),
         line:{color:'#e74c3c',dash:'dash',width:1.5},hoverinfo:'skip',showlegend:false});
+        _siccTargetTraceIndices.push(traces.length-1);}
     }
   });
   /* Check if any data was plotted with UPM% on x-axis */
@@ -493,18 +594,14 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
   var yTitle=isCdyn?'CDYN (nF)':'SICC (A)';
   /* Per-trace: show only x/y in hover */
   traces.forEach(function(tr){if(tr.type==='scatter'&&tr.mode==='markers')tr.hovertemplate='<b>X:</b> %{x}<br><b>Y:</b> %{y}<extra></extra>';});
-  /* Compute Y range from the actual plotted marker points (die-level data) + targets */
-  var _yAll=[];
-  traces.forEach(function(tr){
-    if(tr.mode==='markers'&&tr.y){tr.y.forEach(function(v){if(v!=null&&isFinite(v)&&v>0)_yAll.push(v);});}
-  });
+  /* Y range: use inline-tracked values + targets — no second array pass needed */
   cols.forEach(function(col){
     var tgtV=isCdyn?(CDYN_TARGETS[col]||null):(TARGETS[col.toUpperCase()]||null);
-    if(tgtV!=null&&isFinite(tgtV)&&tgtV>0)_yAll.push(tgtV);
+    if(tgtV!=null&&isFinite(tgtV)&&tgtV>0){if(tgtV<_yRangeLo)_yRangeLo=tgtV;if(tgtV>_yRangeHi)_yRangeHi=tgtV;}
   });
   var _yAxisRange=null;
-  if(_yAll.length){
-    var _yMin=Math.min.apply(null,_yAll),_yMax=Math.max.apply(null,_yAll);
+  if(_yRangeLo<=_yRangeHi){
+    var _yMin=_yRangeLo,_yMax=_yRangeHi;
     var _yPad=(_yMax-_yMin)*0.20||Math.abs(_yMax)*0.15||0.01;
     /* Proportional 20% padding below/above the data range on both sides */
     _yAxisRange=SICC_Y_LOG
@@ -522,8 +619,8 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
   if(_yMinOvr!=null||_yMaxOvr!=null){
     /* For log scale Plotly expects range in log10 units; convert user's linear input */
     var _toYAxis=function(v){return SICC_Y_LOG?Math.log10(Math.max(v,1e-12)):v;};
-    var _yCurLo=_yAxisRange?_yAxisRange[0]:(_yAll.length?_toYAxis(Math.min.apply(null,_yAll)):0);
-    var _yCurHi=_yAxisRange?_yAxisRange[1]:(_yAll.length?_toYAxis(Math.max.apply(null,_yAll)):1);
+    var _yCurLo=_yAxisRange?_yAxisRange[0]:(_yRangeLo<=_yRangeHi?_toYAxis(_yRangeLo):0);
+    var _yCurHi=_yAxisRange?_yAxisRange[1]:(_yRangeLo<=_yRangeHi?_toYAxis(_yRangeHi):1);
     _yAxisRange=[_yMinOvr!=null?_toYAxis(_yMinOvr):_yCurLo,_yMaxOvr!=null?_toYAxis(_yMaxOvr):_yCurHi];
   }
   var spikeOpts=SICC_CROSSHAIR?{showspikes:true,spikemode:'across',spikedash:'solid',spikecolor:'#111',spikethickness:1.5,spikeSnap:'cursor'}:{showspikes:false};
@@ -550,9 +647,8 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
     hovermode:'closest'
   };
   var cfg={responsive:true,displayModeBar:true,modeBarButtonsToRemove:['lasso2d','select2d'],displaylogo:false};
-  /* Always use newPlot to guarantee Y-axis rescales to current data */
-  if(el._spl)Plotly.purge(el);
-  Plotly.newPlot(el,traces,layout,cfg);el._spl=true;
+  /* Plotly.react diffs existing plot (fast); newPlot only on first render */
+  if(el._spl){Plotly.react(el,traces,layout,cfg);}else{Plotly.newPlot(el,traces,layout,cfg);el._spl=true;}
   /* Attach crosshair events (once per element) */
   if(SICC_CROSSHAIR&&!el._chEvt){
     el._chEvt=true;
@@ -647,14 +743,14 @@ function _renderSiccStats(active,cols,isCdyn){
       var med=medArr(vals);
       var upmMed=medArr(groupUpmVals[gk]);
       var ratio=(med!=null&&tgt&&tgt!==0)?med/tgt:null;
-      var mn=vals.length?Math.min.apply(null,vals):null,mx=vals.length?Math.max.apply(null,vals):null;
+      var mn=vals.length?_safeMin(vals):null,mx=vals.length?_safeMax(vals):null;
       var mean=vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:null,std=null;
       if(mean!=null&&vals.length>1){var sq=vals.reduce(function(s,v){return s+(v-mean)*(v-mean);},0);std=Math.sqrt(sq/(vals.length-1));}
       var over=ratio!=null&&ratio>1,warn=ratio!=null&&ratio>0.95&&ratio<=1;
       var borderTop=gi===0?';border-top:2px solid #bcd':'';
       var rowKey=_siccRowKey(col,gk);
       /* Ensure key is registered & checked by default */
-      if(!_siccAllRowKeys.includes(rowKey)){_siccAllRowKeys.push(rowKey);SICC_CHECKED_ROWS.add(rowKey);}
+      if(!_siccAllRowKeysSet.has(rowKey)){_siccAllRowKeys.push(rowKey);_siccAllRowKeysSet.add(rowKey);SICC_CHECKED_ROWS.add(rowKey);}
       var chk=SICC_CHECKED_ROWS.has(rowKey);
       var dotCol=COLORS[colorIdx%COLORS.length];colorIdx++;
       /* Split col name on ' - ' → parameter name + socket/category */
@@ -711,7 +807,7 @@ function _renderSiccHistOnly(active,col,isCdyn){
   allVals=filterOutliers(allVals.filter(function(v){return v>0;}),5);
   var tgt=isCdyn?(CDYN_TARGETS[col]||null):(TARGETS[col.toUpperCase()]||null);
   if(!allVals.length){drawSVG([],[],null,tgt,col,'upm-hist-svg',false);renderStatsTable(null,'upm-stats-tbl');return;}
-  var lo=Math.min.apply(null,allVals),hi=Math.max.apply(null,allVals);
+  var lo=_safeMin(allVals),hi=_safeMax(allVals);
   if(lo===hi){var d=Math.abs(lo*0.05)||0.01;lo-=d;hi+=d;}
   var nb=Math.max(6,Math.min(30,Math.round(Math.sqrt(allVals.length))));
   var step=(hi-lo)/nb,edges=[],counts=[];
@@ -762,13 +858,8 @@ function render_upm_dist(){
       _buildColPanel('cdyn-col-panel',dcols2,CDYN_SEL_COLS,true);
     }
     cols=Array.from(CDYN_SEL_COLS);
-    if(!cols.length&&CDYN_COLS.length){CDYN_SEL_COLS.add(CDYN_COLS[0]);cols=[CDYN_COLS[0]];}
   }else{
     cols=Array.from(SICC_SEL_COLS);
-    if(!cols.length&&(SICC_TBL_CFG&&SICC_TBL_CFG.length||SICC_COLS.length)){
-      var fc=SICC_TBL_CFG&&SICC_TBL_CFG.length?SICC_TBL_CFG[0][2]:SICC_COLS[0];
-      SICC_SEL_COLS.add(fc);cols=[fc];
-    }
   }
   _drawPlotlyScatterSicc(active,cols,isCdyn);
   _renderSiccStats(active,cols,isCdyn);
