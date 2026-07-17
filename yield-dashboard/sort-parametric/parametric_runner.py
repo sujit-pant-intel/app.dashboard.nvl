@@ -367,6 +367,10 @@ def run(args: argparse.Namespace) -> int:
                 from pcm_merge_gui import _normalise_sort_cols as _nsc  # type: ignore
                 print(f"[parametric] Pre-loading sort CSV for IDW cache...")
                 _sort_df_cache = _nsc(pd.read_csv(sort_csv, low_memory=False))
+                # Pass the pcm_filter to IDW so only selected params are computed
+                _idw_pcm_filter = getattr(args, 'pcm_filter', '') or ''
+                if _idw_pcm_filter:
+                    print(f"[parametric] IDW pcm_filter: '{_idw_pcm_filter}'")
                 for _lot, _pcm_csv in lot_csv_map.items():
                     _idw_path = os.path.join(deploy_dir, f"pcm_idw_{_lot}.csv")
                     _idf_from_run = None
@@ -381,6 +385,7 @@ def run(args: argparse.Namespace) -> int:
                                 log=print,
                                 df_yield_cache=_sort_df_cache,
                                 write_csv=False,
+                                pcm_filter=_idw_pcm_filter,
                             )
                             print(f"[parametric] IDW done -> {_idw_path}")
                         except Exception as _ie:

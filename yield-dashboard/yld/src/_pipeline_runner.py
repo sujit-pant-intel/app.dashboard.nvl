@@ -100,6 +100,11 @@ class PipelineRunnerMixin:
 
         # ── Write merged config to a temp JSON and call pipeline.py --json ──
         # Single code path shared with CLI — no duplicate post-pipeline logic.
+        # Include pcm_filter so pipeline.py passes it to parametric_runner.
+        if hasattr(self, '_get_pcm_filter'):
+            _pcm_filter_val = self._get_pcm_filter()
+            if _pcm_filter_val:
+                merged['pcm_filter'] = _pcm_filter_val
         import tempfile as _tmpjson_mod
         import pathlib as _pl_gui
 

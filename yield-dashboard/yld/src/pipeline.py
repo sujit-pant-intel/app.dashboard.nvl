@@ -636,6 +636,9 @@ if __name__ == '__main__':
                 _prod_cfg_path = _cfg.get('product_config_json', '')
                 if _prod_cfg_path and _Pj(_prod_cfg_path).exists():
                     _par_cmd += ['--product-config-json', _prod_cfg_path]
+                _pcm_filter = _cfg.get('pcm_filter', '')
+                if _pcm_filter:
+                    _par_cmd += ['--pcm-filter', _pcm_filter]
 
                 print(f'\n[json] Launching parametric runner...')
                 print(f'[json] CMD: {" ".join(_par_cmd)}\n')
