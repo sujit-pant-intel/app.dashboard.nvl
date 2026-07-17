@@ -560,9 +560,9 @@ def main() -> None:
         # ── 3c. Regenerate index.html ─────────────────────────────────
         try:
             import importlib.util as _ilu
-            _spec = _ilu.spec_from_file_location("_gi", _HERE / "generate_index.py")
+            _spec = _ilu.spec_from_file_location("_gi", _HERE.parent / "yld" / "generate_index.py")
             _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-            _gi.build_index(base_dir, unc_base=unc_base)
+            _gi.build_index(base_dir)
             _log("  Index updated -> " + str(trend_dir / "index.html"))
         except Exception as _idx_e:
             _log("  WARNING: index update failed: " + str(_idx_e))
