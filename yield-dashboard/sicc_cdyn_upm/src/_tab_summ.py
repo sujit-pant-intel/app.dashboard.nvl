@@ -16,6 +16,7 @@ var _ptSortCol=null;
 var _ptSortDir=1;
 var _ptQuery='';
 var _ptSelSet=new Set();
+var _ptPopupGroupBy=['material']; // groupby state for popup plots
 
 /* 8 distinct group colors: 4 cat slots × SICC/CDYN */
 var _PT_COLORS=[
@@ -144,7 +145,7 @@ function _ptRender(){
       +'<td style="'+td+';text-align:center;width:28px"><input type="checkbox" '+(sel?'checked':'')+' onchange="_ptCheckRow('+i+',this.checked)" style="cursor:pointer"></td>'
       +'<td style="'+td+';text-align:center;width:44px;white-space:nowrap">'
         +'<button onclick="_ptShowDist('+i+',false)" title="Distribution" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 1px">&#128202;</button>'
-        +'<button onclick="_ptShowDist('+i+',true)" title="UPM" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 1px">&#128200;</button>'
+        +'<button onclick="_ptShowDist('+i+',true)" title="UPM Distribution" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 1px">&#9889;</button>'
       +'</td>'
       +'<td style="'+td+';color:'+fg+';font-weight:bold;font-size:10px;text-align:center">'+esc(row.type)+'</td>'
       +'<td style="'+td+';color:'+fg+';font-size:10px">'+esc(row.cat)+'</td>'
@@ -270,6 +271,243 @@ function _ptCheckRow(i,checked){
   if(typeof render_upm_dist!=='undefined')render_upm_dist();
 }
 
+/* ── Popup groupby controls ─────────────────────────────────────────── */
+function _ptGroupByHTML(){
+  var opts=['program','lot','wafer','material'];
+  var none=_ptPopupGroupBy.length===0;
+  var html='<div style="margin:0 0 8px;font-size:11px;color:#555;border-bottom:1px solid #eee;padding-bottom:6px;display:flex;flex-wrap:wrap;align-items:center;gap:6px">'
+    +'<span style="font-weight:600;margin-right:2px">Group by:</span>'
+    +'<label style="cursor:pointer"><input type="checkbox" class="pt-popup-gb" value="none"'+(none?' checked':'')+' onchange="_togglePopupGroup(&apos;none&apos;)"> None</label>';
+  opts.forEach(function(o){
+    var chk=_ptPopupGroupBy.indexOf(o)>=0?' checked':'';
+    html+='<label style="cursor:pointer"><input type="checkbox" class="pt-popup-gb" value="'+o+'"'+chk+' onchange="_togglePopupGroup(&apos;'+o+'&apos;)"> '+o.charAt(0).toUpperCase()+o.slice(1)+'</label>';
+  });
+  html+='</div>';
+  return html;
+}
+function _togglePopupGroup(field){
+  if(field==='none'){_ptPopupGroupBy=[];}
+  else{var idx=_ptPopupGroupBy.indexOf(field);if(idx>=0)_ptPopupGroupBy.splice(idx,1);else _ptPopupGroupBy.push(field);}
+  document.querySelectorAll('.pt-popup-gb').forEach(function(cb){
+    if(cb.value==='none')cb.checked=_ptPopupGroupBy.length===0;
+    else cb.checked=_ptPopupGroupBy.indexOf(cb.value)>=0;
+  });
+  _ptRefreshModal();
+}
+window._togglePopupGroup=_togglePopupGroup;
+/* ── Re-render dist histogram + aggregate stats for given active set ─────── */
+function _ptRedrawHistModal(active,testName,isCdyn){
+  if(typeof _renderSiccHistOnly==='undefined')return;
+  var _o='upm-hist-svg',_on='upm-chart-note',_os='upm-stats-tbl',_ot='sicc-dist-title';
+  var h=document.getElementById(_o),hn=document.getElementById(_on),hs=document.getElementById(_os),ht=document.getElementById(_ot);
+  var mh=document.getElementById('pt-modal-hist-svg'),mhn=document.getElementById('pt-modal-chart-note'),mhs=document.getElementById('pt-modal-stats-tbl'),mht=document.getElementById('pt-modal-dist-title');
+  if(h)h.id='_ph_hist';if(hn)hn.id='_ph_note';if(hs)hs.id='_ph_stbl';if(ht)ht.id='_ph_ttl';
+  if(mh)mh.id=_o;if(mhn)mhn.id=_on;if(mhs)mhs.id=_os;if(mht)mht.id=_ot;
+  _renderSiccHistOnly(active,testName,isCdyn);
+  if(mh)mh.id='pt-modal-hist-svg';if(mhn)mhn.id='pt-modal-chart-note';if(mhs)mhs.id='pt-modal-stats-tbl';if(mht)mht.id='pt-modal-dist-title';
+  if(h)h.id=_o;if(hn)hn.id=_on;if(hs)hs.id=_os;if(ht)ht.id=_ot;
+  /* Inject full UPM stats columns */
+  var _stEl=document.getElementById('pt-modal-stats-tbl');
+  if(!_stEl)return;
+  var _tbl=_stEl.querySelector('table');
+  if(!_tbl)return;
+  _tbl.style.width='auto';
+  var _extra=_stEl.querySelector('div');if(_extra)_extra.remove();
+  var _extra2=_stEl.querySelector('table:nth-of-type(2)');if(_extra2){var _p2=_extra2.parentNode;if(_p2)_p2.remove();}
+  var _uCol=_getUpmCol(testName);if(!_uCol)return;
+  var _uVals=[];
+  active.forEach(function(i){var dp=ROWS[i].die_pairs&&ROWS[i].die_pairs[testName];if(dp&&dp.u)dp.u.forEach(function(v){if(v!=null&&!isNaN(v))_uVals.push(v);});});
+  var _uSt=computeStats(_uVals);if(!_uSt)return;
+  var _thBase='padding:6px 10px;font-size:11px;font-weight:600;text-align:center;letter-spacing:0.04em;white-space:nowrap;border-right:1px solid #a04000';
+  var _thU=_thBase+';background:#c0650a;color:#fff;font-weight:700';
+  var _thUM=_thBase+';background:#9a3412;color:#fff;font-weight:700';
+  var _tdBase='padding:6px 10px;font-size:12px;text-align:center;white-space:nowrap;border-right:1px solid #f5d5b0;color:#7a3800';
+  var _tdUM='padding:6px 10px;font-size:13px;font-weight:700;text-align:center;white-space:nowrap;color:#c0650a;background:#fff8f0;border-right:1px solid #f5d5b0';
+  var uCols=[
+    {l:'N (UPM)',v:_uSt.count.toLocaleString(),th:_thU,td:_tdBase},
+    {l:'Min UPM%',v:_uSt.min.toFixed(2)+'%',th:_thU,td:_tdBase},
+    {l:'Med UPM%',v:_uSt.median.toFixed(2)+'%',th:_thUM,td:_tdUM},
+    {l:'Mean UPM%',v:_uSt.mean.toFixed(2)+'%',th:_thU,td:_tdBase},
+    {l:'Max UPM%',v:_uSt.max.toFixed(2)+'%',th:_thU,td:_tdBase},
+    {l:'SD UPM%',v:_uSt.stddev.toFixed(2)+'%',th:_thU,td:_tdBase}
+  ];
+  var _hRow=_tbl.querySelector('thead tr'),_dRow=_tbl.querySelector('tbody tr');
+  uCols.forEach(function(c){
+    if(_hRow){var _th=document.createElement('th');_th.setAttribute('style',c.th);_th.textContent=c.l;_hRow.appendChild(_th);}
+    if(_dRow){var _td=document.createElement('td');_td.setAttribute('style',c.td);_td.textContent=c.v;_dRow.appendChild(_td);}
+  });
+}
+window._ptRedrawHistModal=_ptRedrawHistModal;
+/* Shared: filter active by checked groups and redraw */
+function _ptApplyGroupFilter(){
+  var modal=document.getElementById('pt-dist-modal');
+  if(!modal)return;
+  var rowIdx=modal._ptRowIdx;
+  if(rowIdx==null||!_ptRows[rowIdx])return;
+  var testName=_ptRows[rowIdx].testName,isCdyn=_ptRows[rowIdx].isCdyn;
+  var allActive=modal._ptActive;
+  if(!allActive||!allActive.length)return;
+  var checkedGroups=new Set();
+  var tbl=document.querySelector('#pt-modal-group-stats table');
+  var totalRows=tbl?tbl.querySelectorAll('tbody tr').length:0;
+  if(tbl){tbl.querySelectorAll('tbody tr').forEach(function(row){
+    var cbEl=row.querySelector('input[type=checkbox]');
+    var gkEl=row.querySelector('td:nth-child(2)');
+    if(cbEl&&gkEl&&cbEl.checked)checkedGroups.add(gkEl.textContent.trim());
+  });}
+  /* Sync header checkbox state */
+  var hCb=tbl&&tbl.querySelector('thead input[type=checkbox]');
+  if(hCb){hCb.checked=checkedGroups.size===totalRows;hCb.indeterminate=checkedGroups.size>0&&checkedGroups.size<totalRows;}
+  var filteredActive=allActive;
+  if(checkedGroups.size<totalRows&&checkedGroups.size>0){
+    filteredActive=allActive.filter(function(i){return checkedGroups.has(_ptPopupGroupKey(ROWS[i]));});
+    if(!filteredActive.length)filteredActive=allActive;
+  }
+  if(modal._ptShowUpm){
+    /* ⚡ UPM popup */
+    if(checkedGroups.size===0){
+      var _svg=document.getElementById('pt-modal-upm-svg');
+      if(_svg)_svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-size="14" fill="#aaa">No groups selected</text>';
+      var _note=document.getElementById('pt-modal-upm-note');if(_note)_note.textContent='';
+      var _st=document.getElementById('pt-modal-upm-stats');if(_st)_st.innerHTML='';
+      return;
+    }
+    if(typeof drawMiniUpm!=='undefined')drawMiniUpm(filteredActive,testName,isCdyn,'pt-modal-upm-svg','pt-dist-modal-title','pt-modal-upm-note');
+    var _uVals=[];
+    filteredActive.forEach(function(i){var dp=ROWS[i].die_pairs&&ROWS[i].die_pairs[testName];if(dp&&dp.u)dp.u.forEach(function(v){if(v!=null&&!isNaN(v))_uVals.push(v);});});
+    if(typeof renderStatsTable!=='undefined')renderStatsTable(computeStats(_uVals),'pt-modal-upm-stats',2);
+  }else{
+    /* 📊 Distribution popup */
+    if(checkedGroups.size===0){
+      var _svg=document.getElementById('pt-modal-hist-svg');
+      if(_svg)_svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-size="14" fill="#aaa">No groups selected</text>';
+      var _note=document.getElementById('pt-modal-chart-note');if(_note)_note.textContent='';
+      var _st=document.getElementById('pt-modal-stats-tbl');if(_st)_st.innerHTML='';
+      return;
+    }
+    _ptRedrawHistModal(filteredActive,testName,isCdyn);
+  }
+}
+window._ptApplyGroupFilter=_ptApplyGroupFilter;
+function _ptToggleGroupRow(cb){
+  var tr=cb.closest('tr');
+  if(!tr)return;
+  tr.style.opacity=cb.checked?'1':'0.25';
+  tr.querySelectorAll('td:not(:first-child)').forEach(function(c){
+    c.style.textDecoration=cb.checked?'none':'line-through';
+  });
+  _ptApplyGroupFilter();
+}
+window._ptToggleGroupRow=_ptToggleGroupRow;
+function _ptToggleAllGroupRows(cb){
+  var tbl=document.querySelector('#pt-modal-group-stats table');
+  if(!tbl)return;
+  tbl.querySelectorAll('tbody tr').forEach(function(row){
+    var cbEl=row.querySelector('input[type=checkbox]');
+    if(!cbEl)return;
+    cbEl.checked=cb.checked;
+    row.style.opacity=cb.checked?'1':'0.25';
+    row.querySelectorAll('td:not(:first-child)').forEach(function(c){
+      c.style.textDecoration=cb.checked?'none':'line-through';
+    });
+  });
+  _ptApplyGroupFilter();
+}
+window._ptToggleAllGroupRows=_ptToggleAllGroupRows;
+function _ptPopupGroupKey(r){
+  var parts=[];
+  if(_ptPopupGroupBy.indexOf('program')>=0)parts.push(r.program||'');
+  if(_ptPopupGroupBy.indexOf('lot')>=0)parts.push(r.lot||'');
+  if(_ptPopupGroupBy.indexOf('wafer')>=0)parts.push(r.wafer||'');
+  if(_ptPopupGroupBy.indexOf('material')>=0)parts.push(r.material||'');
+  return parts.length?parts.join(' | '):'All';
+}
+function _ptRenderGroupStats(active,testName,isCdyn,showUpm,containerId){
+  var el=document.getElementById(containerId);
+  if(!el){return;}
+  if(!active.length){el.innerHTML='';return;}
+  /* Collect per-group SICC/CDYN values and (for dist mode) per-group UPM values */
+  var groupMap={},upmMap={},groupOrder=[];
+  var uCol=(!showUpm)?_getUpmCol(testName):null;
+  active.forEach(function(i){
+    var r=ROWS[i];
+    var gk=_ptPopupGroupKey(r);
+    if(!groupMap[gk]){groupMap[gk]=[];upmMap[gk]=[];groupOrder.push(gk);}
+    var dp=r.die_pairs&&r.die_pairs[testName];
+    if(showUpm){
+      if(dp&&dp.u)dp.u.forEach(function(v){if(v!=null&&!isNaN(v))groupMap[gk].push(v);});
+    }else{
+      if(dp&&dp.s)dp.s.forEach(function(v){if(v!=null&&!isNaN(v)&&v>0)groupMap[gk].push(v);});
+      if(uCol&&dp&&dp.u)dp.u.forEach(function(v){if(v!=null&&!isNaN(v))upmMap[gk].push(v);});
+    }
+  });
+  /* Skip if no data; when groupby is active, also skip if only 1 group (redundant with aggregate table) */
+  var nonEmpty=groupOrder.filter(function(g){return groupMap[g].length>0;});
+  if(!nonEmpty.length){el.innerHTML='';return;}
+  if(_ptPopupGroupBy.length>0&&nonEmpty.length<=1){el.innerHTML='';return;}
+  var hasUpm=!showUpm&&uCol&&nonEmpty.some(function(g){return upmMap[g].length>0;});
+  var _pal=['#3498db','#27ae60','#e67e22','#9b59b6','#e74c3c','#1abc9c','#f39c12','#2980b9','#c0392b','#16a085'];
+  var _th='padding:5px 8px;font-size:10px;font-weight:600;background:#2c3e50;color:#ecf0f1;text-align:center;white-space:nowrap;border-right:1px solid #3d5166';
+  var _thHL='padding:5px 8px;font-size:10px;font-weight:700;background:#1a4a7a;color:#fff;text-align:center;white-space:nowrap;border-right:1px solid #3d5166';
+  var _thU='padding:5px 8px;font-size:10px;font-weight:600;background:#c0650a;color:#fff;text-align:center;white-space:nowrap;border-right:1px solid #a04000';
+  var _thUM='padding:5px 8px;font-size:10px;font-weight:700;background:#9a3412;color:#fff;text-align:center;white-space:nowrap;border-right:1px solid #a04000';
+  var dec=showUpm?2:4;
+  var fv=function(v){return v!=null?v.toFixed(dec):'--';};
+  var label=showUpm?'Per-Group Stats (UPM %)':'Per-Group Stats';
+  var upmHdrs=hasUpm
+    ?'<th style="'+_thU+'">N (UPM)</th>'
+     +'<th style="'+_thU+'">Min UPM%</th>'
+     +'<th style="'+_thUM+'">Med UPM%</th>'
+     +'<th style="'+_thU+'">Mean UPM%</th>'
+     +'<th style="'+_thU+'">Max UPM%</th>'
+     +'<th style="'+_thU+';border-right:none">SD UPM%</th>'
+    :'';
+  var _thCb='padding:5px 4px;font-size:10px;font-weight:600;background:#2c3e50;color:#ecf0f1;text-align:center;white-space:nowrap;border-right:1px solid #3d5166;width:24px';
+  var html='<div style="margin-top:10px;font-size:11px;font-weight:bold;color:#2c3e50">'+label+'</div>'
+    +'<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;margin-top:4px;font-size:11px">'
+    +'<thead><tr>'
+    +'<th style="'+_thCb+'"><input type="checkbox" checked title="Select / deselect all" onchange="_ptToggleAllGroupRows(this)" style="cursor:pointer"></th>'
+    +'<th style="'+_th+';text-align:left">Group</th>'
+    +'<th style="'+_th+'">N (dies)</th>'
+    +'<th style="'+_th+'">Min</th>'
+    +'<th style="'+_thHL+'">Median</th>'
+    +'<th style="'+_th+'">Mean</th>'
+    +'<th style="'+_th+'">Max</th>'
+    +'<th style="'+_th+(hasUpm?'':';border-right:none')+'">Std Dev</th>'
+    +upmHdrs
+    +'</tr></thead><tbody>';
+  nonEmpty.forEach(function(gk,gi){
+    var st=computeStats(groupMap[gk]);
+    if(!st)return;
+    var clr=_pal[gi%_pal.length];
+    var suf=showUpm?'%':'';
+    var _uSt=hasUpm?computeStats(upmMap[gk]):null;
+    var _tdU='padding:4px 8px;border-bottom:1px solid #eee;text-align:right;color:#7a3800';
+    var _tdUM='padding:4px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:#c0650a;background:#fff8f0';
+    html+='<tr>'
+      +'<td style="padding:2px 4px;border-bottom:1px solid #eee;text-align:center"><input type="checkbox" checked title="Hide/show this row" onchange="_ptToggleGroupRow(this)" style="cursor:pointer"></td>'
+      +'<td style="padding:4px 8px;border-left:3px solid '+clr+';border-bottom:1px solid #eee;font-weight:bold;white-space:nowrap">'+esc(gk)+'</td>'
+      +'<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">'+st.count.toLocaleString()+'</td>'
+      +'<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">'+fv(st.min)+suf+'</td>'
+      +'<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:#1a4a7a;background:#eef6ff">'+fv(st.median)+suf+'</td>'
+      +'<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">'+fv(st.mean)+suf+'</td>'
+      +'<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">'+fv(st.max)+suf+'</td>'
+      +'<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right'+(hasUpm?'':';border-right:none')+'">'+fv(st.stddev)+suf+'</td>'
+      +(_uSt
+        ?'<td style="'+_tdU+'">'+_uSt.count.toLocaleString()+'</td>'
+         +'<td style="'+_tdU+'">'+_uSt.min.toFixed(2)+'%</td>'
+         +'<td style="'+_tdUM+'">'+_uSt.median.toFixed(2)+'%</td>'
+         +'<td style="'+_tdU+'">'+_uSt.mean.toFixed(2)+'%</td>'
+         +'<td style="'+_tdU+'">'+_uSt.max.toFixed(2)+'%</td>'
+         +'<td style="'+_tdU+';border-right:none">'+_uSt.stddev.toFixed(2)+'%</td>'
+        :'')
+      +'</tr>';
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+}
+window._ptRenderGroupStats=_ptRenderGroupStats;
+
 function _ptCloseModal(){var m=document.getElementById('pt-dist-modal');if(m)m.style.display='none';}
 window._ptCloseModal=_ptCloseModal;
 function _ptShowDist(rowIdx,showUpm){
@@ -321,23 +559,32 @@ function _ptShowDist(rowIdx,showUpm){
   /* Inject SVG container into modal */
   var content=document.getElementById('pt-dist-modal-content');
   if(showUpm){
-    content.innerHTML='<svg id="pt-modal-upm-svg" style="width:100%;flex:1;min-height:0;display:block;border:1px solid #f5e0c3;border-radius:4px;background:#fffaf4"></svg><div id="pt-modal-upm-note" style="font-size:10px;color:#c0650a;margin-top:3px"></div><div id="pt-modal-upm-stats" style="margin-top:6px"></div>';
+    content.innerHTML=_ptGroupByHTML()
+      +'<svg id="pt-modal-upm-svg" style="width:100%;flex:1;min-height:0;display:block;border:1px solid #f5e0c3;border-radius:4px;background:#fffaf4"></svg>'
+      +'<div id="pt-modal-upm-note" style="font-size:10px;color:#c0650a;margin-top:3px"></div>'
+      +'<div id="pt-modal-upm-stats" style="margin-top:6px"></div>'
+      +'<div id="pt-modal-group-stats"></div>';
     modal.style.display='flex';
+    modal._ptActive=active;
     if(typeof drawMiniUpm!=='undefined')drawMiniUpm(active,testName,isCdyn,'pt-modal-upm-svg','pt-dist-modal-title','pt-modal-upm-note');
+    /* Overwrite basic stats with XY-style renderStatsTable */
+    var _allU=[];
+    active.forEach(function(i){var dp=ROWS[i].die_pairs&&ROWS[i].die_pairs[testName];if(dp&&dp.u)dp.u.forEach(function(v){if(v!=null&&!isNaN(v))_allU.push(v);});});
+    if(typeof renderStatsTable!=='undefined')renderStatsTable(computeStats(_allU),'pt-modal-upm-stats',2);
+    /* Per-group stats */
+    _ptRenderGroupStats(active,testName,isCdyn,true,'pt-modal-group-stats');
   }else{
-    content.innerHTML='<h3 id="pt-modal-dist-title" style="font-size:12px;color:#2c3e50;margin:0 0 4px"></h3><svg id="pt-modal-hist-svg" style="width:100%;flex:1;min-height:0;display:block;border:1px solid #eee;border-radius:4px;background:#fff"></svg><div id="pt-modal-chart-note" style="font-size:11px;color:#7f8c8d;margin-top:4px"></div><div id="pt-modal-stats-tbl" style="margin-top:8px"></div>';
+    content.innerHTML=_ptGroupByHTML()
+      +'<h3 id="pt-modal-dist-title" style="font-size:12px;color:#2c3e50;margin:0 0 4px"></h3>'
+      +'<svg id="pt-modal-hist-svg" style="width:100%;flex:1;min-height:0;display:block;border:1px solid #eee;border-radius:4px;background:#fff"></svg>'
+      +'<div id="pt-modal-chart-note" style="font-size:11px;color:#7f8c8d;margin-top:4px"></div>'
+      +'<div id="pt-modal-stats-tbl" style="margin-top:8px"></div>'
+      +'<div id="pt-modal-group-stats"></div>';
     modal.style.display='flex';
-    if(typeof _renderSiccHistOnly!=='undefined'){
-      var _origHistSvg='upm-hist-svg',_origHistNote='upm-chart-note',_origStsTbl='upm-stats-tbl',_origTitle='sicc-dist-title';
-      /* Temporarily swap IDs so _renderSiccHistOnly writes into modal SVG */
-      var h=document.getElementById(_origHistSvg),hn=document.getElementById(_origHistNote),hs=document.getElementById(_origStsTbl),ht=document.getElementById(_origTitle);
-      var mh=document.getElementById('pt-modal-hist-svg'),mhn=document.getElementById('pt-modal-chart-note'),mhs=document.getElementById('pt-modal-stats-tbl'),mht=document.getElementById('pt-modal-dist-title');
-      if(h)h.id='_ph_hist';if(hn)hn.id='_ph_note';if(hs)hs.id='_ph_stbl';if(ht)ht.id='_ph_ttl';
-      if(mh)mh.id=_origHistSvg;if(mhn)mhn.id=_origHistNote;if(mhs)mhs.id=_origStsTbl;if(mht)mht.id=_origTitle;
-      _renderSiccHistOnly(active,testName,isCdyn);
-      if(mh)mh.id='pt-modal-hist-svg';if(mhn)mhn.id='pt-modal-chart-note';if(mhs)mhs.id='pt-modal-stats-tbl';if(mht)mht.id='pt-modal-dist-title';
-      if(h)h.id=_origHistSvg;if(hn)hn.id=_origHistNote;if(hs)hs.id=_origStsTbl;if(ht)ht.id=_origTitle;
-    }
+    modal._ptActive=active;
+    _ptRedrawHistModal(active,testName,isCdyn);
+    /* Per-group stats */
+    _ptRenderGroupStats(active,testName,isCdyn,false,'pt-modal-group-stats');
   }
 }
 window._ptShowDist=_ptShowDist;
