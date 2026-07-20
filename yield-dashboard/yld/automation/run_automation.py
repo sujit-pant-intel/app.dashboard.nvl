@@ -70,7 +70,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE        = Path(__file__).resolve().parent
-_REPO_ROOT   = _HERE.parent.parent          # app.dashboard.nvl/
+_REPO_ROOT   = _HERE.parent.parent.parent   # app.dashboard.nvl/
 _PIPELINE    = _REPO_ROOT / "yield-dashboard" / "yld" / "src" / "pipeline.py"
 _COMPARE_RUNS = _HERE / "compare_runs.py"
 _AQUA_CFG   = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard" / "NVL_Sort_Yield - AutoPull.txt"

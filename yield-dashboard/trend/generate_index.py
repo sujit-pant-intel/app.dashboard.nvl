@@ -1,6 +1,7 @@
 """
-generate_index.py  --  static HTML index of Trend_Report_*.html files.
-Regenerated automatically after every Save Report / Send Report action.
+generate_index.py  --  static HTML index of NVL816 Yield Trend Report HTML files.
+Trend-specific: BLLC tab + NVL816 tab, trend UNC path. No shared code with yield.
+Regenerated automatically after every scheduled run, Save Report, Send Report.
 
 Usage:
     python generate_index.py --base-dir "\\\\server\\share\\auto\\trend"
@@ -20,9 +21,28 @@ def _fmt_size(n: int) -> str:
 
 
 def build_index(base_dir: Path) -> Path:
-    """Scan reports/ and write a static index.html with BLLC / non-BLLC tabs."""
+    """Scan reports/ and write a static index.html with BLLC / NVL816 tabs. Returns the file path."""
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resolve UNC for link hrefs
+    _base_str = str(base_dir)
+    if _base_str.startswith("\\\\"):
+        unc_reports = str(base_dir / "reports").replace("/", "\\")
+    else:
+        unc_reports = _UNC_REPORTS
+        try:
+            import subprocess as _sp
+            _r = _sp.run(["net", "use", _base_str[:2].upper()],
+                         capture_output=True, text=True, timeout=5)
+            for _line in _r.stdout.splitlines():
+                if "remote name" in _line.lower():
+                    unc_root = _line.split(None, 2)[-1].strip().rstrip("\\")
+                    if unc_root.startswith("\\\\"):
+                        unc_reports = unc_root + _base_str[2:].replace("/", "\\") + "\\reports"
+                    break
+        except Exception:
+            pass
 
     all_files = sorted(
         (f for f in reports_dir.glob("NVL816*.html")
@@ -51,10 +71,10 @@ def build_index(base_dir: Path) -> Path:
             except OSError:
                 sz    = "–"
                 mtime = "–"
-            unc   = "file:////" + _UNC_REPORTS.replace("\\", "/").lstrip("/") + "/" + f.name
+            href  = "file:////" + unc_reports.replace("\\", "/").lstrip("/") + "/" + f.name
             badge = '<span class="badge">latest</span>' if i == 0 else ""
             out += (f'\n      <tr data-n="{f.name}">'
-                    f'<td class="mono"><a href="{unc}" target="_blank">{f.name}</a> {badge}</td>'
+                    f'<td class="mono"><a href="{href}" target="_blank">{f.name}</a> {badge}</td>'
                     f'<td class="dim">{ts}</td>'
                     f'<td class="dim mono">{sz}</td>'
                     f'<td class="dim">{mtime}</td></tr>')
@@ -91,7 +111,6 @@ def build_index(base_dir: Path) -> Path:
     input{{flex:1;background:var(--bg3);border:none;color:var(--fg);
            font-family:var(--mono);font-size:13px;padding:6px 10px;border-radius:4px;outline:none}}
     .cnt{{color:var(--dim);font-size:12px}}
-    /* tabs */
     .tabs{{display:flex;gap:4px;margin-bottom:0;border-bottom:2px solid var(--bg3)}}
     .tab-btn{{background:var(--bg3);color:var(--dim);border:none;padding:9px 22px;
               font-family:var(--font);font-size:13px;cursor:pointer;border-radius:6px 6px 0 0}}
@@ -114,7 +133,7 @@ def build_index(base_dir: Path) -> Path:
       <li><strong style="color:var(--fg)">Not on network</strong> — connect to Intel VPN first.</li>
       <li><strong style="color:var(--fg)">Wrong browser</strong> — use <strong>Microsoft Edge</strong>.</li>
     </ul>
-    <code style="color:var(--acc);font-size:11px">{_UNC_REPORTS}</code>
+    <code style="color:var(--acc);font-size:11px">{unc_reports}</code>
   </div>
 
   <div class="tabs">
@@ -169,18 +188,21 @@ def build_index(base_dir: Path) -> Path:
 </html>"""
 
     out = reports_dir / "index.html"
+    tmp = reports_dir / "index.html.tmp"
     import time as _time
     for _attempt in range(3):
         try:
-            out.unlink(missing_ok=True)
-            out.write_text(html, encoding="utf-8")
+            tmp.write_text(html, encoding="utf-8")
+            if out.exists():
+                out.unlink()
+            tmp.replace(out)
             break
         except (PermissionError, OSError):
             if _attempt < 2:
                 _time.sleep(1)
+            else:
+                tmp.unlink(missing_ok=True)
     return out
-
-
 
 
 if __name__ == "__main__":

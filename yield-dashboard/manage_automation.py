@@ -769,7 +769,7 @@ class AutomationManager(tk.Frame):
         def _send():
             try:
                 import sys as _sys
-                _sys.path.insert(0, str(_HERE / "automation"))
+                _sys.path.insert(0, str(_HERE / "yld" / "automation"))
                 _sys.modules.pop('run_automation', None)
                 from run_automation import (  # noqa
                     send_email, _named_attachment, _build_email_report_html,
@@ -830,7 +830,7 @@ class AutomationManager(tk.Frame):
                     _saved.write_text(body_html, encoding="utf-8")
                     # regenerate index
                     import importlib.util as _ilu
-                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "automation" / "generate_index.py")
+                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "automation" / "generate_index.py")
                     _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
                     _gi.build_index(self.base_dir)
                     self.after(0, lambda: self.hist_status.set(
@@ -859,7 +859,7 @@ class AutomationManager(tk.Frame):
         def _save():
             try:
                 import sys as _sys
-                _sys.path.insert(0, str(_HERE / "automation"))
+                _sys.path.insert(0, str(_HERE / "yld" / "automation"))
                 _sys.modules.pop('run_automation', None)
                 from run_automation import _build_email_report_html  # noqa
                 from datetime import datetime as _dt
@@ -871,7 +871,7 @@ class AutomationManager(tk.Frame):
                 out_path.write_text(body, encoding="utf-8")
                 # regenerate index
                 import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "automation" / "generate_index.py")
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "automation" / "generate_index.py")
                 _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
                 _gi.build_index(self.base_dir)
                 def _done():
@@ -888,7 +888,7 @@ class AutomationManager(tk.Frame):
     def _rebuild_index(self):
         """Scan samba reports/ and rewrite index.html with only files that exist."""
         import importlib.util
-        spec = importlib.util.spec_from_file_location("_gi", _HERE / "automation" / "generate_index.py")
+        spec = importlib.util.spec_from_file_location("_gi", _HERE / "yld" / "automation" / "generate_index.py")
         mod  = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.build_index(self.base_dir)
@@ -1353,7 +1353,7 @@ class AutomationManager(tk.Frame):
         pad = dict(padx=14, pady=6)
 
         _python = _sys.executable
-        _script = str(_HERE / "automation" / "run_automation.py")
+        _script = str(_HERE / "yld" / "automation" / "run_automation.py")
 
         # ── Status card ──────────────────────────────────────────────────────
         frm_st = tk.LabelFrame(p, text="  Task Status  ", font=FONT_UI,
@@ -1492,7 +1492,7 @@ class AutomationManager(tk.Frame):
                 or not (0 <= int(mm) <= 59)):
             messagebox.showerror("Invalid time", f"Invalid time value: {hh}:{mm}")
             return
-        tr = f'"{_sys.executable}" "{_HERE / "automation" / "run_automation.py"}"'
+        tr = f'"{_sys.executable}" "{_HERE / "yld" / "automation" / "run_automation.py"}"'
         cmd = ["schtasks", "/create",
                "/tn", _TASK_NAME,
                "/tr", tr,
@@ -1518,7 +1518,7 @@ class AutomationManager(tk.Frame):
                                    'This kicks off a full AQUA pull + pipeline run.\n'
                                    'A console window will open showing live progress.'):
             return
-        script = str(_HERE / "automation" / "run_automation.py")
+        script = str(_HERE / "yld" / "automation" / "run_automation.py")
         try:
             _sp.Popen(
                 [_sys.executable, script],
@@ -1624,7 +1624,7 @@ class AutomationManager(tk.Frame):
         def _do_run():
             keys_val = keys_var.get().strip()
             csv_val  = csv_var.get().strip()
-            cmd = [_sys.executable, str(_HERE / "automation" / "run_automation.py"), "--force"]
+            cmd = [_sys.executable, str(_HERE / "yld" / "automation" / "run_automation.py"), "--force"]
             if keys_val:
                 cmd += ["--keys", keys_val]
             if csv_val:
@@ -1710,7 +1710,7 @@ class AutomationManager(tk.Frame):
         pad = dict(padx=14, pady=6)
 
         _TASK_SRV = "NVL-BLLC Report Server"
-        _script   = str(_HERE / "automation" / "serve_reports.py")
+        _script   = str(_HERE / "yld" / "automation" / "serve_reports.py")
         _python   = _sys.executable
         _base     = str(self.base_dir)
 
@@ -1916,3 +1916,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

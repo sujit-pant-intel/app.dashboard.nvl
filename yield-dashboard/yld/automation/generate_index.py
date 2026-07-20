@@ -1,6 +1,6 @@
 """
-generate_index.py  --  static HTML index of Yield_Report_*.html files.
-Generated list is baked in at run time; no server required.
+generate_index.py  --  static HTML index of NVL816 Yield Report HTML files.
+Yield-specific: flat single table, all reports sorted newest-first. No tabs.
 Regenerated automatically after every scheduled run, Save Report, Send Report.
 
 Usage:
@@ -21,18 +21,16 @@ def _fmt_size(n: int) -> str:
 
 
 def build_index(base_dir: Path) -> Path:
-    """Scan reports/ and write a static index.html. Returns the file path."""
+    """Scan reports/ and write a static index.html (flat list). Returns the file path."""
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    # Derive UNC path from base_dir.
-    # If base_dir is a UNC path (\\server\...) use it directly.
-    # If it's a mapped drive (Y:\...) resolve to UNC via `net use`.
+    # Resolve UNC for link hrefs
     _base_str = str(base_dir)
     if _base_str.startswith("\\\\"):
         unc_reports = str(base_dir / "reports").replace("/", "\\")
     else:
-        unc_reports = _UNC_REPORTS  # default fallback
+        unc_reports = _UNC_REPORTS
         try:
             import subprocess as _sp
             _r = _sp.run(["net", "use", _base_str[:2].upper()],
@@ -49,7 +47,7 @@ def build_index(base_dir: Path) -> Path:
     files = sorted(
         (f for f in reports_dir.glob("*.html")
          if not f.name.startswith("index")),
-        key=lambda f: f.name,   # YYYYMMDD_HHMMSS in name ΓåÆ lexicographic = chronological
+        key=lambda f: f.name,
         reverse=True,
     )
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -66,13 +64,12 @@ def build_index(base_dir: Path) -> Path:
             sz    = _fmt_size(st.st_size)
             mtime = datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
         except OSError:
-            sz    = "ΓÇô"
-            mtime = "ΓÇô"
-        unc   = (reports_dir / f.name).as_uri()  # file:////server/... for UNC, matches run_automation.py
-        unc_display = str(reports_dir / f.name)
+            sz    = "–"
+            mtime = "–"
+        href  = "file:////" + unc_reports.replace("\\", "/").lstrip("/") + "/" + f.name
         badge = '<span class="badge">latest</span>' if i == 0 else ""
         rows += (f'\n      <tr data-n="{f.name}">'
-                 f'<td class="mono"><a href="{unc}" target="_blank">{f.name}</a> {badge}</td>'
+                 f'<td class="mono"><a href="{href}" target="_blank">{f.name}</a> {badge}</td>'
                  f'<td class="dim">{ts}</td>'
                  f'<td class="dim mono">{sz}</td>'
                  f'<td class="dim">{mtime}</td></tr>')
@@ -85,7 +82,7 @@ def build_index(base_dir: Path) -> Path:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>NVL816-BLLC Yield Reports</title>
+  <title>NVL816 Yield Reports</title>
   <style>
     :root{{--bg:#1a252f;--bg2:#1e2e3d;--bg3:#263950;--fg:#e8f0f7;
           --dim:#90a4ae;--acc:#4fc3f7;--grn:#66bb6a;
@@ -107,59 +104,75 @@ def build_index(base_dir: Path) -> Path:
     .sb{{display:flex;gap:10px;margin-bottom:14px;align-items:center}}
     input{{flex:1;background:var(--bg3);border:none;color:var(--fg);
            font-family:var(--mono);font-size:13px;padding:6px 10px;border-radius:4px;outline:none}}
-    #cnt{{color:var(--dim);font-size:12px}}
+    .cnt{{color:var(--dim);font-size:12px}}
   </style>
 </head>
 <body>
-  <h1>NVL816-BLLC Yield Reports</h1>
-  <p class="sub">{len(files)} report(s) &nbsp;┬╖&nbsp; Updated: {now_str}</p>
+  <h1>NVL816 Yield Reports</h1>
+  <p class="sub">{len(files)} report(s) &nbsp;·&nbsp; Updated: {now_str}</p>
 
   <div class="card">
     <p style="color:var(--dim);font-size:13px;line-height:1.8">
       Click any link to open the report directly from the shared drive.<br>
       <strong style="color:#ffa726">Requires:</strong> Microsoft Edge &amp; Intel network / VPN.<br>
-      If the link does not open or shows an error, check the following:
+      If the link does not open, paste the path below into Windows Explorer:
     </p>
     <ul style="color:var(--dim);font-size:13px;line-height:2;margin:8px 0 4px 20px">
-      <li><strong style="color:var(--fg)">No permission</strong> ΓÇö request access to the samba share from <code style="color:var(--acc)">snpant</code> or your IT admin.</li>
-      <li><strong style="color:var(--fg)">Not on network</strong> ΓÇö connect to Intel VPN first.</li>
-      <li><strong style="color:var(--fg)">Wrong browser</strong> ΓÇö use <strong>Microsoft Edge</strong> (Chrome blocks UNC file:// links).</li>
-      <li><strong style="color:var(--fg)">Link silent / nothing happens</strong> ΓÇö paste the path below directly into Windows Explorer address bar.</li>
+      <li><strong style="color:var(--fg)">No permission</strong> — request access from <code style="color:var(--acc)">snpant</code> or IT admin.</li>
+      <li><strong style="color:var(--fg)">Not on network</strong> — connect to Intel VPN first.</li>
+      <li><strong style="color:var(--fg)">Wrong browser</strong> — use <strong>Microsoft Edge</strong>.</li>
     </ul>
     <code style="color:var(--acc);font-size:11px">{unc_reports}</code>
   </div>
 
   <div class="card">
     <div class="sb">
-      <input id="q" type="text" placeholder="Filter reportsΓÇª" oninput="flt()">
-      <span id="cnt">{len(files)} report(s)</span>
+      <input id="q" type="text" placeholder="Filter reports…" oninput="flt()">
+      <span id="cnt" class="cnt">{len(files)} report(s)</span>
     </div>
     <table>
       <thead><tr><th>Report</th><th>Run Time</th><th>Size</th><th>Modified</th></tr></thead>
       <tbody id="tb">{rows}</tbody>
     </table>
   </div>
+
   <script>
-    function flt(){{
-      const q=document.getElementById("q").value.toLowerCase(),rows=document.querySelectorAll("#tb tr");
-      let n=0;
-      rows.forEach(r=>{{const s=r.dataset.n.toLowerCase().includes(q);r.style.display=s?"":"none";if(s)n++;}});
-      document.getElementById("cnt").textContent=n+" report(s)";
+    function flt() {{
+      const q = document.getElementById('q').value.toLowerCase();
+      const rows = document.querySelectorAll('#tb tr');
+      let n = 0;
+      rows.forEach(r => {{ const s = r.dataset.n.toLowerCase().includes(q); r.style.display = s ? '' : 'none'; if(s) n++; }});
+      document.getElementById('cnt').textContent = n + ' report(s)';
     }}
   </script>
 </body>
 </html>"""
 
     out = reports_dir / "index.html"
+    tmp = reports_dir / "index.html.tmp"
     import time as _time
     for _attempt in range(3):
         try:
-            out.write_text(html, encoding="utf-8")
+            tmp.write_text(html, encoding="utf-8")
+            if out.exists():
+                out.unlink()
+            tmp.replace(out)
             break
         except (PermissionError, OSError):
             if _attempt < 2:
                 _time.sleep(1)
+            else:
+                tmp.unlink(missing_ok=True)
     return out
+
+
+if __name__ == "__main__":
+    import webbrowser
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base-dir", default=None)
+    args = ap.parse_args()
+    _BASE = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield")
+    base = Path(args.base_dir) if args.base_dir else _BASE
     out  = build_index(base)
     print(f"Index written -> {out}")
     webbrowser.open(out.as_uri())

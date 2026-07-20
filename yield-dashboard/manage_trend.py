@@ -542,7 +542,7 @@ class AutomationManager(tk.Frame):
         """Scan reports/ on samba and rewrite index.html with only files that exist."""
         try:
             import importlib.util as _ilu
-            _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "generate_index.py")
+            _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "generate_index.py")
             _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
             _gi.build_index(self.base_dir)
             out = self.base_dir / "reports" / "index.html"
@@ -671,7 +671,7 @@ class AutomationManager(tk.Frame):
                     raise RuntimeError(err)
                 # regenerate index.html
                 import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "generate_index.py")
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "generate_index.py")
                 _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
                 _gi.build_index(self.base_dir)
                 def _done():
@@ -879,7 +879,7 @@ class AutomationManager(tk.Frame):
                                 bg=BG, fg=ACCENT, bd=1, relief="groove")
         frm_cfg.pack(fill="x", **pad)
 
-        run_script = str(_HERE / "automation" / "run_trend.py")
+        run_script = str(_HERE / "trend" / "run_trend.py")
 
         for row, lbl, val in [
             (0, "Task name:", _TASK_NAME),
@@ -1024,7 +1024,7 @@ class AutomationManager(tk.Frame):
             return
         # Save current Email & Filter settings first
         self._save_email_config()
-        tr = f'"{sys.executable}" "{_HERE / "automation" / "run_trend.py"}"'
+        tr = f'"{sys.executable}" "{_HERE / "trend" / "run_trend.py"}"'
         selected_days = [d for d, v in self._day_vars.items() if v.get()]
         if selected_days:
             cmd = ["schtasks", "/create",
@@ -1349,7 +1349,7 @@ class AutomationManager(tk.Frame):
                 # regenerate index.html
                 try:
                     import importlib.util as _ilu
-                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "generate_index.py")
+                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "generate_index.py")
                     _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
                     _gi.build_index(self.base_dir)
                     _append("Index updated → reports/index.html\n")
@@ -1680,7 +1680,7 @@ class AutomationManager(tk.Frame):
             # regenerate index.html
             try:
                 import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "generate_index.py")
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "generate_index.py")
                 _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
                 _gi.build_index(self.base_dir)
                 dlg.after(0, _append, "Index updated → reports/index.html")
@@ -2040,12 +2040,12 @@ class AutomationManager(tk.Frame):
             cache_dir.mkdir(parents=True, exist_ok=True)
             return cache_dir / "run_cache.json"
         except (OSError, PermissionError):
-            local_cache = _HERE / ".cache"
+            local_cache = _HERE / "trend" / ".cache"
             try:
                 local_cache.mkdir(exist_ok=True)
                 return local_cache / "trend_run_cache.json"
             except Exception:
-                return _HERE / "trend_run_cache.json"
+                return _HERE / "trend" / "trend_run_cache.json"
 
     def _load_cache(self) -> dict:
         try:
@@ -2087,3 +2087,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
