@@ -24,7 +24,7 @@
 		= NCXSDJXLXH61H*
 	;
 	@@ LastNWwsStartDateTime :
-		 = 4
+		 = 8
 	;
 	@@ Lot :
 	;
