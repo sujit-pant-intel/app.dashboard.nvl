@@ -8,7 +8,7 @@ Usage:
     from generate_index import build_index; build_index(base_dir)
 """
 from __future__ import annotations
-import argparse, datetime, re
+import argparse, datetime, os, re
 from pathlib import Path
 
 _UNC_REPORTS = r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend\reports"
@@ -44,9 +44,14 @@ def build_index(base_dir: Path) -> Path:
         except Exception:
             pass
 
+    # Use os.listdir instead of Path.glob — glob silently returns nothing on UNC paths
+    try:
+        _names = [n for n in os.listdir(str(reports_dir))
+                  if n.startswith("NVL816") and n.endswith(".html") and not n.startswith("index")]
+    except OSError:
+        _names = []
     all_files = sorted(
-        (f for f in reports_dir.glob("NVL816*.html")
-         if not f.name.startswith("index")),
+        [reports_dir / n for n in _names],
         key=lambda f: f.name,
         reverse=True,
     )
@@ -188,20 +193,16 @@ def build_index(base_dir: Path) -> Path:
 </html>"""
 
     out = reports_dir / "index.html"
-    tmp = reports_dir / "index.html.tmp"
-    import time as _time
+    import subprocess as _sp, time as _time
     for _attempt in range(3):
         try:
-            tmp.write_text(html, encoding="utf-8")
-            if out.exists():
-                out.unlink()
-            tmp.replace(out)
+            out.write_text(html, encoding="utf-8")
+            _sp.run(["icacls", str(out), "/grant", "Everyone:(W)"],
+                    capture_output=True, timeout=5)
             break
         except (PermissionError, OSError):
             if _attempt < 2:
                 _time.sleep(1)
-            else:
-                tmp.unlink(missing_ok=True)
     return out
 
 

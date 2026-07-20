@@ -760,7 +760,13 @@ class AutomationManager(tk.Frame):
         try:
             from generate_index import build_index
             out = build_index(self.base_dir)
-            self.hist_status.set(f"Index written \u2192 {out.name}")
+            if out.name == "index_latest.html":
+                self.hist_status.set(
+                    "index.html locked by task — opened index_latest.html instead "
+                    "(index.html updates automatically at next scheduled run)"
+                )
+            else:
+                self.hist_status.set(f"Index written \u2192 {out.name}")
             _open_html(out)
         except Exception as e:
             messagebox.showerror("Generate Index failed", str(e))

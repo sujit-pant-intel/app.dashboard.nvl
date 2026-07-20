@@ -8,7 +8,7 @@ Usage:
     from generate_index import build_index; build_index()
 """
 from __future__ import annotations
-import datetime, re
+import datetime, os, re
 from pathlib import Path
 
 _UNC_REPORTS = r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan\reports"
@@ -25,9 +25,14 @@ def build_index(base_dir: Path) -> Path:
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
+    # Use os.listdir instead of Path.glob — glob silently returns nothing on UNC paths
+    try:
+        _names = [n for n in os.listdir(str(reports_dir))
+                  if n.startswith("Scan_Report_") and n.endswith(".html")]
+    except OSError:
+        _names = []
     files = sorted(
-        (f for f in reports_dir.glob("Scan_Report_*.html")
-         if not f.name.startswith("index")),
+        [reports_dir / n for n in _names],
         key=lambda f: f.name,   # YYYYMMDD_HHMMSS in name → lexicographic = chronological
         reverse=True,
     )
@@ -129,15 +134,30 @@ def build_index(base_dir: Path) -> Path:
 </html>"""
 
     out = reports_dir / "index.html"
-    import time as _time
+    import subprocess as _sp, time as _time
+    _wrote = False
     for _attempt in range(3):
+        if _attempt == 1:
+            # Flush stale Samba ACL cache by forcing a reconnect on the UNC share
+            _unc = str(reports_dir)
+            _parts = _unc.lstrip("\\").split("\\")
+            if len(_parts) >= 2:
+                _share = "\\\\" + _parts[0] + "\\" + _parts[1]
+                _sp.run(["net", "use", _share, "/delete"], capture_output=True, timeout=5)
+                _sp.run(["net", "use", _share, "/persistent:no"], capture_output=True, timeout=5)
         try:
-            out.unlink(missing_ok=True)
             out.write_text(html, encoding="utf-8")
+            _sp.run(["icacls", str(out), "/grant", "Everyone:(W)"],
+                    capture_output=True, timeout=5)
+            _wrote = True
             break
         except (PermissionError, OSError):
             if _attempt < 2:
                 _time.sleep(1)
+    if not _wrote:
+        # index.html is owned by the scheduled task — write a fallback we do own
+        out = reports_dir / "index_latest.html"
+        out.write_text(html, encoding="utf-8")
     return out
 
 
