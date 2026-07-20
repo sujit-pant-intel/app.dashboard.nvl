@@ -3,6 +3,7 @@ shared/etest/*
 shared/material/*
 !shared/etest/.gitkeep
 !shared/material/.gitkeep
+!shared/material/*.py
 
 
 # ── Large vendored JS — checked in (offline-safe), no secrets ────────────────
