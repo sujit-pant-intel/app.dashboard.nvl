@@ -1093,7 +1093,8 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
             'fb_modules': {str(ib): {str(fb): max(bdesc_map, key=bdesc_map.get)
                            for fb, bdesc_map in fb_bdesc_map.items()}
                            for ib, fb_bdesc_map in r.get('fb_modules', {}).items()},
-            'dies':       r.get('upm_950', []),  # [[ibin, upm_pct], ...]
+            'ff_upm':     sorted(up for ib, up in r.get('upm_950', []) if ib in (1, 2)),
+            'df_upm':     sorted(up for ib, up in r.get('upm_950', []) if ib in (3, 4)),
         })
 
     all_progs  = sorted({r['program'] for r in runs})
@@ -1531,6 +1532,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
 .dlcp-ddbtn.on{{color:#f1c40f}}
 .dlcp-dd{{position:fixed;background:#fff;border:1px solid #aaa;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:30000;min-width:160px;max-width:260px;font-size:12px;color:#2c3e50}}
 .dlcp-dd-srch{{width:100%;box-sizing:border-box;padding:5px 8px;border:none;border-bottom:1px solid #ddd;font-size:12px;outline:none}}
+.dlcp-dd-panel{{position:fixed;z-index:9999;background:#fff;border:1px solid #c8cdd5;border-radius:5px;box-shadow:0 4px 16px rgba(0,0,0,.18);min-width:200px;max-width:320px;display:none;flex-direction:column}}
 .dlcp-dd-acts{{display:flex;gap:4px;padding:4px 6px;border-bottom:1px solid #eee}}
 .dlcp-dd-acts button{{flex:1;padding:2px 6px;font-size:11px;cursor:pointer;border:1px solid #bdc3c7;background:#ecf0f1;border-radius:3px}}
 .dlcp-dd-list{{max-height:200px;overflow-y:auto;padding:4px 0}}
@@ -2097,7 +2099,7 @@ function aggregateByLot(runs) {{
       map.set(key, {{
         lot: lot7, wafer: '', sort_lot: ((r.sort_lot || r.lot) || '').substring(0, 7),
         material: r.material, program: r.program,
-        date: r.date, total_dies: 0, bin_counts: {{}}, fb_counts: {{}}, fb_modules: {{}}, dies: [],
+        date: r.date, total_dies: 0, bin_counts: {{}}, fb_counts: {{}}, fb_modules: {{}}, ff_upm: [], df_upm: [],
         _wafers: [], _sourceRuns: [], _n: 0,
       }});
     }}
@@ -2118,7 +2120,8 @@ function aggregateByLot(runs) {{
       if (!agg.fb_modules[ib]) agg.fb_modules[ib] = {{}};
       Object.assign(agg.fb_modules[ib], fbMap);
     }}
-    if (r.dies && r.dies.length) agg.dies.push(...r.dies);
+    if (r.ff_upm && r.ff_upm.length) agg.ff_upm.push(...r.ff_upm);
+    if (r.df_upm && r.df_upm.length) agg.df_upm.push(...r.df_upm);
   }}
   return [...map.values()].map(agg => ({{
     ...agg,
@@ -2812,36 +2815,30 @@ function _dlcpComputeRowsT() {{
   var runs = window._dlcpRuns || [];
   runs.forEach(function(run) {{
     if (!run) return;
-    var dies = run.dies || [];
-    if (dies.length) hasDie = true;
-    var nA=0, nB=0, nC=0, nFF=0, nDF3=0, nDF4=0, uv=[];
-    dies.forEach(function(d) {{
-      var ib=d[0], up=d[1];
-      if (up != null) uv.push(up);
-      if ((ib===1||ib===2) && up!=null && up>=_dlcpT) nA++;
-      else if (ib!=null && ib>=1 && ib<=4) nB++;
-      else nC++;
-      if (ib===1||ib===2) nFF++;
-      else if (ib===3) nDF3++;
-      else if (ib===4) nDF4++;
-    }});
-    if (!dies.length) {{
-      var bc = run.bin_counts || {{}};
-      Object.keys(bc).forEach(function(b) {{
-        var ibv=parseInt(b), cnt=bc[b]||0;
-        if (ibv>=1&&ibv<=4) {{ if(ibv===1||ibv===2)nFF+=cnt; else if(ibv===3)nDF3+=cnt; else if(ibv===4)nDF4+=cnt; nB+=cnt; }}
-        else nC+=cnt;
-      }});
-    }}
+    var ffUpm = run.ff_upm, dfUpm = run.df_upm;
+    if (!ffUpm && !dfUpm && run.dies && run.dies.length) {{ ffUpm=[]; dfUpm=[]; run.dies.forEach(function(d){{ var ib=d[0],up=d[1]; if(up==null)return; if(ib===1||ib===2)ffUpm.push(up); else if(ib===3||ib===4)dfUpm.push(up); }}); }}
+    ffUpm=ffUpm||[]; dfUpm=dfUpm||[];
+    if (ffUpm.length || dfUpm.length) hasDie = true;
+    // Counts from bin_counts (authoritative, includes dies without UPM data)
+    var bc = run.bin_counts || {{}};
+    var nFF  = (parseInt(bc['1'])||0) + (parseInt(bc['2'])||0);
+    var nDF3 = parseInt(bc['3'])||0;
+    var nDF4 = parseInt(bc['4'])||0;
+    var ib14 = nFF + nDF3 + nDF4;
+    var nC   = Math.max(0, (run.total_dies||0) - ib14);
+    // HP/LP: binary search on pre-sorted ff_upm (ascending) at threshold
+    var lo=0, hi=ffUpm.length;
+    while(lo<hi){{var mid=(lo+hi)>>1;if(ffUpm[mid]<_dlcpT)lo=mid+1;else hi=mid;}}
+    var nA = ffUpm.length - lo;  // HP: ff_upm items >= _dlcpT
+    var nB = (ffUpm.length - nA) + dfUpm.length;  // LP
+    // Median across all IB1-4 UPM values
+    var uv = ffUpm.concat(dfUpm);
+    uv.sort(function(a,b){{return a-b;}});
     var med=null;
-    if (uv.length) {{
-      uv.sort(function(a,b){{return a-b;}});
-      var m=Math.floor(uv.length/2);
-      med=uv.length%2===0?(uv[m-1]+uv[m])/2:uv[m];
-    }}
+    if (uv.length) {{ var m=Math.floor(uv.length/2); med=uv.length%2===0?(uv[m-1]+uv[m])/2:uv[m]; }}
     res.push({{
       lot:run.lot||'', wafer:run.wafer||'', mat:run.material||'',
-      tot:run.total_dies||(nA+nB+nC), med:med,
+      tot:run.total_dies||ib14, med:med,
       nA:nA, nB:nB, nC:nC, nFF:nFF, nDF34:nDF3+nDF4, nDF3:nDF3, nDF4:nDF4
     }});
   }});
@@ -2918,7 +2915,7 @@ function _dlcpRenderTableT(){{
   var nd=document.getElementById('dlcp-no-data-msg');
   if(nd)nd.style.display=r.noDies?'':'none';
   if(r.noDies){{tb.innerHTML='<tr><td colspan="21" style="padding:14px;color:#7f8c8d;text-align:center">No die-level UPM data available.</td></tr>';_dlcpRenderSummaryT(0,0,0,0,null,0,0,0,0);return;}}
-  var tA=0,tB=0,tC=0,tN=0,tFF=0,tDF34=0,tDF3=0,tDF4=0,allUv=[],html='';
+  var tA=0,tB=0,tC=0,tN=0,tFF=0,tDF34=0,tDF3=0,tDF4=0,html='';
   r.rows.forEach(function(x){{
     var t=x.nA+x.nB+x.nC;if(!t)return;
     var key=_dlcpRowKeyT(x.lot,x.wafer);
@@ -2945,17 +2942,19 @@ function _dlcpRenderTableT(){{
   }});
   tb.innerHTML=html;
   _dlcpBuildFilterRowT();
-  var visKeys=new Set();
-  var tbEl=document.getElementById('dlcp-tb-t');
-  if(tbEl){{var trs=tbEl.getElementsByTagName('tr');for(var vi=0;vi<trs.length;vi++){{if(trs[vi].style.display!=='none'){{var vk=trs[vi].getAttribute('data-key');if(vk&&!_dlcpDeselT.has(vk))visKeys.add(vk);}}}};}}
-  (window._dlcpRuns||[]).forEach(function(run){{
-    var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');
-    if(!visKeys.has(k))return;
-    (run.dies||[]).forEach(function(d){{if(d[1]!=null)allUv.push(d[1]);}});
+  /* Global median: weighted median of per-run medians already computed in r.rows
+     — avoids sorting hundreds of thousands of raw die values on every render */
+  var selMeds=[];
+  r.rows.forEach(function(x){{
+    var key=_dlcpRowKeyT(x.lot,x.wafer);
+    var isSel=_dlcpIsRowSelT(key);
+    var ddVals=[x.lot,x.wafer,x.mat],ddOk=true;
+    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
+    if(isSel&&ddOk&&x.med!=null)selMeds.push(x.med);
   }});
-  allUv.sort(function(a,b){{return a-b;}});
+  selMeds.sort(function(a,b){{return a-b;}});
   var medAll=null;
-  if(allUv.length){{var m2=Math.floor(allUv.length/2);medAll=allUv.length%2===0?(allUv[m2-1]+allUv[m2])/2:allUv[m2];}}
+  if(selMeds.length){{var m2=Math.floor(selMeds.length/2);medAll=selMeds.length%2===0?(selMeds[m2-1]+selMeds[m2])/2:selMeds[m2];}}
   _dlcpRenderSummaryT(tA,tB,tC,tN,medAll,tFF,tDF34,tDF3,tDF4);
   var noteEl=document.getElementById('dlcp-note-t');
   if(noteEl)noteEl.innerHTML='<b>HP%</b> = HP / (HP+LP) &nbsp;|&nbsp; <b>LP%</b> = LP / (HP+LP) &nbsp;|&nbsp; <b>Fail%</b> = Fail / Total &nbsp;|&nbsp; <b>FF/DF%</b> = count / IB1-4 total &nbsp;|&nbsp; Threshold: <b>'+_dlcpT.toFixed(1)+'%</b>';
@@ -2967,20 +2966,21 @@ function _dlcpRenderCdfT(){{
   cv.width=W;cv.height=H;
   var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   var hp=[],lp=[],ff=[],df=[];
-  /* Systematic downsampling: cap at 80k points so large datasets don't stall the browser */
-  var MAX_CDF=80000,_cdfTot=0;
+  /* Collect all IB1-4 dies from pre-sorted ff_upm/df_upm — no per-die ibin lookup needed */
   var runs=window._dlcpRuns||[];
-  runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;_cdfTot+=run.dies.length;}});
-  var _cdfStep=_cdfTot>MAX_CDF?Math.ceil(_cdfTot/MAX_CDF):1,_cdfI=0;
   runs.forEach(function(run){{
-    if(!run||!run.dies)return;
+    if(!run)return;
     var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
-    run.dies.forEach(function(d){{
-      _cdfI++;if(_cdfI%_cdfStep!==0)return;
-      var ib=d[0],up=d[1];if(up==null)return;
-      if(ib===1||ib===2){{ff.push(up);if(up>=_dlcpT)hp.push(up);else lp.push(up);}}
-      else if(ib===3||ib===4){{df.push(up);lp.push(up);}}
-    }});
+    // Also respect dropdown column filters (lot/wafer/material)
+    var ddVals=[run.lot||'',run.wafer||'',run.material||''];
+    var ddOk=true;
+    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
+    if(!ddOk)return;
+    var ffU=run.ff_upm,dfU=run.df_upm;
+    if(!ffU&&!dfU&&run.dies&&run.dies.length){{ffU=[];dfU=[];run.dies.forEach(function(d){{var ib=d[0],up=d[1];if(up==null)return;if(ib===1||ib===2)ffU.push(up);else if(ib===3||ib===4)dfU.push(up);}});}}
+    ffU=ffU||[];dfU=dfU||[];
+    ffU.forEach(function(up){{ff.push(up);if(up>=_dlcpT)hp.push(up);else lp.push(up);}});
+    dfU.forEach(function(up){{df.push(up);lp.push(up);}});
   }});
   hp.sort(function(a,b){{return a-b;}});lp.sort(function(a,b){{return a-b;}});
   ff.sort(function(a,b){{return a-b;}});df.sort(function(a,b){{return a-b;}});
@@ -2989,8 +2989,12 @@ function _dlcpRenderCdfT(){{
     ctx.fillText('No UPM die data in selected wafers',W/2,H/2);return;
   }}
   var ML=52,MR=16,MT=22,MB=42,PW=W-ML-MR,PH=H-MT-MB;
-  var all=hp.concat(lp).concat(ff).concat(df);
-  var xMn=Math.floor(Math.min.apply(null,all)*2)/2-1,xMx=Math.ceil(Math.max.apply(null,all)*2)/2+1;
+  /* Use loop-based min/max — Math.min.apply blows the call stack with large arrays */
+  var xMn=Infinity,xMx=-Infinity;
+  ff.forEach(function(v){{if(v<xMn)xMn=v;if(v>xMx)xMx=v;}});
+  df.forEach(function(v){{if(v<xMn)xMn=v;if(v>xMx)xMx=v;}});
+  if(!isFinite(xMn)){{xMn=0;xMx=100;}}
+  xMn=Math.floor(xMn*2)/2-1;xMx=Math.ceil(xMx*2)/2+1;
   if(xMx-xMn<4){{xMn-=2;xMx+=2;}}
   function xp(v){{return ML+(v-xMn)/(xMx-xMn)*PW;}}
   function yp(v){{return MT+PH-v/100*PH;}}
@@ -3006,7 +3010,14 @@ function _dlcpRenderCdfT(){{
     ctx.save();ctx.strokeStyle=col;ctx.lineWidth=2;if(dash)ctx.setLineDash([6,3]);
     var n=arr.length;
     ctx.beginPath();ctx.moveTo(xp(arr[0]),yp(0));
-    for(var i=0;i<n;i++){{ctx.lineTo(xp(arr[i]),yp((i+1)/n*100));if(i<n-1)ctx.lineTo(xp(arr[i+1]),yp((i+1)/n*100));}}
+    var lastPx=-1;
+    for(var i=0;i<n;i++){{
+      var px=Math.round(xp(arr[i]));
+      if(px===lastPx)continue;
+      lastPx=px;
+      ctx.lineTo(xp(arr[i]),yp(i/n*100));
+      if(i<n-1)ctx.lineTo(xp(arr[i+1]),yp(i/n*100));
+    }}
     ctx.lineTo(ML+PW,yp(100));ctx.stroke();ctx.restore();
   }}
   drawCdf(df,'#8e44ad',true);drawCdf(ff,'#27ae60',true);
@@ -3020,6 +3031,14 @@ function _dlcpRenderCdfT(){{
   ctx.fillText('UPM %',ML+PW/2,H-4);
   ctx.save();ctx.translate(13,MT+PH/2);ctx.rotate(-Math.PI/2);ctx.fillText('Cumulative %',0,0);ctx.restore();
   var ib14=ff.length+df.length;
+  var selCount=0;runs.forEach(function(r){{
+    if(!r)return;
+    var ddVals=[r.lot||'',r.wafer||'',r.material||''],ddOk=true;
+    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
+    if(ddOk&&_dlcpIsRowSelT(_dlcpRowKeyT(r.lot||'',r.wafer||'')))selCount++;
+  }});
+  ctx.fillStyle='#888';ctx.font='10px Arial';ctx.textAlign='right';
+  ctx.fillText(selCount+' wafer'+(selCount!==1?'s':'')+' \u00b7 '+(ff.length+df.length)+' dies',ML+PW,MT-4);
   function lgPct(n,d){{return d>0?(n/d*100).toFixed(1)+'%':'0%';}}
   function drawLgEntry(x,y,lineCol,lineDash,pctTxt,nTxt,pctCol){{
     if(lineDash){{ctx.save();ctx.strokeStyle=lineCol;ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.beginPath();ctx.moveTo(x,y+2);ctx.lineTo(x+22,y+2);ctx.stroke();ctx.restore();}}
@@ -3037,7 +3056,10 @@ function _dlcpRenderCdfT(){{
 
 function _dlcpRenderT(){{
   _dlcpRenderTableT();
-  requestAnimationFrame(_dlcpRenderCdfT);
+  /* Render CDF immediately (synchronous, uses current canvas dims) and also
+     after two rAF frames so any flex/reflow triggered by table rebuild settles */
+  _dlcpRenderCdfT();
+  requestAnimationFrame(function(){{ requestAnimationFrame(_dlcpRenderCdfT); }});
 }}
 
 function dlcpSliderT(){{
@@ -3090,7 +3112,13 @@ function dlcpDdOpenT(col,btn){{
   btn.classList.add('on');
   setTimeout(function(){{document.addEventListener('click',_dlcpDdOutsideT,{{once:true}});}},0);
 }}
-function _dlcpDdOutsideT(){{dlcpDdApplyT();}}
+function _dlcpDdOutsideT(e){{
+  var panel=document.getElementById('dlcp-dd-panel-t');
+  if(panel&&panel.contains(e.target)){{
+    document.addEventListener('click',_dlcpDdOutsideT,{{once:true}});return;
+  }}
+  dlcpDdApplyT();
+}}
 function _dlcpDdCloseT(){{
   _dlcpDdCurColT=-1;
   var panel=document.getElementById('dlcp-dd-panel-t');if(panel)panel.style.display='none';
@@ -3202,18 +3230,20 @@ function _dlcpRenderHistT(){{
   var cv=document.getElementById('upm-hist-cv-t');if(!cv)return;
   var W=cv.clientWidth||740,H=cv.clientHeight||260;cv.width=W;cv.height=H;
   var ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
-  var MAX_HIST=80000,_hTot=0;
+  /* Use pre-sorted ff_upm/df_upm — no downsampling needed */
   var runs=window._dlcpRuns||[];
-  runs.forEach(function(run){{if(!run||!run.dies)return;var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;_hTot+=run.dies.length;}});
-  var _hStep=_hTot>MAX_HIST?Math.ceil(_hTot/MAX_HIST):1,_hI=0,hp2=[],lp2=[];
+  var hp2=[],lp2=[];
   runs.forEach(function(run){{
-    if(!run||!run.dies)return;
+    if(!run)return;
     var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
-    run.dies.forEach(function(d){{
-      _hI++;if(_hI%_hStep!==0)return;
-      var ib=d[0],up=d[1];if(up==null)return;
-      if((ib===1||ib===2)&&up>=_dlcpT)hp2.push(up);else if(ib!=null&&ib>=1&&ib<=4)lp2.push(up);
-    }});
+    var ddVals=[run.lot||'',run.wafer||'',run.material||''],ddOk=true;
+    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
+    if(!ddOk)return;
+    var ffU=run.ff_upm,dfU=run.df_upm;
+    if(!ffU&&!dfU&&run.dies&&run.dies.length){{ffU=[];dfU=[];run.dies.forEach(function(d){{var ib=d[0],up=d[1];if(up==null)return;if(ib===1||ib===2)ffU.push(up);else if(ib===3||ib===4)dfU.push(up);}});}}
+    ffU=ffU||[];dfU=dfU||[];
+    ffU.forEach(function(up){{if(up>=_dlcpT)hp2.push(up);else lp2.push(up);}});
+    dfU.forEach(function(up){{lp2.push(up);}});
   }});
   var all2=hp2.concat(lp2);
   if(!all2.length){{
@@ -3231,7 +3261,9 @@ function _dlcpRenderHistT(){{
   }}
   var sd2=document.getElementById('upm-hist-stats-t');
   if(sd2)sd2.innerHTML=sCard('All IB1-4',asP,'#2c3e50')+sCard('HP (IB1/2 \u2265thr)',hsP,'#2980b9')+sCard('LP (IB1-4 <thr)',lsP,'#e67e22');
-  var xMn2=Math.floor(Math.min.apply(null,all2)),xMx2=Math.ceil(Math.max.apply(null,all2));
+  var xMn2=Infinity,xMx2=-Infinity;
+  all2.forEach(function(v){{if(v<xMn2)xMn2=v;if(v>xMx2)xMx2=v;}});
+  xMn2=Math.floor(xMn2);xMx2=Math.ceil(xMx2);
   if(xMx2-xMn2<4){{xMn2-=2;xMx2+=2;}}
   var bins=Math.min(80,Math.max(20,Math.round((xMx2-xMn2)*2))),bw2=(xMx2-xMn2)/bins;
   function mBins2(arr2){{var b=new Array(bins).fill(0);arr2.forEach(function(v){{var i2=Math.min(bins-1,Math.floor((v-xMn2)/bw2));if(i2>=0)b[i2]++;}});return b;}}
@@ -3362,6 +3394,16 @@ document.querySelectorAll('input[name="datemode"]').forEach(rb => rb.addEventLis
 document.getElementById('date-from').addEventListener('change', rebuildCharts);
 document.getElementById('date-to').addEventListener('change', rebuildCharts);
 </script>
+<!-- DLCP column-filter dropdown panel -->
+<div id="dlcp-dd-panel-t" class="dlcp-dd-panel">
+  <input id="dlcp-dd-srch-t" class="dlcp-dd-srch" type="text" placeholder="Search…" oninput="dlcpDdSearchT(this.value)">
+  <div class="dlcp-dd-acts">
+    <button onclick="dlcpDdSelAllT()">All</button>
+    <button onclick="dlcpDdSelNoneT()">None</button>
+  </div>
+  <div id="dlcp-dd-list-t" class="dlcp-dd-list"></div>
+  <div class="dlcp-dd-foot"><button onclick="dlcpDdApplyT()">Apply</button></div>
+</div>
 </body>
 </html>
 '''
