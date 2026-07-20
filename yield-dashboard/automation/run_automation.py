@@ -3406,6 +3406,15 @@ def main() -> None:
             _report_save = _reports_dir / f"Yield_Report_{_ts_label}.html"
             _report_save.write_text(_email_body_rpt, encoding="utf-8")
             _log(f"Report saved: {_report_save}")
+            # Regenerate reports/index.html immediately after saving the report
+            try:
+                _HERE_AUTO = Path(__file__).resolve().parent
+                sys.path.insert(0, str(_HERE_AUTO))
+                from generate_index import build_index as _build_index  # noqa
+                _idx = _build_index(base_dir)
+                _log(f"Index updated → {_idx}")
+            except Exception as _idx_err:
+                _log(f"WARNING: could not update index.html: {_idx_err}")
             # Collapse <details>/<summary> and strip iframes for Outlook compatibility
             _email_body_collapsed = _collapse_report_html(_email_body_rpt)
         except Exception as _be:
@@ -3466,17 +3475,6 @@ def main() -> None:
     if not args.dry_run:
         _log(f"\nTip: run  python run_automation.py --serve  to enable the")
         _log(f"     'Resend Email' button in BinDistribution.html.")
-
-    # ── Auto-regenerate reports/index.html ────────────────────────────────
-    if not args.dry_run:
-        try:
-            _HERE_AUTO = Path(__file__).resolve().parent
-            sys.path.insert(0, str(_HERE_AUTO))
-            from generate_index import build_index  # noqa
-            idx = build_index(base_dir)
-            _log(f"\nIndex updated → {idx}")
-        except Exception as _idx_err:
-            _log(f"\nWARNING: could not update index.html: {_idx_err}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
