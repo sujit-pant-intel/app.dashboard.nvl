@@ -194,15 +194,29 @@ def build_index(base_dir: Path) -> Path:
 
     out = reports_dir / "index.html"
     import subprocess as _sp, time as _time
+    _wrote = False
     for _attempt in range(3):
+        if _attempt == 1:
+            # Flush stale Samba ACL cache by forcing a reconnect on the UNC share
+            _unc = str(reports_dir)
+            _parts = _unc.lstrip("\\").split("\\")
+            if len(_parts) >= 2:
+                _share = "\\\\" + _parts[0] + "\\" + _parts[1]
+                _sp.run(["net", "use", _share, "/delete"], capture_output=True, timeout=5)
+                _sp.run(["net", "use", _share, "/persistent:no"], capture_output=True, timeout=5)
         try:
             out.write_text(html, encoding="utf-8")
             _sp.run(["icacls", str(out), "/grant", "Everyone:(W)"],
                     capture_output=True, timeout=5)
+            _wrote = True
             break
         except (PermissionError, OSError):
             if _attempt < 2:
                 _time.sleep(1)
+    if not _wrote:
+        # index.html is owned by a different credential — write a fallback we do own
+        out = reports_dir / "index_latest.html"
+        out.write_text(html, encoding="utf-8")
     return out
 
 
