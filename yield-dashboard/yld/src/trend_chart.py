@@ -335,7 +335,7 @@ def load_material_data(product_prefix: str) -> dict[str, str]:
         return {}
     
     # Find lot-definition CSV starting with product_prefix
-    lot_def_files = list(collateral_dir.glob(f'{product_prefix}*lot*definition*.csv'))
+    lot_def_files = list(collateral_dir.glob(f'{product_prefix}*.csv'))
     if not lot_def_files:
         return {}
     
@@ -1762,7 +1762,8 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
             <tr>
               <th rowspan="2">Lot <button class="dlcp-ddbtn" id="dlcp-dd-btn-0" onclick="event.stopPropagation();dlcpDdOpenT(0,this)">&#9660;</button></th>
               <th rowspan="2">Wafer <button class="dlcp-ddbtn" id="dlcp-dd-btn-1" onclick="event.stopPropagation();dlcpDdOpenT(1,this)">&#9660;</button></th>
-              <th rowspan="2">Material <button class="dlcp-ddbtn" id="dlcp-dd-btn-2" onclick="event.stopPropagation();dlcpDdOpenT(2,this)">&#9660;</button></th>
+              <th rowspan="2">Test Program <button class="dlcp-ddbtn" id="dlcp-dd-btn-2" onclick="event.stopPropagation();dlcpDdOpenT(2,this)">&#9660;</button></th>
+              <th rowspan="2">Material <button class="dlcp-ddbtn" id="dlcp-dd-btn-3" onclick="event.stopPropagation();dlcpDdOpenT(3,this)">&#9660;</button></th>
               <th class="num" rowspan="2">Total</th><th class="num" rowspan="2">Med UPM%</th>
               <th class="num" colspan="2" style="background:#1a5276">HP (IB1/2, UPM&ge;thr)</th>
               <th class="num" colspan="2" style="background:#7d6608">LP (IB1-4, below thr)</th>
@@ -2837,7 +2838,7 @@ function _dlcpComputeRowsT() {{
     var med=null;
     if (uv.length) {{ var m=Math.floor(uv.length/2); med=uv.length%2===0?(uv[m-1]+uv[m])/2:uv[m]; }}
     res.push({{
-      lot:run.lot||'', wafer:run.wafer||'', mat:run.material||'',
+      lot:run.lot||'', wafer:run.wafer||'', prog:run.program||'', mat:run.material||'',
       tot:run.total_dies||ib14, med:med,
       nA:nA, nB:nB, nC:nC, nFF:nFF, nDF34:nDF3+nDF4, nDF3:nDF3, nDF4:nDF4
     }});
@@ -2877,9 +2878,9 @@ function _dlcpRenderSummaryT(tA,tB,tC,tN,medAll,tFF,tDF34,tDF3,tDF4) {{
 
 function _dlcpBuildFilterRowT() {{
   var fr=document.getElementById('dlcp-flt-row-t'); if(!fr)return;
-  var nc=21, html='<tr style="background:#f0f4ff">';
+  var nc=22, html='<tr style="background:#f0f4ff">';
   for(var ci=0;ci<nc;ci++) {{
-    if(ci<3){{html+='<td></td>';continue;}}
+    if(ci<4){{html+='<td></td>';continue;}}
     html+='<td style="padding:1px 3px"><input data-ci="'+ci+'" placeholder="e.g. &gt;50" style="width:100%;box-sizing:border-box;font-size:10px;padding:1px 3px;border:1px solid #ccd;border-radius:2px" oninput="dlcpFltInputT('+ci+',this.value)"></td>';
   }}
   fr.innerHTML=html+'</tr>';
@@ -2897,8 +2898,8 @@ function _dlcpApplyFilterT(){{
   var rows=tb.getElementsByTagName('tr');
   for(var i=0;i<rows.length;i++){{
     var cells=rows[i].getElementsByTagName('td');var show=true;
-    var colVals=[cells[0]?cells[0].textContent:'',cells[1]?cells[1].textContent:'',cells[2]?cells[2].textContent:''];
-    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(colVals[ci]))show=false;}});
+    var colVals=[cells[0]?cells[0].textContent:'',cells[1]?cells[1].textContent:'',cells[2]?cells[2].textContent:'',cells[3]?cells[3].textContent:''];
+    [0,1,2,3].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(colVals[ci]))show=false;}});
     Object.keys(_dlcpFltValsT).forEach(function(ci){{
       var fv=_dlcpFltValsT[ci];if(!fv)return;
       var cellTxt=cells[parseInt(ci)]?cells[parseInt(ci)].textContent:'';
@@ -2914,21 +2915,21 @@ function _dlcpRenderTableT(){{
   var tb=document.getElementById('dlcp-tb-t');if(!tb)return;
   var nd=document.getElementById('dlcp-no-data-msg');
   if(nd)nd.style.display=r.noDies?'':'none';
-  if(r.noDies){{tb.innerHTML='<tr><td colspan="21" style="padding:14px;color:#7f8c8d;text-align:center">No die-level UPM data available.</td></tr>';_dlcpRenderSummaryT(0,0,0,0,null,0,0,0,0);return;}}
+  if(r.noDies){{tb.innerHTML='<tr><td colspan="22" style="padding:14px;color:#7f8c8d;text-align:center">No die-level UPM data available.</td></tr>';_dlcpRenderSummaryT(0,0,0,0,null,0,0,0,0);return;}}
   var tA=0,tB=0,tC=0,tN=0,tFF=0,tDF34=0,tDF3=0,tDF4=0,html='';
   r.rows.forEach(function(x){{
     var t=x.nA+x.nB+x.nC;if(!t)return;
     var key=_dlcpRowKeyT(x.lot,x.wafer);
     var isSel=_dlcpIsRowSelT(key);
     var ddOk=true;
-    var ddVals=[x.lot,x.wafer,x.mat];
-    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
+    var ddVals=[x.lot,x.wafer,x.prog,x.mat];
+    [0,1,2,3].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
     var visStyle=ddOk?'':'display:none';
     var f12=x.nA+x.nB, f14=x.nFF+x.nDF3+x.nDF4;
     if(ddOk){{tA+=isSel?x.nA:0;tB+=isSel?x.nB:0;tC+=isSel?x.nC:0;tN+=isSel?t:0;
               tFF+=isSel?x.nFF:0;tDF34+=isSel?x.nDF34:0;tDF3+=isSel?x.nDF3:0;tDF4+=isSel?x.nDF4:0;}}
     html+='<tr data-key="'+_dlcpEscT(key)+'" class="'+(isSel?'dlcp-rsel':'dlcp-runsel')+'" style="'+visStyle+'" onclick="dlcpRowClickT(this.getAttribute(\\'data-key\\'))">'+
-      '<td>'+_dlcpEscT(x.lot)+'</td>'+'<td>'+_dlcpEscT(x.wafer)+'</td>'+'<td style="color:#555;font-size:11px">'+_dlcpEscT(x.mat)+'</td>'+
+      '<td>'+_dlcpEscT(x.lot)+'</td>'+'<td>'+_dlcpEscT(x.wafer)+'</td>'+'<td style="color:#555;font-size:11px">'+_dlcpEscT(x.prog)+'</td>'+'<td style="color:#555;font-size:11px">'+_dlcpEscT(x.mat)+'</td>'+
       '<td class="num">'+t+'</td>'+'<td class="num">'+(x.med!=null?x.med.toFixed(2)+'%':'\u2014')+'</td>'+
       '<td class="num" style="color:#1a5276;font-weight:bold">'+x.nA+'</td>'+'<td class="num" style="color:#1a5276">'+(f12>0?(x.nA/f12*100).toFixed(1):'\u2014')+'%</td>'+
       '<td class="num" style="color:#ba6b0a">'+x.nB+'</td>'+'<td class="num" style="color:#ba6b0a">'+(f12>0?(x.nB/f12*100).toFixed(1):'\u2014')+'%</td>'+
@@ -2948,8 +2949,8 @@ function _dlcpRenderTableT(){{
   r.rows.forEach(function(x){{
     var key=_dlcpRowKeyT(x.lot,x.wafer);
     var isSel=_dlcpIsRowSelT(key);
-    var ddVals=[x.lot,x.wafer,x.mat],ddOk=true;
-    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
+    var ddVals=[x.lot,x.wafer,x.prog,x.mat],ddOk=true;
+    [0,1,2,3].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
     if(isSel&&ddOk&&x.med!=null)selMeds.push(x.med);
   }});
   selMeds.sort(function(a,b){{return a-b;}});
@@ -2972,9 +2973,9 @@ function _dlcpRenderCdfT(){{
     if(!run)return;
     var k=_dlcpRowKeyT(run.lot||'',run.wafer||'');if(!_dlcpIsRowSelT(k))return;
     // Also respect dropdown column filters (lot/wafer/material)
-    var ddVals=[run.lot||'',run.wafer||'',run.material||''];
+    var ddVals=[run.lot||'',run.wafer||'',run.program||'',run.material||''];
     var ddOk=true;
-    [0,1,2].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
+    [0,1,2,3].forEach(function(ci){{var fs=_dlcpDdFltT[ci];if(fs&&fs.size>0&&!fs.has(ddVals[ci]))ddOk=false;}});
     if(!ddOk)return;
     var ffU=run.ff_upm,dfU=run.df_upm;
     if(!ffU&&!dfU&&run.dies&&run.dies.length){{ffU=[];dfU=[];run.dies.forEach(function(d){{var ib=d[0],up=d[1];if(up==null)return;if(ib===1||ib===2)ffU.push(up);else if(ib===3||ib===4)dfU.push(up);}});}}
@@ -3097,7 +3098,10 @@ function dlcpDdOpenT(col,btn){{
   var panel=document.getElementById('dlcp-dd-panel-t');if(!panel)return;
   var srch=document.getElementById('dlcp-dd-srch-t');if(srch)srch.value='';
   var r=_dlcpComputeRowsT(),vals=[],seen=new Set();
-  r.rows.forEach(function(x){{var v=col===0?x.lot:col===1?x.wafer:x.mat;if(!seen.has(v)){{seen.add(v);vals.push(v);}}}});
+  r.rows.forEach(function(x){{
+    // Only include values for rows that will actually render (t > 0)
+    var t=x.nA+x.nB+x.nC;if(!t)return;
+    var v=col===0?x.lot:col===1?x.wafer:col===2?x.prog:x.mat;if(!seen.has(v)){{seen.add(v);vals.push(v);}}}});
   vals.sort();
   var cur=_dlcpDdFltT[col]||null;
   _dlcpDdPendingT=cur?new Set(cur):null;
@@ -3128,7 +3132,7 @@ function dlcpDdChkT(inp){{
   var v=inp.value,chk=inp.checked;
   if(!_dlcpDdPendingT){{
     var r=_dlcpComputeRowsT();_dlcpDdPendingT=new Set();
-    r.rows.forEach(function(x){{_dlcpDdPendingT.add(_dlcpDdCurColT===0?x.lot:_dlcpDdCurColT===1?x.wafer:x.mat);}});
+    r.rows.forEach(function(x){{_dlcpDdPendingT.add(_dlcpDdCurColT===0?x.lot:_dlcpDdCurColT===1?x.wafer:_dlcpDdCurColT===2?x.prog:x.mat);}});
   }}
   if(chk)_dlcpDdPendingT.add(v);else _dlcpDdPendingT.delete(v);
 }}
@@ -3178,7 +3182,7 @@ function dlcpSavePngT(){{
 function dlcpDownloadCsv(){{dlcpDownloadCsvT();}}
 function dlcpDownloadCsvT(){{
   var r=_dlcpComputeRowsT();
-  var hdr=['Lot','Wafer','Material','Total','Med UPM%','HP#','HP%','LP#','LP%','Fail#','Fail%','FF+DF#','FF+DF%','FF#','FF%','DF#','DF%','ATOM DF#','ATOM DF%','CORE DF#','CORE DF%'];
+  var hdr=['Lot','Wafer','Test Program','Material','Total','Med UPM%','HP#','HP%','LP#','LP%','Fail#','Fail%','FF+DF#','FF+DF%','FF#','FF%','DF#','DF%','ATOM DF#','ATOM DF%','CORE DF#','CORE DF%'];
   var tb=document.getElementById('dlcp-tb-t'),visKeys=new Set();
   if(tb){{var trs=tb.getElementsByTagName('tr');for(var vi=0;vi<trs.length;vi++){{if(trs[vi].style.display!=='none'){{var vk=trs[vi].getAttribute('data-key');if(vk)visKeys.add(vk);}}}};}}
   function q(s){{var v=String(s==null?'':s);return(v.indexOf(',')>=0||v.indexOf('"')>=0)?'"'+v.replace(/"/g,'""')+'"':v;}}
@@ -3188,7 +3192,7 @@ function dlcpDownloadCsvT(){{
     if(visKeys.size>0&&!visKeys.has(k))return;
     var t=x.nA+x.nB+x.nC;if(!t)return;
     var f12=x.nA+x.nB,f14=x.nFF+x.nDF3+x.nDF4;
-    lines.push([x.lot,x.wafer,x.mat,t,x.med!=null?x.med.toFixed(2):'',
+    lines.push([x.lot,x.wafer,x.prog,x.mat,t,x.med!=null?x.med.toFixed(2):'',
       x.nA,f12>0?(x.nA/f12*100).toFixed(1):'',x.nB,f12>0?(x.nB/f12*100).toFixed(1):'',
       x.nC,t>0?(x.nC/t*100).toFixed(1):'',f14,t>0?(f14/t*100).toFixed(1):'',
       x.nFF,f14>0?(x.nFF/f14*100).toFixed(1):'',x.nDF34,f14>0?(x.nDF34/f14*100).toFixed(1):'',
@@ -3423,7 +3427,7 @@ def main():
     ap.add_argument('--interval', choices=INTERVALS, default='weekly')
     ap.add_argument('--topn',   type=int,   default=8)
     ap.add_argument('--thresh', type=float, default=0.0)
-    ap.add_argument('--group',  choices=['wafer', 'lot'], default='lot',
+    ap.add_argument('--group',  choices=['wafer', 'lot'], default='wafer',
                     help='Histogram grouping: lot (default) = one bar per lot, wafer = one bar per wafer')
     ap.add_argument('--out',    default='',
                     help='Output HTML path (default: <csv>_trend.html)')

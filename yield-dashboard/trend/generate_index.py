@@ -205,7 +205,11 @@ def build_index(base_dir: Path) -> Path:
                 _sp.run(["net", "use", _share, "/delete"], capture_output=True, timeout=5)
                 _sp.run(["net", "use", _share, "/persistent:no"], capture_output=True, timeout=5)
         try:
-            out.write_text(html, encoding="utf-8")
+            # Write to a temp file first, then atomically replace to avoid Samba ACL locks
+            import os as _os
+            _tmp = out.with_suffix(".tmp")
+            _tmp.write_text(html, encoding="utf-8")
+            _os.replace(str(_tmp), str(out))
             _sp.run(["icacls", str(out), "/grant", "Everyone:(W)"],
                     capture_output=True, timeout=5)
             _wrote = True
