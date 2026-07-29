@@ -752,6 +752,7 @@ def update_dashboard_report_links(dash_path: Path, report_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def main():
+    os.umask(0o002)  # ensure generated files are group-writable on NFS/Samba
     p = argparse.ArgumentParser(description='Weekly pareto yield report from Dashboard.html')
     p.add_argument('dashboard', help='Path to Dashboard.html')
     p.add_argument('--out', default='', help='Output HTML path (default: next to Dashboard.html)')

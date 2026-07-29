@@ -3420,6 +3420,7 @@ document.getElementById('date-to').addEventListener('change', rebuildCharts);
 # ============================================================================
 
 def main():
+    os.umask(0o002)  # ensure generated files are group-writable on NFS/Samba
     ap = argparse.ArgumentParser(description='Interactive iBin Fail vs. Yield Trend')
     ap.add_argument('csv', help='Input CSV file')
     ap.add_argument('--cfg', default='',

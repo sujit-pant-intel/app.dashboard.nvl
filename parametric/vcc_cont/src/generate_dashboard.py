@@ -475,11 +475,11 @@ def _resolve_prog_dir(prog_name, prog_root, fallback_prog):
     return ''
 
 
-def analyze_program(df_prog, prog_dir, args_json=None):
+def analyze_program(df_prog, prog_dir, args_json=None, focus_mode=False):
     """Run the full analysis pipeline for one program slice.
     Returns a result dict consumed by build_html."""
     prog_name = str(df_prog[PROG_COL].iloc[0]) if PROG_COL in df_prog.columns and len(df_prog) else 'unknown'
-    print(f'\n-- Analyzing {prog_name} ({len(df_prog)} rows, prog_dir={prog_dir or "(none)"}) --')
+    print(f'\n-- Analyzing {prog_name} ({len(df_prog)} rows, prog_dir={prog_dir or "(none)"}, focus_mode={focus_mode}) --')
 
     json_dir  = os.path.join(prog_dir, 'Modules', 'TPI_VCC', 'InputFiles') if prog_dir else ''
     isvm_json = os.path.join(json_dir, 'VCC_SDS_ISVM.json') if json_dir else ''
@@ -882,7 +882,8 @@ def analyze_program(df_prog, prog_dir, args_json=None):
     # ── Pin Distribution (all limit pins) + Detail raw data (top 5 failing) ────
     pin_distrib, detail_data = _compute_pin_distrib(
         df_prog=df_prog, lim=lim, lim_by_flow=lim_by_flow, k_cols=k_cols,
-        parsed_cols=parsed_cols, pin_list=pin_list, lot_list=lot_list)
+        parsed_cols=parsed_cols, pin_list=pin_list, lot_list=lot_list,
+        focus_mode=focus_mode)
 
     flow_data=build_flow_data(dies,_force_by_cs,lim, lim_by_flow=lim_by_flow, prog_dir=prog_dir)
     report_html=build_report_html(
@@ -894,6 +895,7 @@ def analyze_program(df_prog, prog_dir, args_json=None):
     _max_r=max((_math.sqrt(d[0]**2+d[1]**2) for ds in all_map.values() for d in ds),default=10.0)
 
     # phase_kills for top_pins with fbs/vals/usl/lsl
+    # Phase 3: accumulate min/max/med summaries instead of raw val lists
     phase_kills=defaultdict(lambda:{'n':0,'pins':defaultdict(int),'pin_fbs':defaultdict(lambda:defaultdict(int)),'pin_vals':defaultdict(list)})
     for d in dies:
         ph=d.get('phase','OTHER'); phase_kills[ph]['n']+=1
@@ -903,6 +905,13 @@ def analyze_program(df_prog, prog_dir, args_json=None):
             phase_kills[ph]['pin_vals'][pin].append(p['val'])
             if pin not in seen_pins:
                 phase_kills[ph]['pin_fbs'][pin][d['fbin']]+=1; seen_pins.add(pin)
+
+    # Convert raw val lists → {min, max, med} summaries to reduce JSON size
+    def _val_summary(vals):
+        if not vals: return {'min': None, 'max': None, 'med': None}
+        sv = sorted(vals)
+        return {'min': round(sv[0], 2), 'max': round(sv[-1], 2),
+                'med': round(sv[len(sv)//2], 2)}
 
     return {
         'prog_name':   prog_name,
@@ -924,7 +933,7 @@ def analyze_program(df_prog, prog_dir, args_json=None):
         'phase_kills': {ph:{'n':v['n'],
                             'pins':dict(v['pins']),
                             'pin_fbs':{p:dict(fb) for p,fb in v['pin_fbs'].items()},
-                            'pin_vals':dict(v['pin_vals'])}
+                            'pin_stats':{p:_val_summary(vals) for p,vals in v['pin_vals'].items()}}
                         for ph,v in phase_kills.items()},
         'total_dies':  len(df_prog),
         'bin8_count':  len(bin8),
@@ -938,7 +947,7 @@ def analyze_program(df_prog, prog_dir, args_json=None):
     }
 
 
-def _compute_pin_distrib(df_prog, lim, lim_by_flow, k_cols, parsed_cols, pin_list, lot_list):
+def _compute_pin_distrib(df_prog, lim, lim_by_flow, k_cols, parsed_cols, pin_list, lot_list, focus_mode=False):
     """Compute per-pin, per-phase distribution stats for all limit pins.
     pin_distrib[pin] = {usl, lsl,
       phases: {ph_label: {col, bins, counts, counts_fail, mean, sigma, median,
@@ -946,6 +955,8 @@ def _compute_pin_distrib(df_prog, lim, lim_by_flow, k_cols, parsed_cols, pin_lis
                            wfr_stats: {'lot::wfr': {n,s,s2,n3,n6,n12,nf}}}},
       phase_list: [...ordered...]}
     detail_data[pin] = {ph_label: [[lot_idx, wfr, x, y, val_mV], ...]} for top 5 pins
+    In Live Mode (focus_mode=True): wfr_stats is omitted (JS rebuilds from RAW_PIN_DATA);
+    detail_data is omitted (RAW_PIN_DATA covers all pins).
     """
     _PHASE_ORDER = ['Pre-Surge', 'Post-Surge', 'Post-Surge-HT', 'Stress',
                     'SDS-Final', 'SDT-Start', 'SDT-Final', 'ISVM-EDC', 'OTHER']
@@ -1008,7 +1019,7 @@ def _compute_pin_distrib(df_prog, lim, lim_by_flow, k_cols, parsed_cols, pin_lis
         lo_edge -= spread * 0.05; hi_edge += spread * 0.05
         # Vectorized histogram using numpy-style binning
         import numpy as _np
-        n_bins = 50
+        n_bins = 30
         vals_arr = _np.array(vals)
         bins_arr = _np.linspace(lo_edge, hi_edge, n_bins + 1)
         bins = [round(float(b), 3) for b in bins_arr]
@@ -1026,8 +1037,9 @@ def _compute_pin_distrib(df_prog, lim, lim_by_flow, k_cols, parsed_cols, pin_lis
         cpk = None
         if sigma > 0 and usl is not None and lsl is not None:
             cpk = round(min((usl - mean_v) / (3 * sigma), (mean_v - lsl) / (3 * sigma)), 3)
+        # Phase 1: skip wfr_stats in Live Mode — JS rebuilds them from RAW_PIN_DATA
         wfr_stats = {}
-        if WFR_COL in df_prog.columns and LOT_COL in df_prog.columns:
+        if not focus_mode and WFR_COL in df_prog.columns and LOT_COL in df_prog.columns:
             # Vectorized per-wafer stats using groupby + agg instead of Python loops
             ser_col = pd.to_numeric(df_prog[col], errors='coerce').dropna() * 1000
             tmp = df_prog.loc[ser_col.index, [LOT_COL, WFR_COL]].copy()
@@ -1273,7 +1285,7 @@ def main():
         try:
             _df_prog  = df[df[PROG_COL]==_pname].copy() if PROG_COL in df.columns else df.copy()
             _prog_dir = _resolve_prog_dir(_pname, args.prog_root, PROG_61C)
-            r = analyze_program(_df_prog, _prog_dir, args_json=args.json)
+            r = analyze_program(_df_prog, _prog_dir, args_json=args.json, focus_mode=_focus_mode)
 
             # Per-program reticle map — derived from this program's devrevstep values
             import math as _math
@@ -2279,16 +2291,15 @@ def build_html(prog_result, all_progs=None, current_prog=None,
     bin8_pct   = '{:.1f}'.format(bin8_count / total_dies * 100) if total_dies else '0'
 
     # Patch flow_data top_pins / all_lim_pins with full stats
+    # Phase 3: read pre-computed pin_stats {min,max,med} instead of raw val lists
     def _tp(ph_data, lim):
         result = []
         for p, n in sorted(ph_data.get('pins',{}).items(), key=lambda x: -x[1]):
-            pv  = ph_data.get('pin_vals',{}).get(p,[])
+            ps   = ph_data.get('pin_stats',{}).get(p,{})
             pfbs = ph_data.get('pin_fbs',{}).get(p,{})
-            pv_s = sorted(pv) if pv else [0]
             result.append({'pin':p,'n':n,
                 'fbs':{str(fb):c for fb,c in pfbs.items()},
-                'min_val':round(min(pv_s),2),'max_val':round(max(pv_s),2),
-                'med_val':round(pv_s[len(pv_s)//2],2),
+                'min_val':ps.get('min'),'max_val':ps.get('max'),'med_val':ps.get('med'),
                 'usl':round(lim[p]['usl']*1000,3) if p in lim and lim[p].get('usl') else None,
                 'lsl':round(lim[p]['lsl']*1000,3) if p in lim and lim[p].get('lsl') else None})
         return result
@@ -2303,9 +2314,9 @@ def build_html(prog_result, all_progs=None, current_prog=None,
                 _grp['all_lim_pins'] = [
                     {'pin':p,'n':_ph_data.get('pins',{}).get(p,0),
                      'fbs':{str(fb):c for fb,c in _ph_data.get('pin_fbs',{}).get(p,{}).items()},
-                     'min_val':round(min(sorted(_ph_data.get('pin_vals',{}).get(p,[0]))),2) if _ph_data.get('pin_vals',{}).get(p) else None,
-                     'max_val':round(max(_ph_data.get('pin_vals',{}).get(p,[0])),2) if _ph_data.get('pin_vals',{}).get(p) else None,
-                     'med_val':round(sorted(_ph_data.get('pin_vals',{}).get(p,[0]))[len(_ph_data.get('pin_vals',{}).get(p,[0]))//2],2) if _ph_data.get('pin_vals',{}).get(p) else None,
+                     'min_val':_ph_data.get('pin_stats',{}).get(p,{}).get('min'),
+                     'max_val':_ph_data.get('pin_stats',{}).get(p,{}).get('max'),
+                     'med_val':_ph_data.get('pin_stats',{}).get(p,{}).get('med'),
                      'usl':round(_lim[p]['usl']*1000,3) if p in _lim and _lim[p].get('usl') else None,
                      'lsl':round(_lim[p]['lsl']*1000,3) if p in _lim and _lim[p].get('lsl') else None}
                     for p in sorted(_lim, key=lambda x: -_ph_data.get('pins',{}).get(x,0))
@@ -2380,7 +2391,7 @@ def build_html(prog_result, all_progs=None, current_prog=None,
         .replace('__KILL_LIST__',     json.dumps(r['kill_list'], ensure_ascii=False, separators=(',',':')))
         .replace('__PIN_LIST__',      json.dumps(r['pin_list'],  ensure_ascii=False, separators=(',',':')))
         .replace('__PIN_DISTRIB__',    json.dumps(r['pin_distrib'], ensure_ascii=False, separators=(',',':')))
-        .replace('__DETAIL_PINS__',    json.dumps(r['detail_data'], ensure_ascii=False, separators=(',',':')))
+        .replace('__DETAIL_PINS__',    json.dumps({} if focus_wafer_count > 0 else r['detail_data'], ensure_ascii=False, separators=(',',':')))
         .replace('__RAW_PIN_DATA__',   json.dumps(raw_pin_data or {}, ensure_ascii=False, separators=(',',':')))
         .replace('__FOCUS_WAFER_COUNT__', str(focus_wafer_count))
         .replace('__RAIL_LIST__',     json.dumps(r['rail_list'], ensure_ascii=False, separators=(',',':')))

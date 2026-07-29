@@ -441,19 +441,16 @@ if __name__ == '__main__':
                 import pandas as _mpd_mat
                 import glob as _matglob
                 _mdf = _mpd_mat.read_csv(_sort_csv, low_memory=False)
-                # Join when Material column has any missing rows (partial or fully absent)
-                _mat_col_empty = (
-                    'Material' not in _mdf.columns
-                    or _mdf['Material'].isna().any()
-                    or (_mdf['Material'].astype(str).str.strip().eq('').any())
-                )
                 # Detect lot/wafer columns — prefer SORT_LOT
                 _sort_lot_col = next(
                     (c for c in _mdf.columns if c == 'SORT_LOT'), None)
                 _sort_wafer_col = next(
                     (c for c in _mdf.columns if 'sort_wafer' in c.lower()), None) or next(
                     (c for c in _mdf.columns if 'wafer' in c.lower()), None)
-                if _mat_col_empty and _sort_lot_col and _sort_wafer_col:
+                # Always attempt material join — material CSV values take priority over
+                # any pre-existing Material column (e.g. stale values from mock/prior run).
+                # Rows with no match in the material CSV keep their original value.
+                if _sort_lot_col and _sort_wafer_col:
                     _mat_dir = str(_repo_root / 'shared' / 'material')
                     _mat_src_col = 'Material Type, Skew, BEOL Skew'
                     _all_mat_csv = sorted(_matglob.glob(os.path.join(_mat_dir, '*.csv')))
@@ -472,6 +469,9 @@ if __name__ == '__main__':
                     for _mcp in _all_mat_csv:
                         _df_m = _mpd_mat.read_csv(_mcp, low_memory=False)
                         _df_m.columns = [c.strip() for c in _df_m.columns]
+                        # Accept 'Intel WaferID' as an alias for 'WaferID'
+                        if 'WaferID' not in _df_m.columns and 'Intel WaferID' in _df_m.columns:
+                            _df_m = _df_m.rename(columns={'Intel WaferID': 'WaferID'})
                         if ('INTEL_LOT7' in _df_m.columns and 'WaferID' in _df_m.columns
                                 and _mat_src_col in _df_m.columns):
                             # Truncate INTEL_LOT7 to 7 chars to match yield lot IDs

@@ -272,6 +272,14 @@ def getDD(dataInFile="", binDefFile="", vmax=False, logBaseName="",
             "dfBins": [3, 4],
             "numCores": 8,
             "numAtoms": 16,
+        },
+        "NVL-GPU-512": {
+            "DPW": 377,
+            "DEVREVSTEP": ["8PL7CV"],
+            "TPrgx": r"(NGX\w{6,8})",
+            "dfBins": [3, 4],
+            "numCores": 8,   # TODO: verify
+            "numAtoms": 16,  # TODO: verify
         }
     }
     devRevSteps = {
@@ -281,6 +289,7 @@ def getDD(dataInFile="", binDefFile="", vmax=False, logBaseName="",
         "8PF6CVP": "NVL816",
         "8PF6CVR": "NVL816",
         "8PF5CVL": "NVL816-BLLC",
+        "8PL7CV": "NVL-GPU-512",
     }
 
     # moduleMap defined at module level (importable by external callers)

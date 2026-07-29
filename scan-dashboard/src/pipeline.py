@@ -28,6 +28,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import re
 import zlib
 import json
@@ -1004,6 +1005,7 @@ def _load_run_config(path: str) -> dict:
 
 
 def main():
+    os.umask(0o002)  # ensure generated files are group-writable on NFS/Samba
     _def_cfg = _find_default_config()
     ap = argparse.ArgumentParser(
         description="Scan RAWSTR pipeline",

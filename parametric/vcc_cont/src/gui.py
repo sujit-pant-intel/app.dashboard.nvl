@@ -250,6 +250,7 @@ class App(tk.Tk):
         if data.get('prog'):      self._prog_var.set(data['prog'])
         if data.get('prog_root'): self._prog_root_var.set(data['prog_root'])
         if data.get('out'):       self._out_var.set(data['out'])
+        if 'live_mode' in data:   self._live_mode_var.set(bool(data['live_mode']))
         self._log_line(f'[setup] Loaded: {path}', 'acc')
 
     def _on_save_setup(self):
@@ -273,6 +274,7 @@ class App(tk.Tk):
         data['prog']      = self._prog_var.get().strip()
         data['prog_root'] = self._prog_root_var.get().strip()
         data['out']       = self._out_var.get().strip()
+        data['live_mode'] = self._live_mode_var.get()
         try:
             with open(path, 'w', encoding='utf-8') as _f:
                 json.dump(data, _f, indent=2)
