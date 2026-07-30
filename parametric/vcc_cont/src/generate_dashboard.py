@@ -425,8 +425,8 @@ def load_xeus_bin_summary(lots, operation='119325'):
 
 
 def _parse_lvl_force(lvl_path):
-    """Parse LevelsSequences.lvl → {cs_type: force_val_string}."""
-    out = {}
+    """Parse LevelsSequences.lvl → {level_name: {cs_type: force_val_string}} for all dc_spex blocks."""
+    all_levels = {}
     with open(lvl_path, encoding='utf-8', errors='replace') as _f:
         txt = _f.read()
     pat = re.compile(r'\bLevels\s+(\S+)\s*\{')
@@ -441,15 +441,33 @@ def _parse_lvl_force(lvl_path):
             i += 1
         body = txt[si:i-1]
         if 'dc_spex' in nm:
+            lvl_cs = {}
             for pm in re.finditer(r'(VLC|HC|HV|LC)\w*\s*\{([^}]+)\}', body):
                 cs_t = next((t for t in ('VLC','HC','HV','LC') if pm.group(1).upper().startswith(t)), None)
-                if not cs_t or cs_t in out: continue
+                if not cs_t or cs_t in lvl_cs: continue
                 params = dict(re.findall(r'(\w+)\s*=\s*([^;\n]+)', pm.group(2)))
                 if params.get('OPMode','').strip().strip('"') == 'VSIM':
-                    out[cs_t] = params.get('VForce','').strip()
+                    lvl_cs[cs_t] = params.get('VForce','').strip()
                 elif params.get('OPMode','').strip().strip('"') == 'ISVM':
-                    out[cs_t] = params.get('IForce','').strip()
+                    lvl_cs[cs_t] = params.get('IForce','').strip()
+            if lvl_cs:
+                all_levels[nm] = lvl_cs
         pos = i
+    return all_levels
+
+
+def _lvl_force_flat(all_levels):
+    """Collapse {level_name: {cs: val}} → flat {cs: val}.
+    Prefers dc_spex_VSIM_SDS_ over dc_spex_VSIM_ over dc_spex_ISVM_."""
+    out = {}
+    for priority in ('dc_spex_VSIM_SDS_', 'dc_spex_VSIM_', 'dc_spex_ISVM_', ''):
+        for nm, cs_map in all_levels.items():
+            if priority in nm:
+                for cs, val in cs_map.items():
+                    if cs not in out:
+                        out[cs] = val
+        if out:
+            return out
     return out
 
 
@@ -687,11 +705,13 @@ def analyze_program(df_prog, prog_dir, args_json=None, focus_mode=False):
     prog_list = sorted(set(d['prog'] for d in dies))
 
     # ── Force voltages ───────────────────────────────────────────────────────
-    _force_by_cs = {}
+    _force_by_cs   = {}   # flat {cs: val} — used for die annotation & rail list
+    _force_all_lvl = {}   # {level_name: {cs: val}} — used for per-phase flow display
     _lvl_path = os.path.join(prog_dir, 'LevelsSequences.lvl') if prog_dir else ''
     if os.path.isfile(_lvl_path):
         try:
-            _force_by_cs = _parse_lvl_force(_lvl_path)
+            _force_all_lvl = _parse_lvl_force(_lvl_path)
+            _force_by_cs   = _lvl_force_flat(_force_all_lvl)
             if _force_by_cs: print(f'  [lvl] force: {_force_by_cs}')
         except Exception as _e:
             print(f'  [lvl] {_e}')
@@ -706,7 +726,8 @@ def analyze_program(df_prog, prog_dir, args_json=None, focus_mode=False):
                         if not _sdir or not os.path.isdir(_sdir): continue
                         _lp = os.path.join(_sdir, 'LevelsSequences.lvl')
                         if os.path.isfile(_lp):
-                            _force_by_cs = _parse_lvl_force(_lp)
+                            _force_all_lvl = _parse_lvl_force(_lp)
+                            _force_by_cs   = _lvl_force_flat(_force_all_lvl)
                             if _force_by_cs:
                                 print(f'  [lvl/trace] force: {_force_by_cs}'); break
                 except Exception: continue
@@ -885,7 +906,7 @@ def analyze_program(df_prog, prog_dir, args_json=None, focus_mode=False):
         parsed_cols=parsed_cols, pin_list=pin_list, lot_list=lot_list,
         focus_mode=focus_mode)
 
-    flow_data=build_flow_data(dies,_force_by_cs,lim, lim_by_flow=lim_by_flow, prog_dir=prog_dir)
+    flow_data=build_flow_data(dies,_force_by_cs,lim, lim_by_flow=lim_by_flow, prog_dir=prog_dir, force_all_levels=_force_all_lvl)
     report_html=build_report_html(
         dies=dies,pin_list=pin_list,kill_list=kill_list,wfr_list=wfr_list,fb_list=fb_list,lim=lim,
         total_dies=len(df_prog),bin8_count=len(bin8),pass_count=int((df_prog[IB_COL]==1).sum()),
@@ -2050,7 +2071,7 @@ def build_report_html(dies, pin_list, kill_list, wfr_list, fb_list, lim,
     )
 
 
-def build_flow_data(dies, force_by_cs=None, lim=None, lim_by_flow=None, prog_dir=None):
+def build_flow_data(dies, force_by_cs=None, lim=None, lim_by_flow=None, prog_dir=None, force_all_levels=None):
     """Parse FLW + MTPL(regex) to build ordered flow structure with kill stats."""
     import xml.etree.ElementTree as ET
     from collections import defaultdict as _dd
@@ -2061,6 +2082,35 @@ def build_flow_data(dies, force_by_cs=None, lim=None, lim_by_flow=None, prog_dir
         lim = {}
     if lim_by_flow is None:
         lim_by_flow = {}
+    if force_all_levels is None:
+        force_all_levels = {}
+
+    # Per-group level name pattern: used to look up the correct force for each phase
+    # ISVM_EDC uses ISVM levels; all VSIM phases use VSIM SDS levels
+    _GROUP_LVL_PATTERN = {
+        'ISVM_EDC':               'dc_spex_ISVM_',
+        'VSIM_PRESURGE_600MV_V2': 'dc_spex_VSIM_',
+        'VSIM_POSTSURGE_NOM_V2':  'dc_spex_VSIM_SDS_',
+        'VSIM_STRESS_V2':         'dc_spex_VSIM_SDS_',
+        'VSIM_FINAL_V2':          'dc_spex_VSIM_SDS_',
+        'VSIM_SDTSTART_V2':       'dc_spex_VSIM_SDS_',
+        'VSIM_SDTFINAL_V2':       'dc_spex_VSIM_SDS_',
+    }
+
+    def _force_for_group(grp_id):
+        """Return {cs: val} for the level(s) matching this group's pattern."""
+        if not force_all_levels:
+            return force_by_cs
+        pattern = _GROUP_LVL_PATTERN.get(grp_id, '')
+        if not pattern:
+            return force_by_cs
+        grp_force = {}
+        for nm, cs_map in force_all_levels.items():
+            if pattern in nm:
+                for cs, val in cs_map.items():
+                    if cs not in grp_force:
+                        grp_force[cs] = val
+        return grp_force if grp_force else force_by_cs
 
     PROG = prog_dir or PROG_61C
     flw_path  = os.path.join(PROG, 'Modules', 'TPI_VCC', 'TPI_VCC.flw')
@@ -2232,7 +2282,7 @@ def build_flow_data(dies, force_by_cs=None, lim=None, lim_by_flow=None, prog_dir
             'phase':           phase_label,
             'color':           phase_color,
             'n_tests':         len(cont_tests),
-            'force':           force_by_cs,
+            'force':           _force_for_group(grp_id),
             'edc':             grp_id in EDC_GROUPS,
             'edc_limits':      edc_limits,
             'bin8_kills':      pk['n'],
@@ -3524,6 +3574,12 @@ __PROG_TABS__
             <label><input type="checkbox" id="xp-vl-usl" checked onchange="_xpRenderViolin()" style="accent-color:#ff6b6b"> USL line</label>
             <label><input type="checkbox" id="xp-vl-sigma" checked onchange="_xpRenderViolin()" style="accent-color:#ffd166"> σ markers</label>
             <label><input type="checkbox" id="xp-vl-hidesdt" onchange="_xpRenderViolin()" style="accent-color:#c77dff"> Show SDT</label>
+            <label><input type="checkbox" id="xp-vl-autorange" checked onchange="_vlToggleAutoRange()" style="accent-color:#69f0ae"> Auto-adjust Y</label>
+          </div>
+          <div id="xp-vl-range-row" style="display:none;align-items:center;gap:8px;margin-bottom:4px;font-size:0.74rem;color:#8ab4d4">
+            <span>Y min:</span><input id="xp-vl-ymin" type="number" step="any" oninput="_vlApplyManualRange()" style="width:80px;background:#131a2a;border:1px solid #2a4060;color:#c0ccd8;border-radius:3px;padding:2px 5px;font-size:0.73rem">
+            <span>Y max:</span><input id="xp-vl-ymax" type="number" step="any" oninput="_vlApplyManualRange()" style="width:80px;background:#131a2a;border:1px solid #2a4060;color:#c0ccd8;border-radius:3px;padding:2px 5px;font-size:0.73rem">
+            <button onclick="_vlAutoFillRange()" style="font-size:0.69rem;padding:1px 8px;background:#1e3050;border:1px solid #2a5080;color:#8ab4d4;border-radius:3px;cursor:pointer">Auto-fill</button>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:0.74rem;color:#8ab4d4">
             <label>Pass filter &mdash; only dies passing: <select id="xp-vl-passph" onchange="_xpRenderViolin()" style="background:#131a2a;border:1px solid #2a4060;color:#c0ccd8;border-radius:3px;padding:2px 5px;font-size:0.73rem"><option value="">(none — all dies)</option></select></label>
@@ -5302,6 +5358,7 @@ function _xpRenderViolin(){
   var showSigma=!(document.getElementById('xp-vl-sigma'))||document.getElementById('xp-vl-sigma').checked;
   var hideSdt=document.getElementById('xp-vl-hidesdt')&&!document.getElementById('xp-vl-hidesdt').checked;
   var _SDT_PHASES={'SDT-Start':1,'SDT-Final':1};
+  var _EXCLUDE_PHASES={'ISVM-EDC':1};  // voltage measurement — excluded from current-measure box
   var _vlFilterLots=filt&&filt.lots&&filt.lots.size>0;
   var _vlFilterWfrs=filt&&filt.wfrs&&filt.wfrs.size>0;
   var passPhEl=document.getElementById('xp-vl-passph');
@@ -5333,6 +5390,7 @@ function _xpRenderViolin(){
   var phaseStats={};  // {ph: {mean, sigma, name}} for sigma markers
   phases.forEach(function(ph){
     if(hideSdt&&_SDT_PHASES[ph]) return;  // skip SDT phases (no trace = no x-axis label)
+    if(_EXCLUDE_PHASES[ph]) return;  // ISVM-EDC is voltage — exclude from current-measure box
     var rawRows=(RAW_PIN_DATA[pin]||{})[ph]||[];
     var vals=[];
     rawRows.forEach(function(r){
@@ -5403,6 +5461,7 @@ function _xpRenderViolin(){
     var _nlPhaseList=pd.phase_list||Object.keys(pd.phases);
     _nlPhaseList.forEach(function(ph){
       if(hideSdt&&_SDT_PHASES[ph]) return;  // respect SDT filter so axis auto-adjusts
+      if(_EXCLUDE_PHASES[ph]) return;  // ISVM-EDC is voltage — exclude from current-measure box
       var ps=pd.phases[ph]; if(!ps) return;
       var col=_PHASE_CLR[ph]||'#8ab4d4';
       var nFail=ps.n_fail||0;
@@ -5502,8 +5561,15 @@ function _xpRenderViolin(){
         showlegend:false,name:'USL '+h.usl+' mV'});
     });
   }
+  var _vlAutoRange=!(document.getElementById('xp-vl-autorange'))||document.getElementById('xp-vl-autorange').checked;
+  var _vlYaxis={title:'Value (mV)',gridcolor:'#1e3050',zeroline:false,autorange:true};
+  if(!_vlAutoRange){
+    var _vlYmin=parseFloat(document.getElementById('xp-vl-ymin').value);
+    var _vlYmax=parseFloat(document.getElementById('xp-vl-ymax').value);
+    if(!isNaN(_vlYmin)&&!isNaN(_vlYmax)&&_vlYmax>_vlYmin) _vlYaxis={title:'Value (mV)',gridcolor:'#1e3050',zeroline:false,range:[_vlYmin,_vlYmax]};
+  }
   var layout = Object.assign(L({
-    yaxis:{title:'Value (mV)',gridcolor:'#1e3050',zeroline:false},
+    yaxis:_vlYaxis,
     xaxis:{gridcolor:'#1e3050'},
     shapes:_vlSA.shapes,
     annotations:_vlSA.annots,
@@ -5700,17 +5766,44 @@ function _xpRenderViolin(){
     try {
       Plotly.purge(_vlDiv);
       Plotly.newPlot(_vlDiv, _allTraces, layout, {responsive:true, displayModeBar:false});
-      // Sync USL line visibility when legend items are toggled
+      // Sync USL line visibility and auto-range when legend items are toggled
       _vlDiv.on('plotly_restyle', function(){
         var _su=document.getElementById('xp-vl-usl')&&document.getElementById('xp-vl-usl').checked;
         var vis={}; (_vlDiv.data||[]).forEach(function(t,i){vis[i]=t.visible!=='legendonly';});
         var sa=_su?_vlBuildUslShapesAnnots(_vlLastTracePhases,_vlLastPd,vis):{shapes:[],annots:[]};
-        Plotly.relayout(_vlDiv,{shapes:sa.shapes,annotations:sa.annots});
+        var _upd={shapes:sa.shapes,annotations:sa.annots};
+        var _ar=!(document.getElementById('xp-vl-autorange'))||document.getElementById('xp-vl-autorange').checked;
+        if(_ar) _upd['yaxis.autorange']=true;
+        Plotly.relayout(_vlDiv,_upd);
       });
     } catch(e) {
       _vlDiv.innerHTML = '<div style="color:#ff6b6b;padding:12px;font-size:0.78rem">Chart error: '+e.message+'</div>';
     }
   }, 80);
+}
+function _vlToggleAutoRange(){
+  var cb=document.getElementById('xp-vl-autorange');
+  var row=document.getElementById('xp-vl-range-row');
+  if(row) row.style.display=(cb&&cb.checked)?'none':'flex';
+  if(cb&&cb.checked){
+    var _vlDiv=document.getElementById('pdm-xp-violin-chart');
+    Plotly.relayout(_vlDiv,{'yaxis.autorange':true});
+  }
+}
+function _vlApplyManualRange(){
+  var _vlDiv=document.getElementById('pdm-xp-violin-chart');
+  var mn=parseFloat(document.getElementById('xp-vl-ymin').value);
+  var mx=parseFloat(document.getElementById('xp-vl-ymax').value);
+  if(!isNaN(mn)&&!isNaN(mx)&&mx>mn) Plotly.relayout(_vlDiv,{'yaxis.range':[mn,mx],'yaxis.autorange':false});
+}
+function _vlAutoFillRange(){
+  // Read current axis range from chart and fill inputs
+  var _vlDiv=document.getElementById('pdm-xp-violin-chart');
+  var rng=(_vlDiv&&_vlDiv.layout&&_vlDiv.layout.yaxis&&_vlDiv.layout.yaxis.range)||null;
+  if(rng&&rng.length===2){
+    document.getElementById('xp-vl-ymin').value=Math.round(rng[0]*100)/100;
+    document.getElementById('xp-vl-ymax').value=Math.round(rng[1]*100)/100;
+  }
 }
 function _vlBuildUslShapesAnnots(tracePhases,pd,visMap){
   var shapes=[],annots=[],seen={};
