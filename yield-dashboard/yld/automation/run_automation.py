@@ -937,10 +937,6 @@ def _extract_per_material_summaries(tp_dir: Path) -> list[tuple[str, dict | None
             wafer  = str(row.get("wafer", "")).strip()
             mat_rows[mat_id].append(f"{lot}|{wafer}")
 
-        if len(mat_rows) <= 1:
-            # Only one material type — no sub-breakdown
-            return []
-
         results = []
         for mat_id in sorted(mat_rows):
             rf   = set(mat_rows[mat_id])
