@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Correlation Analysis - Project Flow</title>
+<style>
+:root{
+  --bg:#0b1622;--panel:#102235;--panel2:#162b42;--ink:#dce8f3;--muted:#91a8bc;
+  --blue:#5dade2;--green:#2ecc71;--orange:#f39c12;--red:#e74c3c;--purple:#a78bfa;--cyan:#27d3c2;
+  --line:#466783;--soft:#20384f;--lane:#0f2030;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Segoe UI,Arial,sans-serif}
+header{background:#07111c;border-bottom:1px solid #1e3a5f;padding:18px 24px}
+header h1{margin:0;color:#9fd2ff;font-size:22px;letter-spacing:.2px}
+header p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.45}
+#app{display:grid;grid-template-columns:minmax(760px,1fr) 420px;gap:14px;padding:14px;height:calc(100vh - 86px)}
+#mapWrap{background:var(--panel);border:1px solid #1e3a5f;border-radius:10px;overflow:auto;position:relative}
+#side{background:var(--panel);border:1px solid #1e3a5f;border-radius:10px;padding:14px;overflow:auto}
+.toolbar{position:sticky;top:0;z-index:10;display:flex;gap:8px;flex-wrap:wrap;background:#081520;border-bottom:1px solid #1e3a5f;padding:9px}
+button{background:#132940;color:#cfe8ff;border:1px solid #2c4a6e;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer}
+button:hover,button.active{background:#1b4f72;color:white;border-color:#77bdf0}
+svg{display:block;min-width:1280px;min-height:850px;background:linear-gradient(180deg,#102235 0,#0b1622 100%)}
+.laneTitle{font-size:13px;font-weight:700;fill:#9fd2ff;letter-spacing:.3px}
+.laneBox{fill:#0c1b2a;stroke:#1e3a5f;stroke-width:1;rx:16;opacity:.72}
+.node{cursor:pointer;filter:drop-shadow(0 3px 5px rgba(0,0,0,.35))}
+.node rect{stroke:#2c4a6e;stroke-width:1.4;rx:12;ry:12}
+.node text{pointer-events:none;fill:#ecf6ff;font-size:12px}
+.node .sub{fill:#b3c6d8;font-size:10px}
+.node:hover rect{stroke:#f1c40f;stroke-width:2.2}
+.node.selected rect{stroke:#f1c40f;stroke-width:3}
+.edge{fill:none;stroke:var(--line);stroke-width:2;marker-end:url(#arrow);opacity:.8}
+.edge.hot{stroke:#f39c12;stroke-width:3;opacity:1}
+.badge{display:inline-block;padding:3px 8px;border:1px solid #2c4a6e;border-radius:999px;background:#0b1622;color:#9fd2ff;font-size:11px;margin:2px 4px 2px 0}
+h2{margin:2px 0 8px;color:#9fd2ff;font-size:19px}
+h3{margin:15px 0 7px;color:#ffd37a;font-size:14px}
+p,li{font-size:13px;line-height:1.52;color:#d5e5f3}ul{padding-left:18px;margin:8px 0}
+code{background:#07111c;border:1px solid #22405f;border-radius:4px;padding:1px 5px;color:#ffd37a}
+.card{background:#0b1622;border:1px solid #1e3a5f;border-radius:8px;padding:10px;margin:9px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.metric{background:#0b1622;border:1px solid #1e3a5f;border-radius:8px;padding:9px;font-size:12px}.metric b{color:#9fd2ff}
+details{background:#0b1622;border:1px solid #1e3a5f;border-radius:8px;margin:9px 0}summary{cursor:pointer;color:#9fd2ff;font-weight:700;padding:9px 11px}details div{padding:0 11px 10px;color:#d5e5f3;font-size:13px;line-height:1.5}.formula{font-family:Consolas,monospace;color:#f8d37a;background:#07111c;border:1px solid #22405f;border-radius:6px;padding:8px;white-space:pre-wrap}.ok{color:var(--green)}.warn{color:var(--orange)}.info{color:var(--blue)}
+@media(max-width:1050px){#app{grid-template-columns:1fr;height:auto}#side{min-height:520px}svg{min-width:1150px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Correlation Analysis — Project Flow</h1>
+  <p>Run-independent project map for the Sort + Etest / PCM correlation dashboard. No fixed runtime numbers are shown because timing varies by input size, selected parameters, target bin, and PCM coverage.</p>
+</header>
+<div id="app">
+  <section id="mapWrap">
+    <div class="toolbar">
+      <button class="active" data-filter="all">All</button>
+      <button data-filter="data">Data</button>
+      <button data-filter="compute">Compute</button>
+      <button data-filter="stats">Stats</button>
+      <button data-filter="ui">Dashboard</button>
+      <button data-filter="quality">Validation</button>
+      <button id="reset">Reset</button>
+    </div>
+    <svg id="flow" viewBox="0 0 1280 850" aria-label="Correlation analysis project flow">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="#466783"></path></marker>
+      </defs>
+      <g id="lanes"></g><g id="edges"></g><g id="nodes"></g>
+    </svg>
+  </section>
+  <aside id="side">
+    <h2>Project map</h2>
+    <span class="badge">Run-independent</span><span class="badge">Interactive</span><span class="badge">Engineering review</span>
+    <p>Click a block to see purpose, exact logic, correctness controls, and implementation guidance. Use the filter buttons to focus on data path, compute path, statistics, dashboard UI, or validation.</p>
+    <div class="card">
+      <h3>How to read this flow</h3>
+      <ul>
+        <li>Columns are ordered from input to output.</li>
+        <li>Orange edges show the active dependency when you click a block.</li>
+        <li>Details are intentionally run-independent: they describe the algorithm, not one report's timing.</li>
+      </ul>
+    </div>
+  </aside>
+</div>
+<script>
+const lanes=[
+  {x:30,w:210,title:'1. Inputs'},
+  {x:270,w:230,title:'2. Merge / Normalize'},
+  {x:535,w:240,title:'3. Analysis Engines'},
+  {x:810,w:220,title:'4. Report Views'},
+  {x:1060,w:190,title:'5. Validation'}
+];
+const nodes=[
+ {id:'sort',type:'data',x:55,y:95,w:160,h:76,c:'#1f618d',title:'Sort CSV',sub:'die rows + bins',detail:`The sort CSV supplies die-level rows, target bin columns, wafer coordinates, and sort-side electrical parameters such as UPM, SICC, and CDYN. This is the large input and usually drives most row-wise compute paths.`},
+ {id:'preset',type:'data',x:55,y:215,w:160,h:76,c:'#145a32',title:'Preset',sub:'target + params',detail:`The preset restores selected parameters and target conditions. It controls which fields enter the die-level, PCM, zone, and trend analyses.`},
+ {id:'pcmfile',type:'data',x:55,y:335,w:160,h:76,c:'#7d6608',title:'PCM / Etest',sub:'9-site or full-site',detail:`PCM data is discovered by matching sort lots to PCM lot identifiers. When a single zip contains many lots, the optimized code reads it once, groups by lot prefix, and serves each lot from memory.`},
+ {id:'target',type:'data',x:55,y:455,w:160,h:76,c:'#922b21',title:'Target Bin',sub:'IB / FB condition',detail:`The target is converted to a binary response: 1 for target-bin hit and 0 for not target. All correlation methods ultimately compare parameter behavior against this response or its aggregated fail rate.`},
+ {id:'merge',type:'compute',x:300,y:110,w:170,h:88,c:'#884ea0',title:'Merge Data',sub:'sort + PCM + target',detail:`Builds the working DataFrame by combining sort rows, binary target, wafer geometry, zone labels, and PCM values. Correctness guard: PCM columns are coerced numeric before median aggregation so object-dtype values are not bypassed.`},
+ {id:'idw',type:'compute',x:300,y:245,w:170,h:94,c:'#6c3483',title:'IDW PCM',sub:'per-die interpolation',detail:`For 9-site PCM, inverse-distance weighting interpolates PCM values to each die. Because IDW creates different PCM values per die, lot and wafer rollups must use median rather than first.`},
+ {id:'batch',type:'compute',x:300,y:520,w:170,h:96,c:'#1f6f8b',title:'Batch / Multi-Target',sub:'merge once, swap target',detail:`When several target bins run in one batch, the merge and IDW work is identical for every target. Only the binary _TARGET column changes. The optimized flow computes the merge once and, for each additional target, recomputes only _TARGET via a lightweight apply-target step. This was verified to reproduce a full per-target merge exactly for both FB and IB targets.`},
+ {id:'features',type:'compute',x:300,y:390,w:170,h:92,c:'#117864',title:'Feature Tables',sub:'lot / wafer records',detail:`Creates aggregation tables for lots, wafers, wafer trend records, and scatter records. These tables power the trend tabs, PCM method tabs, and click-through plots.`},
+ {id:'diecorr',type:'stats',x:565,y:65,w:180,h:88,c:'#21618c',title:'Die-Level Stats',sub:'Pearson + Spearman',detail:`Pearson measures linear die-level association. Spearman repeats the analysis on ranks. Removed methods Kendall, Mutual Information, and Point-biserial are no longer computed. A minimum valid-die floor prevents near-empty columns from ranking at the top, and the run log shows wider parameter names plus a p&lt;1e-308 indicator when p underflows at very large n.`},
+ {id:'pcmcorr',type:'stats',x:565,y:185,w:180,h:88,c:'#117864',title:'PCM Level Stats',sub:'lot + wafer medians',detail:`PCM Lot-Level and PCM Wafer-Level correlate median PCM value against aggregated fail rate. This avoids artificial confidence from repeated PCM values across many dies.`},
+ {id:'devcorr',type:'stats',x:565,y:305,w:180,h:104,c:'#a04000',title:'Deviation Stats',sub:'lot + wafer deviation',detail:`PCM Deviation (Lot) detects process-window behavior. PCM Deviation (Wafer) finds wafers that deviate from their own lot center. Spread r captures within-wafer non-uniformity.`},
+ {id:'zone',type:'stats',x:565,y:455,w:180,h:96,c:'#922b21',title:'Zone Interaction',sub:'zone x quartile',detail:`Computes fail rate by wafer zone and parameter quartile. For speed, only the most relevant eligible parameters are analyzed, ranked by correlation strength.`},
+ {id:'cards',type:'ui',x:840,y:75,w:160,h:82,c:'#2471a3',title:'Finding Cards',sub:'executive summary',detail:`Cards present top lot/wafer-level drivers and die-level separators. They include direction, significance, q-value, confidence interval, n, and effect-size fields where available. Cards are clickable and open the related plot.`},
+ {id:'trend',type:'ui',x:840,y:190,w:160,h:92,c:'#0e6655',title:'Trend Tabs',sub:'lot + wafer',detail:`Lot Level Trend and Wafer Level Trend show fail-rate progression, High-vs-Low comparison, and XY plots. Wafer labels use composite lot/wafer identity so wafers from different lots do not collide.`},
+ {id:'methodtabs',type:'ui',x:840,y:320,w:160,h:94,c:'#6c3483',title:'Method Tabs',sub:'PCM + Pearson + Spearman',detail:`Method tabs show ranked tables, Top-20 bars, and plots. Clicking a row or bar renders the related scatter/distribution below. How-to-read descriptions are collapsible to reduce clutter.`},
+ {id:'rca',type:'ui',x:840,y:455,w:160,h:90,c:'#5d6d7e',title:'RCA Views',sub:'zone, repeatability, reticle',detail:`Additional views support spatial interpretation: zone fail rates, repeatability, co-failure, and reticle-level clues where metadata is available.`},
+ {id:'validate',type:'quality',x:1090,y:120,w:135,h:92,c:'#196f3d',title:'Validation',sub:'old vs new checks',detail:`Validation includes parse checks, report JavaScript syntax, data-equivalence checks, object-dtype PCM retention, FDR presence, wafer-deviation signal detection, and old-vs-new assignment equality including NaNs.`},
+ {id:'timing',type:'quality',x:1090,y:270,w:135,h:92,c:'#7d6608',title:'Timing Logs',sub:'stage diagnostics',detail:`The tool logs stage times for merge, correlations, zone interaction, report build, and total analysis. These logs are run-specific and should be used to decide whether future optimization is needed.`},
+ {id:'htmlout',type:'quality',x:1090,y:420,w:135,h:92,c:'#5d6d7e',title:'HTML Report',sub:'final dashboard',detail:`The output is a self-contained dashboard. Report size and browser performance depend on selected parameters, scatter payload, wafer-map data, and active views.`}
+];
+const edges=[['sort','merge'],['idw','batch'],['batch','features'],['batch','diecorr'],['preset','merge'],['pcmfile','merge'],['target','merge'],['merge','idw'],['idw','features'],['features','diecorr'],['features','pcmcorr'],['features','devcorr'],['features','zone'],['diecorr','cards'],['pcmcorr','cards'],['devcorr','cards'],['zone','rca'],['cards','htmlout'],['trend','htmlout'],['methodtabs','htmlout'],['rca','htmlout'],['diecorr','methodtabs'],['pcmcorr','methodtabs'],['devcorr','methodtabs'],['features','trend'],['validate','htmlout'],['timing','htmlout'],['merge','timing'],['diecorr','validate'],['pcmcorr','validate'],['devcorr','validate'],['zone','validate']];
+const nodeLayer=document.getElementById('nodes'), edgeLayer=document.getElementById('edges'), laneLayer=document.getElementById('lanes'), side=document.getElementById('side');
+function draw(){
+ laneLayer.innerHTML=''; lanes.forEach(l=>{const g=document.createElementNS('http://www.w3.org/2000/svg','g');g.innerHTML=`<rect class="laneBox" x="${l.x}" y="35" width="${l.w}" height="760"></rect><text class="laneTitle" x="${l.x+14}" y="62">${l.title}</text>`;laneLayer.appendChild(g);});
+ edgeLayer.innerHTML=''; edges.forEach(([a,b])=>{const A=nodes.find(n=>n.id===a),B=nodes.find(n=>n.id===b);const x1=A.x+A.w,y1=A.y+A.h/2,x2=B.x,y2=B.y+B.h/2;const mid=(x1+x2)/2;const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',`M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`);p.setAttribute('class','edge');p.dataset.from=a;p.dataset.to=b;edgeLayer.appendChild(p);});
+ nodeLayer.innerHTML=''; nodes.forEach(n=>{const g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','node');g.dataset.id=n.id;g.dataset.type=n.type;g.setAttribute('transform',`translate(${n.x},${n.y})`);g.innerHTML=`<rect width="${n.w}" height="${n.h}" fill="${n.c}"></rect><text x="13" y="25" font-weight="700">${n.title}</text><text class="sub" x="13" y="47">${n.sub}</text>`;g.addEventListener('click',()=>select(n.id));nodeLayer.appendChild(g);});
+}
+function select(id){const n=nodes.find(x=>x.id===id);document.querySelectorAll('.node').forEach(g=>g.classList.toggle('selected',g.dataset.id===id));document.querySelectorAll('.edge').forEach(e=>e.classList.toggle('hot',e.dataset.from===id||e.dataset.to===id));side.innerHTML=`<h2>${n.title}</h2><span class="badge">${n.type}</span><span class="badge">${n.sub}</span><p>${n.detail}</p>${detailBlock(id)}`;}
+function detailBlock(id){const map={
+batch:`<details open><summary>Merge-once correctness</summary><div class="formula">merge / IDW / zone are target-independent.\nOnly _TARGET changes per target.\n_apply_target recomputes _TARGET on the cached merge.</div><ul><li>Verified identical _TARGET vs full per-target merge (FB and IB).</li><li>Log shows 'merge (cached, target only)' for reused targets.</li></ul></details>`,
+idw:`<details open><summary>Formula and data correctness</summary><div class="formula">IDW produces per-die PCM values.\nLot value = median(IDW die values in lot).\nWafer value = median(IDW die values in lot/wafer).</div><ul><li>Do not use first after IDW.</li><li>Block vectorized assignment preserves identical data.</li></ul></details>`,
+devcorr:`<details open><summary>Deviation definitions</summary><div class="formula">Lot deviation = abs(lot_median - median(all_lots))\nWafer deviation = abs(wafer_median - median(wafers_in_same_lot))\nSpread r = corr(std(die_pcm_within_wafer), wafer_fail_rate)</div></details>`,
+zone:`<details open><summary>Zone logic</summary><div>For each retained parameter, values are split into quartiles. The report computes fail rate for each zone and quartile cell. Runtime is controlled by processing only ranked candidate parameters.</div></details>`,
+validate:`<details open><summary>Validation examples</summary><div><ul><li><code>df_old.equals(df_new)</code> for vectorized assignment.</li><li>Node syntax check for embedded JavaScript.</li><li>Object-dtype PCM not bypassed.</li><li><code>_drop_constant_columns</code> and <code>_tag_structural_covariates</code> are inlined — no separate data_quality.py needed.</li><li>Dead compute removed.</li></ul></div></details>`,
+timing:`<details open><summary>Use timing logs</summary><div>Timing values should be compared per run. Do not hard-code one run's timing into the design because selected target, parameter count, row count, IDW coverage, and report payload all vary.</div></details>`};return map[id]||`<details><summary>Implementation note</summary><div>This block participates in the data-to-dashboard pipeline. Click connected blocks to trace dependencies.</div></details>`;}
+function filter(type){document.querySelectorAll('button[data-filter]').forEach(b=>b.classList.toggle('active',b.dataset.filter===type));document.querySelectorAll('.node').forEach(g=>{g.style.opacity=(type==='all'||g.dataset.type===type)?'1':'.18';});document.querySelectorAll('.edge').forEach(e=>{e.style.opacity=type==='all'?'.8':'.2';});}
+document.querySelectorAll('button[data-filter]').forEach(b=>b.addEventListener('click',()=>filter(b.dataset.filter)));
+document.getElementById('reset').addEventListener('click',()=>{filter('all');document.querySelectorAll('.node').forEach(g=>g.classList.remove('selected'));document.querySelectorAll('.edge').forEach(e=>e.classList.remove('hot'));side.innerHTML='<h2>Project map</h2><span class="badge">Run-independent</span><span class="badge">Interactive</span><span class="badge">Engineering review</span><p>Click a block to see purpose, exact logic, correctness controls, and implementation guidance.</p>';});
+draw();
+</script>
+</body>
+</html>

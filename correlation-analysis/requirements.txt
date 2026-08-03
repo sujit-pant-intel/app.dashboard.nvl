@@ -1,0 +1,7 @@
+# Requirements for correlation-analysis.py
+# Install with:
+#   pip install -r requirements.txt --proxy http://proxy-us.intel.com:911
+
+pandas>=1.5.0
+numpy>=1.23.0
+scipy>=1.9.0

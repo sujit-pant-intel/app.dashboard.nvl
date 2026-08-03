@@ -16,6 +16,9 @@ shared/material/*
 **/heatmap/
 **/data/raw/
 **/data/programs/
+correlation-analysis/pipeline_timing.log
+correlation-analysis/.last_dir
+correlation-analysis/.pcm_lot_cache.json
 
 # ── Python artifacts ──────────────────────────────────────────────────────────
 __pycache__/
