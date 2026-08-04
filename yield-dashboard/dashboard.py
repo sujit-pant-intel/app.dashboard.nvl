@@ -27,16 +27,16 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 # -- ensure src/ is on the path -----------------------------------------------
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_SRC_DIR = os.path.join(_SCRIPT_DIR, 'yld', 'src')
-_LOADER = os.path.join(_SRC_DIR, '_loader.py')  # dispatches to compiled .pyd modules
+_SRC_DIR = os.path.join(_SCRIPT_DIR, 'yld')
+_LOADER = os.path.join(_SRC_DIR, 'yield_pipeline.py')  # dispatches to compiled .pyd modules
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
-from pipeline            import PipelineFrame
-from compareTP           import CompareFrame
-from manage_dashboard    import ManageFrame
-from trend_chart_frame   import TrendChartFrame
-import make_portable_dashboard as _mpd
+from yield_pipeline      import PipelineFrame
+from yield_trend         import CompareFrame
+from yield_data          import ManageFrame
+from yield_trend         import TrendChartFrame
+import yield_data as _mpd
 
 # ---------------------------------------------------------------------------
 # Local HTTP opener server — lets HTML onclick open .jmpprj/.jmp via the

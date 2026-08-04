@@ -93,8 +93,13 @@ def _find_pcm_for_lots(
     nine_site_dir: str,
     full_site_dir: str | None,
     prefer_full: bool = False,
-) -> dict:
-    """Return {lot_id: csv_path} for lots that have a matching PCM CSV.
+) -> "tuple[dict, set]":
+    """Return (lot_csv_map, full_site_lots) for lots that have a matching PCM CSV.
+
+    full_site_dir is ALWAYS searched first.  Any lot matched there is recorded
+    in full_site_lots and is NOT looked up again in nine_site_dir (full-site
+    data covers all reticle positions so IDW is not needed).
+    nine_site_dir is only searched for lots that were NOT found in full_site_dir.
 
     Matching strategy (in order):
       1. Exact 8-char lot match  (sort lot == PCM lot)
@@ -102,20 +107,7 @@ def _find_pcm_for_lots(
          Handles the common case where the sort CSV has a 7-char INTEL_LOT7
          (e.g. Q603S6T) while the PCM filename uses an 8-char lot (Q603S6T0).
          The returned key is always the sort lot ID so downstream joins work.
-
-    Both 9-sites and full-sites are always searched.  When prefer_full=True
-    (--full-site flag), full-sites is searched first so it takes priority over
-    9-sites when both contain a match for the same lot.
     """
-    dirs = []
-    full_exists = full_site_dir and os.path.isdir(full_site_dir)
-    if prefer_full and full_exists:
-        dirs = [full_site_dir, nine_site_dir]
-    else:
-        dirs = [nine_site_dir]
-        if full_exists:
-            dirs.append(full_site_dir)
-
     lot_set = set(lots)
     # Build a 7-char prefix lookup for fallback matching
     lot7_map: dict = {}   # prefix7 -> sort_lot (first match wins)
@@ -125,22 +117,37 @@ def _find_pcm_for_lots(
             lot7_map[p7] = lot
 
     found: dict = {}
-    for d in dirs:
+    full_site_lots: set = set()
+    full_exists = full_site_dir and os.path.isdir(full_site_dir)
+
+    def _scan_dir(d: str, restrict_to: "set | None" = None) -> None:
+        """Walk d and populate found/full_site_lots.  restrict_to limits which lots are added."""
+        is_full = full_exists and os.path.normpath(d) == os.path.normpath(full_site_dir)  # type: ignore[arg-type]
         for fname, fpath in _walk_for_pcm(d):
             pcm_lot = _lot_from_filename(fname)
             if not pcm_lot:
                 continue
-            # 1. Exact match
-            if pcm_lot in lot_set and pcm_lot not in found:
-                found[pcm_lot] = fpath
-                continue
-            # 2. 7-char prefix match
+            # 7-char prefix match: sort lot Q550SK3A matches PCM lot Q550SK3x via prefix Q550SK3
             sort_lot = lot7_map.get(pcm_lot[:7])
             if sort_lot and sort_lot not in found:
-                found[sort_lot] = fpath
-                print(f"[parametric] PCM lot prefix match: "
-                      f"sort={sort_lot!r} -> PCM file lot={pcm_lot!r}")
-    return found
+                if restrict_to is None or sort_lot in restrict_to:
+                    found[sort_lot] = fpath
+                    if is_full:
+                        full_site_lots.add(sort_lot)
+                    print(f"[parametric] PCM lot match: "
+                          f"sort={sort_lot!r} -> PCM file lot={pcm_lot!r}")
+
+    # Step 1: always search full-sites first
+    if full_exists:
+        _scan_dir(full_site_dir)  # type: ignore[arg-type]
+        print(f"[parametric] Full-site lots matched: {sorted(full_site_lots)}")
+
+    # Step 2: search 9-sites only for lots not already found in full-sites
+    remaining = lot_set - set(found.keys())
+    if remaining and os.path.isdir(nine_site_dir):
+        _scan_dir(nine_site_dir, restrict_to=remaining)
+
+    return found, full_site_lots
 
 
 # ---------------------------------------------------------------------------
@@ -238,11 +245,14 @@ def run(args: argparse.Namespace) -> int:
     full_site_dir = os.path.join(repo_root, "shared", "etest", "full-sites")
     material_dir  = os.path.join(repo_root, "shared", "material")
 
-    lot_csv_map = _find_pcm_for_lots(lots, nine_site_dir,
-                                      full_site_dir, prefer_full=use_full)
+    lot_csv_map, _full_site_lots = _find_pcm_for_lots(lots, nine_site_dir,
+                                                       full_site_dir, prefer_full=use_full)
     print(f"[parametric] PCM CSVs matched: {len(lot_csv_map)}/{len(lots)} lots")
     for lot, path in sorted(lot_csv_map.items()):
-        print(f"  {lot} -> {path}")
+        src_tag = "full-site" if lot in _full_site_lots else "9-site"
+        print(f"  {lot} -> [{src_tag}] {path}")
+    if _full_site_lots:
+        print(f"[parametric] Full-site lots (IDW skipped): {sorted(_full_site_lots)}")
 
     # ── 3. Load etest-dashboard helpers (optional — PCM skipped if absent) ──
     # etest-dashboard is an independent repo/package. Discovery order:
@@ -372,6 +382,10 @@ def run(args: argparse.Namespace) -> int:
                 if _idw_pcm_filter:
                     print(f"[parametric] IDW pcm_filter: '{_idw_pcm_filter}'")
                 for _lot, _pcm_csv in lot_csv_map.items():
+                    # Full-site data already covers all reticle positions — no IDW needed
+                    if _lot in _full_site_lots:
+                        print(f"[parametric] Skipping IDW for lot {_lot} (full-site data)")
+                        continue
                     _idw_path = os.path.join(deploy_dir, f"pcm_idw_{_lot}.csv")
                     _idf_from_run = None
                     if not os.path.isfile(_idw_path):
@@ -668,13 +682,13 @@ def run(args: argparse.Namespace) -> int:
     _sort_groups: "dict | None" = None
     if pcm_df is not None and len(pcm_df) > 0 and sort_csv and os.path.isfile(sort_csv):
         try:
-            # Add sicc_cdyn_upm/src to path so sicc_processor is importable.
+            # Add sicc_cdyn_upm/ to path so sicc_cdyn_upm is importable.
             # sort-parametric/ and sicc_cdyn_upm/ are siblings under yield-dashboard/
             _sicc_src = os.path.normpath(
-                os.path.join(os.path.dirname(__file__), '..', 'sicc_cdyn_upm', 'src'))
+                os.path.join(os.path.dirname(__file__), '..', 'sicc_cdyn_upm'))
             if _sicc_src not in sys.path:
                 sys.path.insert(0, _sicc_src)
-            from sicc_processor import process_csv as _proc_sicc       # type: ignore
+            from sicc_cdyn_upm import process_csv as _proc_sicc       # type: ignore
 
             _pcfg_path = getattr(args, "product_config_json", "") or ""
             if not _pcfg_path:

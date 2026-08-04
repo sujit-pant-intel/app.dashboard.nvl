@@ -542,7 +542,7 @@ class AutomationManager(tk.Frame):
         """Scan reports/ on samba and rewrite index.html with only files that exist."""
         try:
             import importlib.util as _ilu
-            _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "generate_index.py")
+            _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "run_trend.py")
             _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
             _gi.build_index(self.base_dir)
             out = self.base_dir / "reports" / "index.html"
@@ -671,7 +671,7 @@ class AutomationManager(tk.Frame):
                     raise RuntimeError(err)
                 # regenerate index.html
                 import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "generate_index.py")
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "run_trend.py")
                 _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
                 _gi.build_index(self.base_dir)
                 def _done():
@@ -1349,7 +1349,7 @@ class AutomationManager(tk.Frame):
                 # regenerate index.html
                 try:
                     import importlib.util as _ilu
-                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "generate_index.py")
+                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "run_trend.py")
                     _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
                     _gi.build_index(self.base_dir)
                     _append("Index updated → reports/index.html\n")
@@ -1680,7 +1680,7 @@ class AutomationManager(tk.Frame):
             # regenerate index.html
             try:
                 import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "generate_index.py")
+                _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "run_trend.py")
                 _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
                 _gi.build_index(self.base_dir)
                 dlg.after(0, _append, "Index updated → reports/index.html")

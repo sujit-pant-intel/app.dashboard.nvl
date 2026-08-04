@@ -23,6 +23,9 @@ def _resource_dir() -> Path:
 _HERE = _resource_dir()
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
+_PARENT = _HERE.parent
+if str(_PARENT) not in sys.path:
+    sys.path.insert(0, str(_PARENT))
 
 
 def _route_script(script_path: str, args: list) -> None:

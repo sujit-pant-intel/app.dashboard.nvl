@@ -15,7 +15,14 @@
 		 = Both
 	;
 	@@ ProgramName :
-	 	= NCXSDJXL*H61*
+	 	= NCXSDJXL0H61E*
+		= NCXSDJXL5H61E*
+		= NCXSDJXL0H61F*
+		= NCXSDJXL5H61F*
+		= NCXSDJXL0H61G*
+		= NCXSDJXL5H61G*
+		= NCXSDJXLXH61H*
+		= NCXSDJXLXH61J*
 	;
 	@@ LastNWwsStartDateTime :
 		 = 8

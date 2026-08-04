@@ -1,8 +1,8 @@
-@ Report : NVL_Sort_Scan - Dashboard
+@ Report : NVL_Sort_Yield - Dashboard
 
 
 ####################
-@ FilterSet : NVL_Sort_Scan - Dashboard_FilterSet
+@ FilterSet : NVL_Sort_Yield - Dashboard_FilterSet
 ####################
 
 @ Domain : PreAssembly
@@ -15,7 +15,14 @@
 		 = Both
 	;
 	@@ ProgramName :
-	 	= NCXSDJXL*H61*
+	 	= NCXSDJXL0H61E*
+		= NCXSDJXL5H61E*
+		= NCXSDJXL0H61F*
+		= NCXSDJXL5H61F*
+		= NCXSDJXL0H61G*
+		= NCXSDJXL5H61G*
+		= NCXSDJXLXH61H*
+		= NCXSDJXLXH61J*
 	;
 	@@ LastNWwsStartDateTime :
 		 = 8
@@ -28,7 +35,7 @@
 	;
 
 ####################
-@ Parameters : NVL_Sort_Scan - Dashboard_Parameters
+@ Parameters : NVL_Sort_Yield - Dashboard_Parameters
 ####################
 
 @ Operations : 
@@ -71,19 +78,18 @@
 
 @ Parameters Group : String
 # Group Settings :  [ Data Type Position = None; Spm Option = False;  ] 
-	@@ "0|scn*rawstr*" : Operations = 119325; 
-	@@ "1|PTH*OG*CDYN*" : Operations = 119325; 
-	@@ "2|TPI_BIN::CTRL_UB_X_K_BIN_X_X_X_X_SETBIN" : Operations = 119325; 
-	@@ "3|TPI_ADTL::CTRL_UF_X_K_EXVF_X_X_X_X_ADTL_BULK_KILL_STATUS" : Operations = 119325; 
-	@@ "4|TPI_ADTL::CTRL_UF_X_K_EXVF_X_X_X_X_ADTL_BULK_KILL_KILL" : Operations = 119325; 
-	@@ "5|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_COREBINRESULT_TRACKER*" : Operations = 119325; 
-	@@ "6|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_LOGTRACKER*" : Operations = 119325; 
-	@@ "7|TPI_BIN::CTRL_UB_X_K_SDTBIN_X_X_X_X_SETBIN" : Operations = 119325; 
-	@@ "8|*LOGTRACKER_AP*" : Operations = 119325; 
-	@@ "9|*LOGTRACKER_CR*" : Operations = 119325; 
-	@@ "10|*LOGTRACKER_SLC*" : Operations = 119325; 
-	@@ "11|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_LOGTRACKER_TRACKER_*" : Operations = 119325; 
-	@@ "12|TPI_ADTL::CTRL_UF_X_K_END_X_X_X_X_ADTL_BULK_KILL*" : Operations = 119325; 
+	@@ "0|PTH*OG*CDYN*" : Operations = 119325; 
+	@@ "1|TPI_BIN::CTRL_UB_X_K_BIN_X_X_X_X_SETBIN" : Operations = 119325; 
+	@@ "2|TPI_ADTL::CTRL_UF_X_K_EXVF_X_X_X_X_ADTL_BULK_KILL_STATUS" : Operations = 119325; 
+	@@ "3|TPI_ADTL::CTRL_UF_X_K_EXVF_X_X_X_X_ADTL_BULK_KILL_KILL" : Operations = 119325; 
+	@@ "4|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_COREBINRESULT_TRACKER*" : Operations = 119325; 
+	@@ "5|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_LOGTRACKER*" : Operations = 119325; 
+	@@ "6|TPI_BIN::CTRL_UB_X_K_SDTBIN_X_X_X_X_SETBIN" : Operations = 119325; 
+	@@ "7|*LOGTRACKER_AP*" : Operations = 119325; 
+	@@ "8|*LOGTRACKER_CR*" : Operations = 119325; 
+	@@ "9|*LOGTRACKER_SLC*" : Operations = 119325; 
+	@@ "10|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_LOGTRACKER_TRACKER_*" : Operations = 119325; 
+	@@ "11|TPI_ADTL::CTRL_UF_X_K_END_X_X_X_X_ADTL_BULK_KILL*" : Operations = 119325; 
 
 @ Parameters Group : Parametric
 # Group Settings :  [ Data Type Position = None;  ] 
@@ -143,5 +149,4 @@
 ####################
 @ Post Processing Definition - Please IGNORE
 ####################
-
 

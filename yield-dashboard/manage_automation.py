@@ -33,7 +33,7 @@ _BASE_DIR  = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snp
 _CFG_NAME  = "yield_setup_config.json"
 _CFG_DIR   = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard"
 _EMAIL_TO  = "sujit.n.pant@intel.com"
-_TASK_NAME = "NVL-BLLC Yield Automation"
+_TASK_NAME = "NVL-BLLC Yield Automation"  # base name; actual name is per-product
 
 # ── colours ───────────────────────────────────────────────────────────────────
 BG         = "#1a252f"
@@ -55,16 +55,35 @@ FONT_GROUP = ("Segoe UI", 10, "bold")
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+_DEFAULT_PRODUCT_CFG = lambda: {
+    "base_dir":        str(_BASE_DIR),
+    "email_to_report": _EMAIL_TO,
+    "email_to_alert":  _EMAIL_TO,
+    "excluded_ops":    [],
+    "excluded_keys":   [],
+}
+
+
 def _load_config(cfg_path: Path) -> dict:
+    """Load full config file; migrate flat (legacy) format to per-product structure."""
     if cfg_path.exists():
         try:
             d = json.loads(cfg_path.read_text(encoding="utf-8"))
-            if "email_to" in d and "email_to_report" not in d:
-                d["email_to_report"] = d.pop("email_to")
+            # migrate: old flat format had email_to / email_to_report at top level
+            if "products" not in d:
+                if "email_to" in d and "email_to_report" not in d:
+                    d["email_to_report"] = d.pop("email_to")
+                # wrap existing flat keys into a single product entry
+                prod_cfg = _DEFAULT_PRODUCT_CFG()
+                for k in ("base_dir", "email_to_report", "email_to_alert",
+                          "excluded_ops", "excluded_keys", "keep_runs"):
+                    if k in d:
+                        prod_cfg[k] = d[k]
+                d = {"products": {"default": prod_cfg}}
             return d
         except Exception:
             pass
-    return {"email_to_report": _EMAIL_TO, "email_to_alert": _EMAIL_TO, "excluded_keys": []}
+    return {"products": {"default": _DEFAULT_PRODUCT_CFG()}}
 
 
 def _save_config(cfg_path: Path, cfg: dict) -> None:
@@ -72,16 +91,14 @@ def _save_config(cfg_path: Path, cfg: dict) -> None:
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
 
-def _discover_keys(base_dir: Path) -> list[str]:
-    """Discover TP keys from ALL NVL_0H61_* run folder subfolders.
-    Falls back to Dashboard_*.html at base_dir root if no run folders found."""
+def _discover_keys(base_dir: Path, program_series: str = "0H61") -> list[str]:
+    """Discover TP keys from run folder subfolders for the given program_series."""
     keys: set[str] = set()
 
-    # Primary: subdirectory names inside ALL NVL_0H61_* run folders
     output_dir = base_dir / "output"
     if output_dir.exists():
         for run_dir in output_dir.iterdir():
-            if run_dir.is_dir() and re.match(r'NVL_0H61', run_dir.name):
+            if run_dir.is_dir() and re.match(rf'NVL_{re.escape(program_series)}', run_dir.name, re.IGNORECASE):
                 for sub in run_dir.iterdir():
                     if sub.is_dir():
                         keys.add(sub.name)
@@ -95,10 +112,13 @@ def _discover_keys(base_dir: Path) -> list[str]:
     return sorted(keys)
 
 
-def _group_keys(keys: list[str]) -> dict[str, list[str]]:
+def _group_keys(keys: list[str], program_series: str = "0H61") -> dict[str, list[str]]:
+    # extract the letter after the series code (e.g. '61' from '0H61' or '80' from '0H80')
+    _digits = re.search(r'(\d+)$', program_series)
+    _pat    = rf"{_digits.group(1)}([A-Za-z])" if _digits else r'61([A-Za-z])'
     groups: dict[str, list[str]] = {}
     for k in keys:
-        m = re.search(r'61([A-Za-z])', k)
+        m = re.search(_pat, k)
         letter = m.group(1).upper() if m else "?"
         groups.setdefault(letter, []).append(k)
     return dict(sorted(groups.items(), reverse=True))
@@ -135,15 +155,39 @@ def _mtime_str(p: Path) -> str:
 class AutomationManager(tk.Frame):
     def __init__(self, master, base_dir: Path) -> None:
         super().__init__(master, bg=BG)
-        self.base_dir = base_dir
-        self.cfg_path = _CFG_DIR / _CFG_NAME
-        self.cfg      = _load_config(self.cfg_path)
-        self.excluded     = set(self.cfg.get("excluded_keys", []))
-        self.excluded_ops = set(str(o) for o in self.cfg.get("excluded_ops", []))
+        self.cfg_path  = _CFG_DIR / _CFG_NAME
+        self._all_cfg  = _load_config(self.cfg_path)   # full file dict
+
+        # products dict: {label: Path(base_dir)} — driven entirely by config
+        self._products: dict[str, Path] = {
+            k: Path(v.get("base_dir", str(_BASE_DIR)))
+            for k, v in self._all_cfg["products"].items()
+        }
+
+        # select product whose base_dir matches CLI arg, else first product
+        default_label = next(
+            (k for k, p in self._products.items() if p == base_dir),
+            next(iter(self._products))
+        )
+        self._product_var = tk.StringVar(value=default_label)
+        self._load_product(default_label)
 
         self._apply_styles()
         self._build_ui()
         self.after(500, self._auto_rebuild_index)
+
+    @property
+    def _task_name(self) -> str:
+        return f"{self._product_var.get()} Yield Automation"
+
+    def _load_product(self, label: str) -> None:
+        """Set self.cfg / base_dir / excluded* from the given product label."""
+        self.cfg              = self._all_cfg["products"][label]
+        self.base_dir         = Path(self.cfg.get("base_dir", str(_BASE_DIR)))
+        self.aqua_pull_config = self.cfg.get("aqua_pull_config", "")
+        self.program_series   = self.cfg.get("program_series", "0H61")
+        self.excluded         = set(self.cfg.get("excluded_keys", []))
+        self.excluded_ops     = set(str(o) for o in self.cfg.get("excluded_ops", []))
 
     # ── shared button helper ──────────────────────────────────────────────────
 
@@ -180,9 +224,23 @@ class AutomationManager(tk.Frame):
         hdr.pack(fill="x")
         tk.Label(hdr, text="Yield Automation Manager", font=FONT_TITLE,
                  bg=BG3, fg=ACCENT).pack(side="left", padx=14, pady=8)
+
+        # product switcher (only visible when >1 product configured)
+        if len(self._products) > 1:
+            sw = tk.Frame(hdr, bg=BG3)
+            sw.pack(side="left", padx=10)
+            tk.Label(sw, text="Product:", font=FONT_UI, bg=BG3, fg=FG_DIM).pack(side="left")
+            om = tk.OptionMenu(sw, self._product_var, *self._products.keys(),
+                               command=self._switch_product)
+            om.config(font=FONT_UI, bg=BG3, fg=ACCENT, activebackground=BG2,
+                      activeforeground=ACCENT, relief="flat", highlightthickness=0)
+            om["menu"].config(bg=BG3, fg=FG, activebackground=ACCENT, activeforeground=BG)
+            om.pack(side="left", padx=4)
+
+        self._base_dir_label = tk.StringVar(value=str(self.base_dir))
         info = tk.Frame(hdr, bg=BG3)
         info.pack(side="left", padx=4)
-        tk.Label(info, text=f"base_dir: {self.base_dir}", font=("Segoe UI", 10, "bold"),
+        tk.Label(info, textvariable=self._base_dir_label, font=("Segoe UI", 10, "bold"),
                  bg=BG3, fg="#5BB8FF").pack(anchor="w")
         tk.Label(info, text=f"config: {self.cfg_path}", font=("Segoe UI", 9),
                  bg=BG3, fg="#7ECFFF").pack(anchor="w")
@@ -206,6 +264,22 @@ class AutomationManager(tk.Frame):
         self._build_schedule_tab()
 
         nb.bind("<<NotebookTabChanged>>", self._on_tab_change)
+        self._nb = nb
+
+    def _switch_product(self, label: str) -> None:
+        """Switch active product: reload cfg, update email vars, refresh all tabs."""
+        self._load_product(label)
+        self._base_dir_label.set(str(self.base_dir))
+        # refresh email tab live vars
+        self.report_email_var.set(self.cfg.get("email_to_report", _EMAIL_TO))
+        self.alert_email_var.set(self.cfg.get("email_to_alert",
+                                 self.cfg.get("email_to_report", _EMAIL_TO)))
+        self._populate_email()
+        self._refresh_history()
+        self._refresh_data()
+        if hasattr(self, "_sched_task_name_var"):
+            self._sched_task_name_var.set(self._task_name)
+        self._sched_refresh()
 
     def _on_tab_change(self, event) -> None:
         idx = event.widget.index("current")
@@ -335,8 +409,8 @@ class AutomationManager(tk.Frame):
             w.destroy()
         self.check_vars.clear()
 
-        keys   = _discover_keys(self.base_dir)
-        groups = _group_keys(keys)
+        keys   = _discover_keys(self.base_dir, self.program_series)
+        groups = _group_keys(keys, self.program_series)
 
         if not keys:
             tk.Label(self.email_inner,
@@ -347,7 +421,7 @@ class AutomationManager(tk.Frame):
         for letter, tp_keys in groups.items():
             hdr = tk.Frame(self.email_inner, bg=BG3)
             hdr.pack(fill="x", pady=(8, 0))
-            tk.Label(hdr, text=f"  0H61{letter}", font=FONT_GROUP,
+            tk.Label(hdr, text=f"  {self.program_series}{letter}", font=FONT_GROUP,
                      bg=BG3, fg=ACCENT).pack(side="left", padx=6, pady=4)
             n_excl = sum(1 for k in tp_keys if k in self.excluded)
             if n_excl:
@@ -418,15 +492,16 @@ class AutomationManager(tk.Frame):
         if not report_to:
             messagebox.showerror("Error", "Report recipient cannot be empty.")
             return
-        cfg = {
+        label = self._product_var.get()
+        self._all_cfg["products"][label].update({
             "email_to_report": report_to,
             "email_to_alert":  alert_to,
             "excluded_ops":    sorted(self.excluded_ops),
             "excluded_keys":   sorted(self.excluded),
-        }
+        })
         try:
-            _save_config(self.cfg_path, cfg)
-            self.cfg = cfg
+            _save_config(self.cfg_path, self._all_cfg)
+            self.cfg = self._all_cfg["products"][label]
             n = len(self.excluded)
             self.email_status.set(
                 f"Saved — {n} key(s) excluded." if n else "Saved — all keys included."
@@ -567,7 +642,7 @@ class AutomationManager(tk.Frame):
             m = re.search(r'(\d{8})[_T](\d{6})', d.name)
             return (m.group(1) + m.group(2)) if m else d.name
 
-        pattern = re.compile(r'^NVL_0H61', re.IGNORECASE)  # matches NVL_0H61_ and NVL_0H61A_ etc.
+        pattern = re.compile(rf'^NVL_{re.escape(self.program_series)}', re.IGNORECASE)
         folders = sorted(
             [d for d in output_dir.iterdir()
              if d.is_dir() and pattern.match(d.name)],
@@ -768,12 +843,18 @@ class AutomationManager(tk.Frame):
 
         def _send():
             try:
-                import sys as _sys
-                _sys.path.insert(0, str(_HERE / "yld" / "automation"))
-                _sys.modules.pop('run_automation', None)
-                from run_automation import (  # noqa
-                    send_email, _named_attachment, _build_email_report_html,
-                )
+                import sys as _sys, logging as _logging
+                _sys.path.insert(0, str(_HERE / "yld"))
+                _sys.modules.pop('yield_automation', None)
+                import types as _types
+                _ya_spec = __import__('importlib.util', fromlist=['spec_from_file_location']).spec_from_file_location('yield_automation', _HERE / 'yld' / 'yield_automation.py')
+                _ya_mod  = __import__('importlib.util', fromlist=['module_from_spec']).module_from_spec(_ya_spec)
+                _ya_mod.__dict__['logging'] = _logging
+                _ya_spec.loader.exec_module(_ya_mod)
+                _sys.modules['yield_automation'] = _ya_mod
+                send_email              = _ya_mod.send_email
+                _named_attachment       = _ya_mod._named_attachment
+                _build_email_report_html = _ya_mod._build_email_report_html
                 import re as _re
                 from datetime import datetime as _dt
 
@@ -809,16 +890,18 @@ class AutomationManager(tk.Frame):
                     body_html = _build_email_report_html(
                         out_dir, run_ts,
                         excluded_keys=_excl,
+                        prog_series=self.program_series,
+                        product_name=self._product_var.get(),
                     )
 
-                    att_name = f"NVL816-BLLC Yield Report {latest_ts}.html"
+                    att_name = f"{self._product_var.get()} Yield Report {latest_ts}.html"
                     att_path = tmp / att_name
                     att_path.write_text(body_html, encoding="utf-8")
 
                     att = _named_attachment(att_path, att_name, tmp)
                     send_email(
                         to=to,
-                        subject=f"NVL816-BLLC Yield Report — {latest_ts}",
+                        subject=f"{self._product_var.get()} Yield Report — {latest_ts}",
                         body_html=body_html,
                         dry_run=False,
                         attachments=[att],
@@ -830,9 +913,11 @@ class AutomationManager(tk.Frame):
                     _saved.write_text(body_html, encoding="utf-8")
                     # regenerate index
                     import importlib.util as _ilu
-                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "automation" / "generate_index.py")
-                    _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-                    _gi.build_index(self.base_dir)
+                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "yield_automation.py")
+                    _gi   = _ilu.module_from_spec(_spec)
+                    _gi.__dict__['logging'] = __import__('logging')
+                    _spec.loader.exec_module(_gi)
+                    _gi.build_index(self.base_dir, product_name=self._product_var.get())
                     self.after(0, lambda: self.hist_status.set(
                         f"Sent to {to}  ({letters_str} — {len(found_prog_keys)} program(s))  •  Saved → {_saved.name}"))
                 finally:
@@ -858,22 +943,32 @@ class AutomationManager(tk.Frame):
 
         def _save():
             try:
-                import sys as _sys
-                _sys.path.insert(0, str(_HERE / "yld" / "automation"))
-                _sys.modules.pop('run_automation', None)
-                from run_automation import _build_email_report_html  # noqa
+                import sys as _sys, logging as _logging
+                _sys.path.insert(0, str(_HERE / "yld"))
+                _sys.modules.pop('yield_automation', None)
+                import importlib.util as _ilu
+                _spec = _ilu.spec_from_file_location('yield_automation', _HERE / 'yld' / 'yield_automation.py')
+                _ya   = _ilu.module_from_spec(_spec)
+                _ya.__dict__['logging'] = _logging
+                _spec.loader.exec_module(_ya)
+                _sys.modules['yield_automation'] = _ya
+                _build_email_report_html = _ya._build_email_report_html
                 from datetime import datetime as _dt
                 run_ts  = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
                 ts_file = _dt.now().strftime("%Y%m%d_%H%M%S")
                 _excl   = self.cfg.get("excluded_keys", [])
-                body    = _build_email_report_html(out_dir, run_ts, excluded_keys=_excl)
+                body    = _build_email_report_html(out_dir, run_ts, excluded_keys=_excl,
+                                                   prog_series=self.program_series,
+                                                   product_name=self._product_var.get())
                 out_path = reports_dir / f"Yield_Report_{ts_file}.html"
                 out_path.write_text(body, encoding="utf-8")
                 # regenerate index
                 import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "automation" / "generate_index.py")
-                _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-                _gi.build_index(self.base_dir)
+                _spec2 = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "yield_automation.py")
+                _gi   = _ilu.module_from_spec(_spec2)
+                _gi.__dict__['logging'] = _logging
+                _spec2.loader.exec_module(_gi)
+                _gi.build_index(self.base_dir, product_name=self._product_var.get())
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_path.name}")
                     import webbrowser
@@ -887,11 +982,12 @@ class AutomationManager(tk.Frame):
 
     def _rebuild_index(self):
         """Scan samba reports/ and rewrite index.html with only files that exist."""
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("_gi", _HERE / "yld" / "automation" / "generate_index.py")
+        import importlib.util, logging as _logging
+        spec = importlib.util.spec_from_file_location("_gi", _HERE / "yld" / "yield_automation.py")
         mod  = importlib.util.module_from_spec(spec)
+        mod.__dict__['logging'] = _logging
         spec.loader.exec_module(mod)
-        mod.build_index(self.base_dir)
+        mod.build_index(self.base_dir, product_name=self._product_var.get())
 
     def _auto_rebuild_index(self) -> None:
         """Silently rebuild index.html on startup so deleted files are removed."""
@@ -968,7 +1064,7 @@ class AutomationManager(tk.Frame):
                 return []
 
             # Inline the preview logic (mirrors cleanup_old_runs)
-            pattern = re.compile(r'^NVL_0H61([A-Za-z])_', re.IGNORECASE)
+            pattern = re.compile(rf'^NVL_{re.escape(self.program_series)}([A-Za-z])_', re.IGNORECASE)
             letter_groups: dict[str, list[Path]] = {}
             for d in output_dir.iterdir():
                 if not d.is_dir():
@@ -1094,16 +1190,15 @@ class AutomationManager(tk.Frame):
             run_dir = Path(iid)
             data_files: list[Path] = []
             if include_data:
-                km = re.search(r'(0H61[A-Za-z])', run_dir.name, re.IGNORECASE)
+                km = re.search(rf'({re.escape(self.program_series)}[A-Za-z])', run_dir.name, re.IGNORECASE)
                 if km:
                     letter = km.group(1).upper()
                     prog_dir = programs_dir / letter
 
-                    # Find all output runs for this letter that are NOT selected
                     remaining = [
                         d for d in output_dir.iterdir()
                         if d.is_dir()
-                        and re.search(rf'0H61{letter}', d.name, re.IGNORECASE)
+                        and re.search(rf'{re.escape(self.program_series)}{letter}', d.name, re.IGNORECASE)
                         and str(d) not in sel_set
                     ] if output_dir.exists() else []
 
@@ -1353,7 +1448,7 @@ class AutomationManager(tk.Frame):
         pad = dict(padx=14, pady=6)
 
         _python = _sys.executable
-        _script = str(_HERE / "yld" / "automation" / "run_automation.py")
+        _script = str(_HERE / "yld" / "run_automation.py")
 
         # ── Status card ──────────────────────────────────────────────────────
         frm_st = tk.LabelFrame(p, text="  Task Status  ", font=FONT_UI,
@@ -1387,16 +1482,22 @@ class AutomationManager(tk.Frame):
                                 bg=BG, fg=ACCENT, bd=1, relief="groove")
         frm_cfg.pack(fill="x", **pad)
 
-        for row, lbl, val in [
-            (0, "Task name:", _TASK_NAME),
+        self._sched_task_name_var = tk.StringVar(value=self._task_name)
+        for row, lbl, var_or_val in [
+            (0, "Task name:", self._sched_task_name_var),
             (1, "Script:",    _script),
             (2, "Python:",    _python),
         ]:
             tk.Label(frm_cfg, text=lbl, font=FONT_UI, bg=BG, fg=FG_DIM
                      ).grid(row=row, column=0, sticky="w", padx=(10, 4), pady=3)
-            tk.Label(frm_cfg, text=val, font=FONT_MONO, bg=BG, fg=FG,
-                     anchor="w", wraplength=520
-                     ).grid(row=row, column=1, sticky="w", padx=(0, 10), pady=3)
+            if isinstance(var_or_val, tk.StringVar):
+                tk.Label(frm_cfg, textvariable=var_or_val, font=FONT_MONO, bg=BG, fg=ACCENT,
+                         anchor="w", wraplength=520
+                         ).grid(row=row, column=1, sticky="w", padx=(0, 10), pady=3)
+            else:
+                tk.Label(frm_cfg, text=var_or_val, font=FONT_MONO, bg=BG, fg=FG,
+                         anchor="w", wraplength=520
+                         ).grid(row=row, column=1, sticky="w", padx=(0, 10), pady=3)
         frm_cfg.columnconfigure(1, weight=1)
 
         time_row = tk.Frame(frm_cfg, bg=BG)
@@ -1442,7 +1543,7 @@ class AutomationManager(tk.Frame):
         import subprocess as _sp, csv as _csv, io as _io
         try:
             r = _sp.run(
-                ["schtasks", "/query", "/tn", _TASK_NAME, "/fo", "csv", "/v"],
+                ["schtasks", "/query", "/tn", self._task_name, "/fo", "csv", "/v"],
                 capture_output=True, text=True, timeout=10,
             )
             if r.returncode != 0:
@@ -1483,8 +1584,24 @@ class AutomationManager(tk.Frame):
             self._sched_state.config(text="Error", fg=RED)
             self._sched_status.set(f"Error querying task: {e}")
 
+    def _write_launcher_bat(self) -> Path:
+        """Write a per-product .bat launcher so /tr stays under 261 chars."""
+        safe_label = re.sub(r'[^\w]', '_', self._product_var.get())
+        bat_path   = _HERE / f"_launch_{safe_label}.bat"
+        lines = [
+            "@echo off",
+            f'"{sys.executable}" "{_HERE / "yld" / "yield_automation.py"}"',
+        ]
+        if self.aqua_pull_config:
+            lines[-1] += f' --report-config "{self.aqua_pull_config}"'
+        lines[-1] += f' --product-name "{self._product_var.get()}"'
+        if self.program_series != "0H61":
+            lines[-1] += f' --program-series "{self.program_series}"'
+        bat_path.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+        return bat_path
+
     def _sched_create(self) -> None:
-        import sys as _sys, subprocess as _sp
+        import subprocess as _sp
         hh = self._sched_hour.get().zfill(2)
         mm = self._sched_min.get().zfill(2)
         if (not hh.isdigit() or not mm.isdigit()
@@ -1492,9 +1609,17 @@ class AutomationManager(tk.Frame):
                 or not (0 <= int(mm) <= 59)):
             messagebox.showerror("Invalid time", f"Invalid time value: {hh}:{mm}")
             return
-        tr = f'"{_sys.executable}" "{_HERE / "yld" / "automation" / "run_automation.py"}"'
+        bat  = self._write_launcher_bat()
+        # use cmd /c so the .bat runs in a hidden window; stays well under 261
+        tr   = f'cmd /c "{bat}"'
+        if len(tr) > 261:
+            messagebox.showerror(
+                "Path too long",
+                f"Launcher path is still too long ({len(tr)} chars).\n"
+                f"Move the project to a shorter path.\n\n{bat}")
+            return
         cmd = ["schtasks", "/create",
-               "/tn", _TASK_NAME,
+               "/tn", self._task_name,
                "/tr", tr,
                "/sc", "daily",
                "/st", f"{hh}:{mm}",
@@ -1502,7 +1627,7 @@ class AutomationManager(tk.Frame):
         try:
             r = _sp.run(cmd, capture_output=True, text=True, timeout=15)
             if r.returncode == 0:
-                self._sched_status.set(f"Task created — runs daily at {hh}:{mm}.")
+                self._sched_status.set(f"Task '{self._task_name}' created — runs daily at {hh}:{mm}.")
             else:
                 messagebox.showerror(
                     "schtasks failed",
@@ -1514,14 +1639,18 @@ class AutomationManager(tk.Frame):
     def _sched_run_now(self) -> None:
         import sys as _sys, subprocess as _sp
         if not messagebox.askyesno("Run Now",
-                                   f'Start "{_TASK_NAME}" immediately?\n\n'
+                                   f'Start "{self._task_name}" immediately?\n\n'
                                    'This kicks off a full AQUA pull + pipeline run.\n'
                                    'A console window will open showing live progress.'):
             return
-        script = str(_HERE / "yld" / "automation" / "run_automation.py")
+        script = str(_HERE / "yld" / "run_automation.py")
         try:
+            cmd = [_sys.executable, script]
+            if self.aqua_pull_config:
+                cmd += ["--report-config", self.aqua_pull_config]
+            cmd += ["--product-name", self._product_var.get()]
             _sp.Popen(
-                [_sys.executable, script],
+                cmd,
                 creationflags=_sp.CREATE_NEW_CONSOLE,
             )
             self._sched_status.set("Started in new console window.")
@@ -1603,8 +1732,10 @@ class AutomationManager(tk.Frame):
         log_txt.pack(side="left",   fill="both", expand=True)
 
         # ── Shared state ─────────────────────────────────────────────────────
+        import queue as _queue
         _proc: list[_sp.Popen | None] = [None]
         _running = [False]
+        _log_queue: _queue.Queue = _queue.Queue()
         start_btn_ref: list = [None]
 
         def _append(line: str) -> None:
@@ -1621,16 +1752,49 @@ class AutomationManager(tk.Frame):
             log_txt.see("end")
             log_txt.config(state="disabled")
 
+        def _drain_log_queue():
+            """Drain pending log lines in batches; reschedule until run ends."""
+            batch: list[tuple[str, str]] = []
+            try:
+                while True:
+                    batch.append(_log_queue.get_nowait())
+            except _queue.Empty:
+                pass
+            if batch:
+                log_txt.config(state="normal")
+                for line, tag in batch:
+                    log_txt.insert("end", line + "\n", tag)
+                log_txt.see("end")
+                log_txt.config(state="disabled")
+            if _running[0] or not _log_queue.empty():
+                dlg.after(100, _drain_log_queue)
+
+        def _queue_line(line: str) -> None:
+            tag = ""
+            lo = line.lower()
+            if any(w in lo for w in ("error", "traceback", "failed", "exception")):
+                tag = "err"
+            elif any(w in lo for w in ("warning",)):
+                tag = "warn"
+            elif any(w in lo for w in (" ok ", "→ ok", "sent", "email sent")):
+                tag = "ok"
+            _log_queue.put((line, tag))
+
         def _do_run():
             keys_val = keys_var.get().strip()
             csv_val  = csv_var.get().strip()
-            cmd = [_sys.executable, str(_HERE / "yld" / "automation" / "run_automation.py"), "--force"]
+            cmd = [_sys.executable, str(_HERE / "yld" / "run_automation.py"), "--force"]
+            if self.aqua_pull_config:
+                cmd += ["--report-config", self.aqua_pull_config]
+            cmd += ["--product-name", self._product_var.get()]
             if keys_val:
                 cmd += ["--keys", keys_val]
             if csv_val:
                 cmd += ["--local-csv", csv_val]
-            _append("$ " + " ".join(cmd))
-            _append("-" * 60)
+            else:
+                cmd += ["--use-cached"]
+            _queue_line("$ " + " ".join(cmd))
+            _queue_line("-" * 60)
             try:
                 proc = _sp.Popen(
                     cmd,
@@ -1640,15 +1804,15 @@ class AutomationManager(tk.Frame):
                 )
                 _proc[0] = proc
                 for line in proc.stdout:
-                    dlg.after(0, _append, line.rstrip())
+                    _queue_line(line.rstrip())
                 proc.wait()
                 rc = proc.returncode
-                dlg.after(0, _append, "-" * 60)
-                dlg.after(0, _append, f"Exit code: {rc}")
+                _queue_line("-" * 60)
+                _queue_line(f"Exit code: {rc}")
                 dlg.after(0, status_var.set,
                           f"Done — exit {rc}" if rc == 0 else f"FAILED (exit {rc})")
             except Exception as exc:
-                dlg.after(0, _append, f"ERROR: {exc}")
+                _queue_line(f"ERROR: {exc}")
                 dlg.after(0, status_var.set, "Error launching process.")
             finally:
                 _running[0] = False
@@ -1666,6 +1830,7 @@ class AutomationManager(tk.Frame):
             status_var.set("Running…")
             start_btn_ref[0].config(text="Running…", bg=AMBER, fg=BG,
                                     command=lambda: None)
+            dlg.after(100, _drain_log_queue)
             threading.Thread(target=_do_run, daemon=True).start()
 
         # Create buttons in top_bar
@@ -1677,17 +1842,17 @@ class AutomationManager(tk.Frame):
     def _sched_remove(self) -> None:
         import subprocess as _sp
         if not messagebox.askyesno("Remove Task",
-                                   f'Delete scheduled task "{_TASK_NAME}"?'):
+                                   f'Delete scheduled task "{self._task_name}"?'):
             return
         try:
-            r = _sp.run(["schtasks", "/delete", "/tn", _TASK_NAME, "/f"],
+            r = _sp.run(["schtasks", "/delete", "/tn", self._task_name, "/f"],
                         capture_output=True, text=True, timeout=10)
             if r.returncode == 0:
-                self._sched_status.set("Task removed.")
+                self._sched_status.set(f"Task '{self._task_name}' removed.")
             else:
                 msg = r.stderr.strip() or r.stdout.strip()
                 if "cannot find" in msg.lower():
-                    self._sched_status.set("Task was not scheduled.")
+                    self._sched_status.set(f"Task '{self._task_name}' was not scheduled.")
                 else:
                     messagebox.showerror("schtasks /delete failed",
                                          msg or "Unknown error")
@@ -1903,7 +2068,8 @@ def main() -> None:
                     help="Automation base directory (overrides config)")
     args = ap.parse_args()
     cfg = _load_config(_CFG_DIR / _CFG_NAME)
-    base_dir = Path(args.base_dir) if args.base_dir else Path(cfg.get("base_dir", str(_BASE_DIR)))
+    first_product = next(iter(cfg["products"].values()), {})
+    base_dir = Path(args.base_dir) if args.base_dir else Path(first_product.get("base_dir", str(_BASE_DIR)))
     root = tk.Tk()
     root.title("Yield Automation Manager")
     root.configure(bg=BG)

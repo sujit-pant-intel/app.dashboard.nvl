@@ -1,11 +1,31 @@
 {
-  "email_to_report": "sujit.n.pant@intel.com",
-  "email_to_alert": "sujit.n.pant@intel.com",
-  "excluded_ops": [
-    "132222",
-    "132322"
-  ],
-  "excluded_keys": [
-    "NCXSDJXL0H61C002620_132322"
-  ]
+  "products": {
+    "NVL-BLLC": {
+      "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\yield",
+      "aqua_pull_config": "C:\\scripts\\app.dashboard.nvl\\shared\\setup\\automation\\yield-dashboard\\NVL_Sort_Yield - AutoPull.txt",
+      "tp_folder": "I:\\program\\1001\\prod\\hdmtprogs\\nvl_ncx_sds",
+      "program_series": "0H61",
+      "email_to_report": "sujit.n.pant@intel.com",
+      "email_to_alert": "sujit.n.pant@intel.com",
+      "excluded_ops": [
+        "132222",
+        "132322"
+      ],
+      "excluded_keys": [
+        "NCXSDJXL0H61C002620_132322"
+      ]
+    },
+    "NVLG-512": {
+      "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\product\\nvlg\\auto\\yield",
+      "aqua_pull_config": "C:\\scripts\\app.dashboard.nvl\\shared\\setup\\automation\\yield-dashboard\\NVLG_Sort_Yield - AutoPull.txt",
+      "tp_folder": "I:\\program\\1001\\prod\\hdmtprogs\\nvl_ngx_sds",
+      "program_series": "0H80",
+      "email_to_report": "sujit.n.pant@intel.com",
+      "email_to_alert": "sujit.n.pant@intel.com",
+      "excluded_ops": [
+        "132222"
+      ],
+      "excluded_keys": []
+    }
+  }
 }

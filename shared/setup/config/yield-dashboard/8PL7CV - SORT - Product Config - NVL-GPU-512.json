@@ -1,15 +1,15 @@
 {
-  "name": "NVL816-BLLC L0",
+  "name": "NVL-512 GPU - A0",
   "yield_targets": [
     {
       "bin": "1/2/3/4",
       "fail_bucket": "SDS FF+DF yield",
-      "yield": 79
+      "yield": 91.3
     },
     {
       "bin": "1/2",
       "fail_bucket": "SDS FF yield",
-      "yield": 64.4
+      "yield": 56.3
     },
     {
       "bin": "3/4",
@@ -28,33 +28,33 @@
     },
     {
       "bin": "3",
-      "fail_bucket": "Recovery (Atom Defeatured)",
+      "fail_bucket": "Recovery (Defeatured)",
       "yield": 7.0
     },
     {
       "bin": "4",
-      "fail_bucket": "Recovery (Core Defeatured)",
+      "fail_bucket": "Recovery (Defeatured)",
       "yield": 7.6
     },
     {
       "bin": "41/42/47/76/77/81/82",
       "fail_bucket": "SCAN (post-recovery)",
-      "yield": 5.4
+      "yield": 1.2
     },
     {
       "bin": "20/21/33/60/61/62/63/65",
       "fail_bucket": "ARRAY MBIST (post-recovery)",
-      "yield": 8.0
+      "yield": 0.5
     },
     {
       "bin": "11/13/16/25/27/28/32/36/39/46/48/51/64/71/74/75",
       "fail_bucket": "ANALOG (post-recovery)",
-      "yield": 0.6
+      "yield": 0.02
     },
     {
       "bin": "7/8/9/10/15/18/43/80/89",
       "fail_bucket": "TPI (Foundry)",
-      "yield": 2.4
+      "yield": 2.5
     },
     {
       "bin": "31/88/91/94/97/98/99/93",
@@ -69,160 +69,12 @@
     {
       "bin": "12/44/45/70/85/86",
       "fail_bucket": "Functional",
-      "yield": 1.3
+      "yield": 1.4
     },
     {
       "bin": "26",
       "fail_bucket": "HVQK",
-      "yield": 0.7
-    }
-  ],
-  "sicc_targets": [
-    {
-      "test": "SICC CORE0 0.95 - SDS",
-      "target_A": 0.491
-    },
-    {
-      "test": "SICC CORE1 0.95 - SDS",
-      "target_A": 0.491
-    },
-    {
-      "test": "SICC CORE2 0.95 - SDS",
-      "target_A": 0.491
-    },
-    {
-      "test": "SICC CORE3 0.95 - SDS",
-      "target_A": 0.491
-    },
-    {
-      "test": "SICC ATOM0 0.95 - SDS",
-      "target_A": 0.256
-    },
-    {
-      "test": "SICC ATOM1 0.95 - SDS",
-      "target_A": 0.256
-    },
-    {
-      "test": "SICC ATOM2 0.95 - SDS",
-      "target_A": 0.256
-    },
-    {
-      "test": "SICC ATOM3 0.95 - SDS",
-      "target_A": 0.256
-    },
-    {
-      "test": "SICC CORE 0.95 - SDS",
-      "target_A": 1.96
-    },
-    {
-      "test": "SICC ATOM 0.95 - SDS",
-      "target_A": 1.02
-    },
-    {
-      "test": "SICC RING 0.95 - SDS",
-      "target_A": 0.825
-    },
-    {
-      "test": "SICC FULLCHIP - SDS",
-      "target_A": 3.81
-    },
-    {
-      "test": "SICC CORE0 0.95 - SDT",
-      "target_A": 3.296
-    },
-    {
-      "test": "SICC CORE1 0.95 - SDT",
-      "target_A": 3.296
-    },
-    {
-      "test": "SICC CORE2 0.95 - SDT",
-      "target_A": 3.296
-    },
-    {
-      "test": "SICC CORE3 0.95 - SDT",
-      "target_A": 3.296
-    },
-    {
-      "test": "SICC ATOM0 0.95 - SDT",
-      "target_A": 1.676
-    },
-    {
-      "test": "SICC ATOM1 0.95 - SDT",
-      "target_A": 1.676
-    },
-    {
-      "test": "SICC ATOM2 0.95 - SDT",
-      "target_A": 1.676
-    },
-    {
-      "test": "SICC ATOM3 0.95 - SDT",
-      "target_A": 1.676
-    },
-    {
-      "test": "SICC CORE 0.95 - SDT",
-      "target_A": 13.19
-    },
-    {
-      "test": "SICC ATOM 0.95 - SDT",
-      "target_A": 6.71
-    },
-    {
-      "test": "SICC RING 0.95 - SDT",
-      "target_A": 4.51
-    },
-    {
-      "test": "SICC FULLCHIP - SDT",
-      "target_A": 21.95
-    }
-  ],
-  "cdyn_targets": [
-    {
-      "test": "OG_128B_CDYN_ATOM0 - SDS",
-      "target_nF": 4.88
-    },
-    {
-      "test": "OG_128B_CDYN_ATOM1 - SDS",
-      "target_nF": 4.88
-    },
-    {
-      "test": "OG_128B_CDYN_ATOM2 - SDS",
-      "target_nF": 4.88
-    },
-    {
-      "test": "OG_128B_CDYN_ATOM3 - SDS",
-      "target_nF": 4.88
-    },
-    {
-      "test": "OG_256B_CDYN_ATOM0 - SDS",
-      "target_nF": 5.76
-    },
-    {
-      "test": "OG_256B_CDYN_ATOM1 - SDS",
-      "target_nF": 5.76
-    },
-    {
-      "test": "OG_256B_CDYN_ATOM2 - SDS",
-      "target_nF": 5.76
-    },
-    {
-      "test": "OG_256B_CDYN_ATOM3 - SDS",
-      "target_nF": 5.76
-    },
-    {
-      "test": "PTH_OG_CDYN_CORE0 - SDS",
-      "target_nF": 7.14
-    },
-    {
-      "test": "PTH_OG_CDYN_CORE1 - SDS",
-      "target_nF": 7.14
-    },
-    {
-      "test": "PTH_OG_CDYN_CORE2 - SDS",
-      "target_nF": 7.14
-    },
-    {
-      "test": "PTH_OG_CDYN_CORE3 - SDS",
-      "target_nF": 7.14
+      "yield": 0.5
     }
   ],
   "bin_map": {
@@ -236,11 +88,11 @@
     },
     "3": {
       "cat": "DF Yield",
-      "desc": "ATOM Recovery"
+      "desc": "Recovery"
     },
     "4": {
       "cat": "DF Yield",
-      "desc": "CORE Recovery"
+      "desc": "Recovery"
     },
     "8": {
       "cat": "DC",
@@ -268,15 +120,15 @@
     },
     "60": {
       "cat": "Array",
-      "desc": "ARR_CORE/ATOM_SSA"
+      "desc": "ARR_SSA"
     },
     "61": {
       "cat": "Array",
-      "desc": "ARR_UNCORE_SSA"
+      "desc": "ARR_SSA"
     },
     "62": {
       "cat": "Array",
-      "desc": "ARR_CCF_SSA"
+      "desc": "ARR_SSA"
     },
     "41": {
       "cat": "Scan",
@@ -411,11 +263,11 @@
     },
     "201": {
       "cat": "FF Yield",
-      "desc": "FF - Vmax Repair"
+      "desc": "FF - Defect Repair"
     },
     "202": {
       "cat": "FF Yield",
-      "desc": "FF - Defect Repair"
+      "desc": "FF - Vmax Repair"
     },
     "226": {
       "cat": "FF Yield",
@@ -423,573 +275,181 @@
     },
     "301": {
       "cat": "DF Yield",
-      "desc": "Atom Recovery Defeature(DF) - No Repair"
+      "desc": "Recovery Defeature(DF) - 448EU"
     },
     "302": {
       "cat": "DF Yield",
-      "desc": "Atom Recovery Defeature(DF) - Vmin Repair"
+      "desc": "Recovery Defeature(DF) - 384EU"
     },
     "303": {
       "cat": "DF Yield",
-      "desc": "Atom Recovery Defeature(DF) - Defect Repair"
+      "desc": "Recovery Defeature(DF) - ?EU"
     },
     "304": {
       "cat": "DF Yield",
-      "desc": "Atom Recovery Defeature(DF) - Vmax Repair"
+      "desc": "Recovery Defeature(DF) - ?EU"
     },
     "326": {
       "cat": "DF Yield",
-      "desc": "DF - HVQK Rebin - Atom Recovery"
+      "desc": "DF - HVQK Rebin - Recovery"
     },
     "401": {
       "cat": "DF Yield",
-      "desc": "Core Recovery Defeature(DF) - No Repair"
+      "desc": "Recovery Defeature(DF) - Recovery"
     },
     "402": {
       "cat": "DF Yield",
-      "desc": "Core Recovery Defeature(DF) - Vmin Repair"
+      "desc": "Recovery Defeature(DF) - Recovery"
     },
     "403": {
       "cat": "DF Yield",
-      "desc": "Core Recovery Defeature(DF) - Defect Repair"
+      "desc": "Recovery Defeature(DF) - Recovery"
     },
     "404": {
       "cat": "DF Yield",
-      "desc": "Core Recovery Defeature(DF) - Vmax Repair"
+      "desc": "Recovery Defeature(DF) - Recovery"
     },
     "426": {
       "cat": "DF Yield",
-      "desc": "DF - HVQK Rebin - Atom Recovery"
+      "desc": "DF - HVQK Rebin - Recovery"
     }
   },
   "_comment_sicccydyn-info ": "SICC/UPM/CDYN testlist config \u2014 column rename patterns and sum definitions.\n  Targets (sicc_targets, upm_targets, cdyn_targets) come from the Product Config JSON, not here.",
   "_comment_upmInfo": "1st column =  Display name  2nd column - test name,3rd name is target",
   "upmInfo": [
-    [
-      "UPM ULVT 0107 950mV (%) - SDS",
-      "UPM_0107*FULLDIE_0950*",
-      9154,
+  
+     [
+      "ULVT FULLDIE 950mV (%) - SDS",
+      "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*950*",
+      7734,
       ""
     ],
     [
-      "UPM ULVT 0107 1200mV (%) - SDS",
-      "UPM_0107*FULLDIE_1200*",
-      10320,
-      ""
-    ],
-    [
-      "UPM ULVT 0704 950mV (%) - SDS",
-      "UPM_0704*FULLDIE_0950*",
-      8731,
-      ""
-    ],
-    [
-      "UPM ULVT 0704 1200mV (%) - SDS",
-      "UPM_0704*FULLDIE_1200*",
-      9792,
+      "ULVT FULLDIE 650mV (%) - SDS",
+      "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*650*",
+      7734,
       ""
     ]
   ],
   "_comment_siccList": "1st column =  Display name  2nd column - test name",
   "siccList": [
     [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCCORE0*PC*",
-      "SICC CORE0 0.95 - SDS"
+      "PWR_SICC_GT_SDS_V1*",
+      "SICC GT 0.7 - SDS"
     ],
     [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCCORE1*PC*",
-      "SICC CORE1 0.95 - SDS"
+      "PWR_SICC_GT_SDS_V2*",
+      "SICC GT 0.95 - SDS"
     ],
     [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCCORE2*PC*",
-      "SICC CORE2 0.95 - SDS"
+      "PTH_POWER*E_BEGIN*SICC_GT_V3_24A_VCCGT_HC*PC*",
+      "SICC GT 0.75 - SDS"
     ],
     [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCCORE3*PC*",
-      "SICC CORE3 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCATOM0*PC*",
-      "SICC ATOM0 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCATOM1*PC*",
-      "SICC ATOM1 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCATOM2*PC*",
-      "SICC ATOM2 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCATOM3*PC*",
-      "SICC ATOM3 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCR*PC*",
-      "SICC RING 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCIA*PC*",
-      "SICC VCCIA 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCIO*PC*",
-      "SICC VCCIO 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCCSRAM*PC*",
-      "SICC VCCSRAM 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VNNAON*PC*",
-      "SICC VNNAON 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*K_BEGIN*SICC_ALL*24*V2*VCC1P8A*PC*",
-      "SICC VCC1P8A 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCCORE0*PC*",
-      "SICC CORE0 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCCORE1*PC*",
-      "SICC CORE1 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCCORE2*PC*",
-      "SICC CORE2 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCCORE3*PC*",
-      "SICC CORE3 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCATOM0*PC*",
-      "SICC ATOM0 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCATOM1*PC*",
-      "SICC ATOM1 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCATOM2*PC*",
-      "SICC ATOM2 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCATOM3*PC*",
-      "SICC ATOM3 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCR*PC*",
-      "SICC RING 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCIA*PC*",
-      "SICC VCCIA 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCIO*PC*",
-      "SICC VCCIO 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCCSRAM*PC*",
-      "SICC VCCSRAM 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VNNAON*PC*",
-      "SICC VNNAON 0.95 - SDT"
-    ],
-    [
-      "PTH_POWER*SDT*SICC_ALL*24*V2*VCC1P8A*PC*",
-      "SICC VCC1P8A 0.95 - SDT"
+      "PTH_POWER*E_BEGIN*SICC_GT_V4_24A_VCCGT_HC*PC*",
+      "SICC GT 0.8 - SDS"
     ]
   ],
   "_comment_siccTotalList": "1st column =  Display name , rest things to add",
   "siccTotalList": [
     [
-      "SICC CORE 0.95 - SDS",
-      "SICC CORE0 0.95 - SDS",
-      "SICC CORE1 0.95 - SDS",
-      "SICC CORE2 0.95 - SDS",
-      "SICC CORE3 0.95 - SDS"
+      "SICC GT 0.95 - SDS",
+      "SICC GT 0.95 - SDS"
     ],
-    [
-      "SICC ATOM 0.95 - SDS",
-      "SICC ATOM0 0.95 - SDS",
-      "SICC ATOM1 0.95 - SDS",
-      "SICC ATOM2 0.95 - SDS",
-      "SICC ATOM3 0.95 - SDS"
-    ],
-    [
-      "SICC FULLCHIP - SDS",
-      "SICC CORE 0.95 - SDS",
-      "SICC ATOM 0.95 - SDS",
-      "SICC RING 0.95 - SDS"
-    ],
-    [
-      "SICC CORE 0.95 - SDT",
-      "SICC CORE0 0.95 - SDT",
-      "SICC CORE1 0.95 - SDT",
-      "SICC CORE2 0.95 - SDT",
-      "SICC CORE3 0.95 - SDT"
-    ],
-    [
-      "SICC ATOM 0.95 - SDT",
-      "SICC ATOM0 0.95 - SDT",
-      "SICC ATOM1 0.95 - SDT",
-      "SICC ATOM2 0.95 - SDT",
-      "SICC ATOM3 0.95 - SDT"
-    ],
-    [
-      "SICC FULLCHIP - SDT",
-      "SICC CORE 0.95 - SDT",
-      "SICC ATOM 0.95 - SDT",
-      "SICC RING 0.95 - SDT"
+	[
+      "SICC GT 0.7 - SDS",
+      "SICC GT 0.7 - SDS"
     ]
   ],
   "_comment_SiccTableConfig": "1st column = Category Group, 2nd column = Display name in Dashboard, 3rd column = matching test name in the list, 4th column = UPM column",
   "SiccTableConfig": [
-    [
-      "CORE - SDS",
-      "SICC CORE0 0.95 - SDS",
-      "SICC CORE0 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
+	[
+      "SICC GT 0.95 - SDS",
+      "SICC GT 0.95 - SDS",
+	  "SICC GT 0.95 - SDS",
+      "ULVT FULLDIE 950mV (%) - SDS"
     ],
-    [
-      "CORE - SDS",
-      "SICC CORE1 0.95 - SDS",
-      "SICC CORE1 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
+	[
+      "SICC GT 0.8 - SDS",
+      "SICC GT 0.8 - SDS",
+	  "SICC GT 0.8 - SDS",
+      "ULVT FULLDIE 950mV (%) - SDS"
     ],
-    [
-      "CORE - SDS",
-      "SICC CORE2 0.95 - SDS",
-      "SICC CORE2 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDS",
-      "SICC CORE3 0.95 - SDS",
-      "SICC CORE3 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM - SDS",
-      "SICC ATOM0 0.95 - SDS",
-      "SICC ATOM0 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM - SDS",
-      "SICC ATOM1 0.95 - SDS",
-      "SICC ATOM1 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM - SDS",
-      "SICC ATOM2 0.95 - SDS",
-      "SICC ATOM2 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM - SDS",
-      "SICC ATOM3 0.95 - SDS",
-      "SICC ATOM3 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VCCIA - SDS",
-      "SICC VCCIA 0.95 - SDS",
-      "SICC VCCIA 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VCCIO - SDS",
-      "SICC VCCIO 0.95 - SDS",
-      "SICC VCCIO 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VCCSRAM - SDS",
-      "SICC VCCSRAM 0.95 - SDS",
-      "SICC VCCSRAM 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VNNAON - SDS",
-      "SICC VNNAON 0.95 - SDS",
-      "SICC VNNAON 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VCC1P8A - SDS",
-      "SICC VCC1P8A 0.95 - SDS",
-      "SICC VCC1P8A 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE TOTAL - SDS",
-      "SICC CORE 0.95 - SDS",
-      "SICC CORE 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM TOTAL - SDS",
-      "SICC ATOM 0.95 - SDS",
-      "SICC ATOM 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "RING - SDS",
-      "SICC RING 0.95 - SDS",
-      "SICC RING 0.95 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "FULLCHIP - SDS",
-      "SICC FULLCHIP - SDS",
-      "SICC FULLCHIP - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDT",
-      "SICC CORE0 0.95 - SDT",
-      "SICC CORE0 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDT",
-      "SICC CORE1 0.95 - SDT",
-      "SICC CORE1 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDT",
-      "SICC CORE2 0.95 - SDT",
-      "SICC CORE2 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDT",
-      "SICC CORE3 0.95 - SDT",
-      "SICC CORE3 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM - SDT",
-      "SICC ATOM0 0.95 - SDT",
-      "SICC ATOM0 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM - SDT",
-      "SICC ATOM1 0.95 - SDT",
-      "SICC ATOM1 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM - SDT",
-      "SICC ATOM2 0.95 - SDT",
-      "SICC ATOM2 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM - SDT",
-      "SICC ATOM3 0.95 - SDT",
-      "SICC ATOM3 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VCCIA - SDT",
-      "SICC VCCIA 0.95 - SDT",
-      "SICC VCCIA 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VCCIO - SDT",
-      "SICC VCCIO 0.95 - SDT",
-      "SICC VCCIO 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VCCSRAM - SDT",
-      "SICC VCCSRAM 0.95 - SDT",
-      "SICC VCCSRAM 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VNNAON - SDT",
-      "SICC VNNAON 0.95 - SDT",
-      "SICC VNNAON 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "VCC1P8A - SDT",
-      "SICC VCC1P8A 0.95 - SDT",
-      "SICC VCC1P8A 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE TOTAL - SDT",
-      "SICC CORE 0.95 - SDT",
-      "SICC CORE 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM TOTAL - SDT",
-      "SICC ATOM 0.95 - SDT",
-      "SICC ATOM 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "RING - SDT",
-      "SICC RING 0.95 - SDT",
-      "SICC RING 0.95 - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "FULLCHIP - SDT",
-      "SICC FULLCHIP - SDT",
-      "SICC FULLCHIP - SDT",
-      "UPM ULVT 0107 950mV (%) - SDS"
+	[
+      "SICC GT 0.75 - SDS",
+      "SICC GT 0.75 - SDS",
+	  "SICC GT 0.75 - SDS",
+      "ULVT FULLDIE 950mV (%) - SDS"
+    ],    
+	[
+      "SICC GT 0.7 - SDS",
+      "SICC GT 0.7 - SDS",
+	  "SICC GT 0.7 - SDS",
+      "ULVT FULLDIE 950mV (%) - SDS"
     ]
   ],
+  
+"sicc_targets": [
+    {
+      "test": "SICC GT 0.95 - SDS",
+      "target_A": 2.9
+    },
+	{"test": "SICC GT 0.8 - SDS",
+      "target_A": 0.8
+    },
+	{      "test": "SICC GT 0.75 - SDS",
+      "target_A": 0.5
+    },
+	{     "test": "SICC GT 0.7 - SDS",
+      "target_A": 0.3
+    }
+  ],
+
   "_comment_cdynList": "cdynList: [wildcard_pattern, friendly_display_name] \u2014 one entry per individual test, matches raw CSV column names (case-insensitive ordered tokens)",
   "cdynList": [
-    [
-      "*OG_128B*CDYN*ATOM0*",
-      "OG_128B_CDYN_ATOM0 - SDS"
-    ],
-    [
-      "*OG_128B*CDYN*ATOM1*",
-      "OG_128B_CDYN_ATOM1 - SDS"
-    ],
-    [
-      "*OG_128B*CDYN*ATOM2*",
-      "OG_128B_CDYN_ATOM2 - SDS"
-    ],
-    [
-      "*OG_128B*CDYN*ATOM3*",
-      "OG_128B_CDYN_ATOM3 - SDS"
-    ],
-    [
-      "*OG_256B*CDYN*ATOM0*",
-      "OG_256B_CDYN_ATOM0 - SDS"
-    ],
-    [
-      "*OG_256B*CDYN*ATOM1*",
-      "OG_256B_CDYN_ATOM1 - SDS"
-    ],
-    [
-      "*OG_256B*CDYN*ATOM2*",
-      "OG_256B_CDYN_ATOM2 - SDS"
-    ],
-    [
-      "*OG_256B*CDYN*ATOM3*",
-      "OG_256B_CDYN_ATOM3 - SDS"
-    ],
-    [
-      "*PTH_OG*CDYN*CORE0*",
-      "PTH_OG_CDYN_CORE0 - SDS"
-    ],
-    [
-      "*PTH_OG*CDYN*CORE1*",
-      "PTH_OG_CDYN_CORE1 - SDS"
-    ],
-    [
-      "*PTH_OG*CDYN*CORE2*",
-      "PTH_OG_CDYN_CORE2 - SDS"
-    ],
-    [
-      "*PTH_OG*CDYN*CORE3*",
-      "PTH_OG_CDYN_CORE3 - SDS"
-    ]
+    
   ],
   "_comment_cdynTableConfig": "1st column = Category Group, 2nd column = Display name in Dashboard, 3rd column = matching test name in the list, 4th column = UPM column",
   "cdynTableConfig": [
-    [
-      "ATOM 128B - SDS",
-      "OG_128B_CDYN_ATOM0 - SDS",
-      "OG_128B_CDYN_ATOM0 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
+  ],
+   "cdyn_targets": [
+    
+  ], 
+  
+  
+   "_comment_upmList": "upmList: [wildcard_pattern, friendly_display_name] \u2014 one entry per individual test, matches raw CSV column names (case-insensitive ordered tokens)",
+  "upmList": [
+        [
+      "ULVT FULLDIE 650mV (%) - SDS",
+      "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*650*",
+      7734,
+      ""
     ],
-    [
-      "ATOM 128B - SDS",
-      "OG_128B_CDYN_ATOM1 - SDS",
-      "OG_128B_CDYN_ATOM1 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM 128B - SDS",
-      "OG_128B_CDYN_ATOM2 - SDS",
-      "OG_128B_CDYN_ATOM2 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM 128B - SDS",
-      "OG_128B_CDYN_ATOM3 - SDS",
-      "OG_128B_CDYN_ATOM3 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM 256B - SDS",
-      "OG_256B_CDYN_ATOM0 - SDS",
-      "OG_256B_CDYN_ATOM0 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM 256B - SDS",
-      "OG_256B_CDYN_ATOM1 - SDS",
-      "OG_256B_CDYN_ATOM1 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM 256B - SDS",
-      "OG_256B_CDYN_ATOM2 - SDS",
-      "OG_256B_CDYN_ATOM2 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "ATOM 256B - SDS",
-      "OG_256B_CDYN_ATOM3 - SDS",
-      "OG_256B_CDYN_ATOM3 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDS",
-      "PTH_OG_CDYN_CORE0 - SDS",
-      "PTH_OG_CDYN_CORE0 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDS",
-      "PTH_OG_CDYN_CORE1 - SDS",
-      "PTH_OG_CDYN_CORE1 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDS",
-      "PTH_OG_CDYN_CORE2 - SDS",
-      "PTH_OG_CDYN_CORE2 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
-    ],
-    [
-      "CORE - SDS",
-      "PTH_OG_CDYN_CORE3 - SDS",
-      "PTH_OG_CDYN_CORE3 - SDS",
-      "UPM ULVT 0107 950mV (%) - SDS"
+   [
+      "ULVT FULLDIE 950mV (%) - SDS",
+      "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*950*",
+      7734,
+      ""
     ]
   ],
-  "_comment_pcm_param_groups": "Default-selected PCM parameter groups when this Product Config is loaded in the yield dashboard GUI. List group names exactly as defined in the code. User can still check/uncheck any group at runtime. Press \u21ba to restore this default selection.",
-  "pcm_param_groups": [
-    "Propagation Delay",
-    "Power (Off)"
+  "_comment_upmTableConfig": "1st column = Category Group, 2nd column = Display name in Dashboard, 3rd column = matching test name in the list, 4th column = UPM column",
+  "upmTableConfig": [
+    	[
+      "ULVT FULLDIE 650mV (%) - SDS",
+      "ULVT FULLDIE 650mV (%) - SDS",
+	  "ULVT FULLDIE 650mV (%) - SDS",
+      "ULVT FULLDIE 650mV (%) - SDS"
+    ],
+	[
+      "ULVT FULLDIE 950mV (%) - SDS",
+      "ULVT FULLDIE 950mV (%) - SDS",
+	  "ULVT FULLDIE 950mV (%) - SDS",
+      "ULVT FULLDIE 950mV (%) - SDS"
+    ]
   ],
-  "_comment_pcm_spec_csv": "PDK WAT spec CSV \u2014 auto-loaded into the pipeline (not shown in GUI). Path is relative to this JSON file.",
-  "pcm_spec_csv": "../wat/N2P_NVL816_WAT_PDK1.0_target.csv",
+   "upm_targets": [
+    
+  ],
   "_comment_testprogram_folder": "Default TestProgram folder for this product \u2014 auto-loaded into the pipeline from Product Config (not shown in GUI).",
-  "testprogram_folder": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\product\\nvlg\\tp",
-  "_comment_pcm_panels_file": "Plot setup JSON to use for PCM panels (distribution + xy). Path relative to this file. Overrides the default fallback.",
-  "pcm_panels_file": "default - sort - yield-dashboard-plot-setup.json"
+  "testprogram_folder": "\\\\al4file1.ra.intel.com\\sdx\\program\\1001\\prod\\hdmtprogs\\nvl_ngx_sds"
 }
