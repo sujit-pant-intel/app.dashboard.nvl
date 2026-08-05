@@ -93,10 +93,11 @@ def _drop_constant_columns(
             reason = "zero variance"
         elif has_fail and has_pass:
             x = s.to_numpy(dtype=float)
-            with np.errstate(all="ignore"):
-                fmean = np.nanmean(x[fail_mask]) if fail_mask.any() else np.nan
-                pmean = np.nanmean(x[pass_mask]) if pass_mask.any() else np.nan
-            if pmean not in (0.0,) and not np.isnan(pmean):
+            with np.errstate(all="ignore"), _warnings.catch_warnings():
+                _warnings.simplefilter("ignore", RuntimeWarning)
+                fmean = np.nanmean(x[fail_mask])
+                pmean = np.nanmean(x[pass_mask])
+            if pmean != 0.0 and not np.isnan(pmean):
                 ratio = fmean / pmean
                 if (not np.isnan(ratio)
                         and abs(ratio - 1.0) < fail_ratio_tol
@@ -149,7 +150,13 @@ except Exception:
     pass
 
 # --- paths ---
-_SCRIPT_DIR = Path(__file__).resolve().parent
+# sys.frozen is set by PyInstaller; __file__ points to _MEIPASS (temp dir) when frozen
+def _get_start_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+_SCRIPT_DIR = _get_start_dir()
 
 def _find_shared_dir(start: Path, max_levels: int = 8) -> Path:
     """Walk up the directory tree from *start* looking for a 'shared' folder."""
@@ -1045,8 +1052,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Sort + Etest Correlation")
-        self.geometry("1100x920")
-        self.minsize(900, 700)
+        self.geometry("1140x1020")
+        self.minsize(900, 800)
         self.configure(bg=BG)
 
         self._csv_paths       = []   # list of file paths
@@ -1110,8 +1117,25 @@ class App(tk.Tk):
     # --- UI ---
 
     def _build_ui(self):
-        outer = tk.Frame(self, bg=BG)
-        outer.pack(fill="both", expand=True, padx=10, pady=8)
+        # scrollable shell so all controls are reachable on any display height
+        _shell = tk.Frame(self, bg=BG)
+        _shell.pack(fill="both", expand=True)
+        _vsb = ttk.Scrollbar(_shell, orient="vertical")
+        _vsb.pack(side="right", fill="y")
+        _canvas = tk.Canvas(_shell, bg=BG, bd=0, highlightthickness=0,
+                            yscrollcommand=_vsb.set)
+        _canvas.pack(side="left", fill="both", expand=True)
+        _vsb.configure(command=_canvas.yview)
+        outer = tk.Frame(_canvas, bg=BG, padx=10, pady=8)
+        _win = _canvas.create_window((0, 0), window=outer, anchor="nw")
+        def _on_outer_cfg(e):
+            _canvas.configure(scrollregion=_canvas.bbox("all"))
+        def _on_canvas_cfg(e):
+            _canvas.itemconfig(_win, width=e.width)
+        outer.bind("<Configure>", _on_outer_cfg)
+        _canvas.bind("<Configure>", _on_canvas_cfg)
+        _canvas.bind_all("<MouseWheel>",
+                         lambda e: _canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
 
         # Step 1
         g1 = ttk.LabelFrame(outer, text="Step 1 -- Load Sort CSV / ZIP / GZ  (one or more files)")
@@ -1240,6 +1264,11 @@ class App(tk.Tk):
         self._chk_js = tk.BooleanVar(value=False)
         tk.Checkbutton(g4, text="Live JS correlation  (auto for <= 30k rows)",
                        variable=self._chk_js, bg=BG, fg=FG,
+                       selectcolor=BG3, activebackground=BG, font=FONT_SM
+                       ).pack(anchor="w", padx=8, pady=(2, 2))
+        self._chk_bindep = tk.BooleanVar(value=False)
+        tk.Checkbutton(g4, text="Analyze bin dependency (co-failure among selected bins)",
+                       variable=self._chk_bindep, bg=BG, fg=FG,
                        selectcolor=BG3, activebackground=BG, font=FONT_SM
                        ).pack(anchor="w", padx=8, pady=(2, 6))
 
@@ -1736,6 +1765,7 @@ class App(tk.Tk):
             "ignore_ib":   self._ignore_ib_var.get(),
             "ignore_fb":   self._ignore_fb_var.get(),
             "js_compute":  bool(self._chk_js.get()),
+            "bin_dep":     bool(self._chk_bindep.get()),
             "filter_upm":  self._filter_upm_var.get(),
             "filter_pcm":  self._filter_pcm_var.get(),
             "bins":        self._bin_combo.get_state(),
@@ -1774,6 +1804,7 @@ class App(tk.Tk):
         if "ignore_ib"   in preset: self._ignore_ib_var.set(preset["ignore_ib"])
         if "ignore_fb"   in preset: self._ignore_fb_var.set(preset["ignore_fb"])
         if "js_compute"  in preset: self._chk_js.set(preset["js_compute"])
+        if "bin_dep"      in preset: self._chk_bindep.set(preset["bin_dep"])
         if "filter_upm"   in preset: self._filter_upm_var.set(preset["filter_upm"])
         if "filter_pcm"   in preset: self._filter_pcm_var.set(preset["filter_pcm"])
         if "filter"       in preset: self._filter_upm_var.set(preset["filter"])  # legacy
@@ -1946,6 +1977,22 @@ class App(tk.Tk):
                 _t0 = _time.time()
                 self._build_and_open_report(results, out_dir)
                 self._log_line(f"  [time] report build     : {_time.time()-_t0:6.2f}s", "ok")
+                if self._chk_bindep.get() and len(target_specs) >= 2:
+                    try:
+                        _mf = results[0]["df"]
+                        dep = self._compute_bin_dependency_matrix(_mf, target_specs)
+                        if dep is None:
+                            self._log_line("Bin dependency: could not resolve IB/FB columns — skipped.", "warn")
+                        else:
+                            dep_path = self._write_bin_dependency_report(dep, out_dir)
+                            if dep_path:
+                                self._log_line(f"Bin dependency report: {dep_path}", "ok")
+                                self._inject_bindep_into_sidebar(results, out_dir, dep_path)
+                    except Exception as _bdex:
+                        self._log_line(f"Bin dependency ERROR: {_bdex}", "err")
+                        self._log_line(traceback.format_exc(), "err")
+                elif self._chk_bindep.get() and len(target_specs) < 2:
+                    self._log_line("Bin dependency: need >=2 bins selected (currently fewer).", "warn")
                 self._status(f"Done -- {len(results)} target(s) analysed. Click 'Open Dashboard' to view.")
 
             threading.Thread(target=lambda: self._run_bg(_analyse, _on_done),
@@ -1953,6 +2000,239 @@ class App(tk.Tk):
 
         threading.Thread(target=lambda: self._run_bg(_load, _on_loaded),
                          daemon=True).start()
+
+    def _compute_bin_dependency_matrix(self, df, target_specs, methods=("pearson", "pcm_lot"),
+                                       min_shared=8):
+        """Driver-profile similarity between selected bins. Compares {param->r} vectors,
+        not die co-failure, so it is valid even for mutually-exclusive IB bins."""
+        import math
+        labels = []; specs = []
+        for ts in target_specs:
+            if ts.startswith("IB==") or ts.startswith("FB=="):
+                try:
+                    val = int(ts.split("==")[1].split("|")[0])
+                except Exception:
+                    continue
+                kind = "IB" if ts.startswith("IB==") else "FB"
+                labels.append(f"{kind}{val}"); specs.append(ts)
+        if len(labels) < 2:
+            return None
+        profiles = {m: {} for m in methods}
+        d_profiles = {m: {} for m in methods}
+        for lab, ts in zip(labels, specs):
+            try:
+                merged = self._apply_target(df, ts)
+            except Exception:
+                merged = df
+            try:
+                params = self._get_selected_params()
+            except Exception:
+                params = [c for c in merged.columns if c != "_TARGET"]
+            try:
+                corr = self._compute_all_correlations(merged, params, ts)
+            except Exception:
+                corr = None
+            for m in methods:
+                prof = {}
+                d_prof = {}
+                for row in ((corr or {}).get(m) or []):
+                    if row.get("r") is not None:
+                        prof[row["param"]] = float(row["r"])
+                    if row.get("d") is not None:
+                        d_prof[row["param"]] = float(row["d"])
+                profiles[m][lab] = prof
+                d_profiles[m][lab] = d_prof
+        def _sim(a, b):
+            shared = [p for p in a if p in b]
+            if len(shared) < min_shared:
+                return None, len(shared)
+            xa = [a[p] for p in shared]; xb = [b[p] for p in shared]
+            n = len(shared)
+            ma = sum(xa)/n; mb = sum(xb)/n
+            va = sum((x-ma)**2 for x in xa); vb = sum((x-mb)**2 for x in xb)
+            if va <= 0 or vb <= 0:
+                return None, n
+            cov = sum((xa[i]-ma)*(xb[i]-mb) for i in range(n))
+            return round(cov/math.sqrt(va*vb), 3), n
+        out = {"labels": labels, "methods": {}}
+        for m in methods:
+            P = profiles[m]; k = len(labels)
+            mat = [[None]*k for _ in range(k)]
+            pairs = []
+            for i in range(k):
+                for j in range(i+1, k):
+                    s, n = _sim(P.get(labels[i], {}), P.get(labels[j], {}))
+                    mat[i][j] = mat[j][i] = s
+                    pairs.append({"a": labels[i], "b": labels[j], "similarity": s, "n_shared": n})
+            pairs.sort(key=lambda p: (p["similarity"] if p["similarity"] is not None else -9),
+                       reverse=True)
+            base = labels[0]; bp = P.get(base, {})
+            top_params = sorted(bp, key=lambda p: -abs(bp[p]))[:15]
+            table = []
+            D = d_profiles[m]
+            for p in top_params:
+                table.append({"param": p,
+                              "r": {lab: (round(P.get(lab, {}).get(p), 3)
+                                    if P.get(lab, {}).get(p) is not None else None) for lab in labels},
+                              "d": {lab: (round(D.get(lab, {}).get(p), 2)
+                                    if D.get(lab, {}).get(p) is not None else None) for lab in labels}})
+            out["methods"][m] = {"matrix": mat, "pairs": pairs, "side_by_side": table,
+                                 "base": base}
+        return out
+
+    def _write_bin_dependency_report(self, dep, out_dir):
+        """Write bin_dependency.html showing driver-profile similarity matrices."""
+        import html as _h, os
+        if not dep: return None
+        L = dep["labels"]
+        def scol(v):
+            if v is None: return "#22405f"
+            av = abs(v)
+            if av >= 0.6: return "#e74c3c"
+            if av >= 0.3: return "#e67e22"
+            if av >= 0.1: return "#7fb3d3"
+            return "#33506f"
+        def matrix_html(M):
+            h = '<table style="border-collapse:collapse;font-size:12px"><thead><tr><th></th>'
+            for c in L: h += f'<th style="padding:5px 9px;color:#7fb3d3">{_h.escape(c)}</th>'
+            h += "</tr></thead><tbody>"
+            for i, r in enumerate(L):
+                h += f'<tr><th style="padding:5px 9px;color:#7fb3d3;text-align:left">{_h.escape(r)}</th>'
+                for j in range(len(L)):
+                    v = M[i][j]
+                    if i == j:
+                        h += '<td style="padding:6px 10px;background:#0d1828;color:#445">\u2014</td>'
+                    else:
+                        c = scol(v); txt = ("%+.2f" % v) if v is not None else "n/a"
+                        h += (f'<td style="padding:6px 10px;text-align:center;background:{c}22;'
+                              f'color:{c};font-weight:bold">{txt}</td>')
+                h += "</tr>"
+            return h + "</tbody></table>"
+        def _dtier_py(d):
+            if d is None: return ("negligible", "#5d7a99")
+            a = abs(d)
+            if a >= 0.8: return ("large", "#e74c3c")
+            if a >= 0.5: return ("medium", "#e67e22")
+            if a >= 0.2: return ("small", "#f1c40f")
+            return ("negligible", "#5d7a99")
+        def side_html(tbl):
+            h = ('<table style="border-collapse:collapse;font-size:12px"><thead><tr>'
+                 '<th style="padding:4px 9px;color:#7fb3d3;text-align:left">Parameter</th>')
+            for lab in L: h += f'<th style="padding:4px 9px;color:#7fb3d3">{_h.escape(lab)}</th>'
+            h += "</tr></thead><tbody>"
+            for row in tbl:
+                full = _h.escape(row["param"])
+                disp = (full[:72] + '\u2026') if len(row["param"]) > 72 else full
+                h += (f'<tr style="border-bottom:1px solid #1a2f45">'
+                      f'<td style="padding:3px 9px;color:#cdd9e5;max-width:320px;word-break:break-all" title="{full}">{disp}</td>')
+                for lab in L:
+                    r_val = row["r"].get(lab)
+                    d_val = row.get("d", {}).get(lab)
+                    lbl, col = _dtier_py(d_val)
+                    if d_val is not None:
+                        cell = (f'<span style="color:{col};font-weight:bold">{lbl}</span>'
+                                f'<span style="color:{col}"> d={d_val:+.2f}</span>'
+                                f'<br><span style="color:#5d7a99;font-size:11px">r={r_val:+.3f}</span>'
+                                if r_val is not None else
+                                f'<span style="color:{col};font-weight:bold">{lbl}</span>'
+                                f'<span style="color:{col}"> d={d_val:+.2f}</span>')
+                    else:
+                        col2 = "#2ecc71" if (r_val is not None and r_val > 0) else (
+                               "#e74c3c" if r_val is not None else "#5d7a99")
+                        cell = (f'{r_val:+.3f}' if r_val is not None else '&ndash;')
+                        cell = f'<span style="color:{col2}">{cell}</span>'
+                    h += f'<td style="padding:3px 9px;text-align:right">{cell}</td>'
+                h += "</tr>"
+            return (h + "</tbody></table>"
+                    "<p style='color:#8aa1b8;font-size:11px;margin-top:6px'>Die-level values use "
+                    "Cohen d for strength (raw r is compressed for rare bins). Same sign across "
+                    "bins = shared driver direction; compare magnitudes for relative importance.</p>")
+        method_names = {"pearson": "Die-level (Pearson)", "pcm_lot": "PCM Lot-Level"}
+        body = ""
+        for m, md in dep["methods"].items():
+            top = md["pairs"][0] if md["pairs"] else None
+            hi = ""
+            if top and top["similarity"] is not None and top["similarity"] >= 0.5:
+                hi = (f"<div style='margin:6px 0;padding:8px 12px;border:1px solid #a5641a;"
+                      f"background:#2a1e0d;color:#f0d8b0;border-radius:6px'>Most similar: "
+                      f"<b>{_h.escape(top['a'])} &harr; {_h.escape(top['b'])}</b> "
+                      f"(similarity {top['similarity']:+.2f}, {top['n_shared']} shared params) "
+                      f"&mdash; these bins share drivers, likely a common root cause.</div>")
+            body += (f"<h2>{method_names.get(m, m)} &mdash; driver similarity</h2>{hi}"
+                     f"{matrix_html(md['matrix'])}"
+                     f"<h3 style='color:#7fb3d3'>Top drivers of {_h.escape(md['base'])} vs the others</h3>"
+                     f"{side_html(md['side_by_side'])}")
+        explain = (
+            "<div style='background:#0d1f10;border:2px solid #27ae60;border-radius:8px;padding:14px 18px;margin:16px 0'>"
+            "<h3 style='color:#2ecc71;margin:0 0 10px 0;font-size:15px'>&#128214; How to read this report</h3>"
+
+            "<div style='background:#0a1520;border-left:4px solid #3498db;border-radius:0 6px 6px 0;"
+            "padding:10px 14px;margin-bottom:12px'>"
+            "<b style='color:#7fb3d3;font-size:13px'>What question does this answer?</b><br>"
+            "<span style='color:#c8d6e8;font-size:12px;line-height:1.7'>"
+            "IB (Interface Bin) categories are <b>mutually exclusive</b> &mdash; every die lands in "
+            "exactly one IB. That means you cannot ask &ldquo;did the same dies fail both bins&rdquo; "
+            "(they can&rsquo;t). Instead this analysis asks: <b>are the bins driven by the same "
+            "input parameters?</b> If yes, they share a root cause even though different dies are affected."
+            "</span></div>"
+
+            "<div style='background:#0a1520;border-left:4px solid #e74c3c;border-radius:0 6px 6px 0;"
+            "padding:10px 14px;margin-bottom:12px'>"
+            "<b style='color:#e8a0a0;font-size:13px'>&#9632; Similarity Matrix &mdash; read this first</b><br>"
+            "<span style='color:#c8d6e8;font-size:12px;line-height:1.7'>"
+            "For each bin a <i>driver profile</i> is built: a vector of {parameter &rarr; correlation r} "
+            "values across all shared parameters. The matrix cell (A, B) is Pearson r computed over "
+            "those two r-vectors.<br><br>"
+            "<b>+1.0</b> &nbsp;&#8594;&nbsp; identical drivers and directions &mdash; almost certainly the <b>same root cause</b>.<br>"
+            "<b>&nbsp;0.0</b> &nbsp;&#8594;&nbsp; unrelated failure mechanisms.<br>"
+            "<b>&minus;1.0</b> &nbsp;&#8594;&nbsp; opposite drivers (one bin benefits where the other fails).<br><br>"
+            "<b style='color:#e74c3c'>Red cell |sim| &ge; 0.6</b> &rarr; strong shared mechanism &mdash; investigate as one problem.<br>"
+            "<b style='color:#e67e22'>Orange cell 0.3&ndash;0.6</b> &rarr; moderate overlap &mdash; partial common root cause.<br>"
+            "<b style='color:#5d7a99'>Dim cell &lt; 0.3</b> &rarr; weak or no overlap &mdash; likely independent failure modes."
+            "</span></div>"
+
+            "<div style='background:#0a1520;border-left:4px solid #f39c12;border-radius:0 6px 6px 0;"
+            "padding:10px 14px;margin-bottom:12px'>"
+            "<b style='color:#f5cba7;font-size:13px'>&#9632; Side-by-Side Table &mdash; pinpoint the shared driver</b><br>"
+            "<span style='color:#c8d6e8;font-size:12px;line-height:1.7'>"
+            "Shows the <b>top parameters of the reference bin</b> alongside every other bin&rsquo;s "
+            "correlation and Cohen&nbsp;d for the <i>same parameter</i>.<br><br>"
+            "<b>How to interpret each row:</b><br>"
+            "&bull; <b>Same sign, similar magnitude</b> across all bins &rarr; shared driver confirmed. "
+            "Prioritise this parameter for root-cause investigation.<br>"
+            "&bull; <b>Same sign in only some bins</b> &rarr; partial driver. That subset of bins may share a cause "
+            "while the others differ.<br>"
+            "&bull; <b>Opposite signs</b> &rarr; the parameter pushes bins in different directions &mdash; "
+            "likely different mechanisms despite surface similarity.<br>"
+            "&bull; <b>Large Cohen&nbsp;d + small r</b> &rarr; rare-fail regime; d is the reliable effect-size "
+            "metric here, not r.<br><br>"
+            "The table is shown for both <b>die-level (Pearson)</b> and <b>PCM Lot-Level</b> profiles. "
+            "Agreement across both levels greatly increases confidence."
+            "</span></div>"
+
+            "<div style='background:#0a1520;border-left:4px solid #9b59b6;border-radius:0 6px 6px 0;"
+            "padding:10px 14px'>"
+            "<b style='color:#d7bde2;font-size:13px'>&#9632; Worked example</b><br>"
+            "<span style='color:#c8d6e8;font-size:12px;line-height:1.7'>"
+            "IB3 vs IB42 similarity = <b style='color:#e74c3c'>+0.71</b>. "
+            "Side-by-side shows <code>PTH_POWER_CJ816P::POWER_X</code> is <b>medium d=&minus;0.60</b> in IB3 "
+            "and <b>small d=&minus;0.48</b> in IB42 &mdash; same negative direction, similar magnitude. "
+            "<b>Conclusion:</b> both bins are partially driven by low power-rail margin; investigate that "
+            "parameter first before treating the bins as independent problems."
+            "</span></div>"
+
+            "</div>")
+        page = ("<!doctype html><html><head><meta charset='utf-8'><title>Bin Driver Similarity</title>"
+                "<style>body{background:#0b1622;color:#dce8f3;font-family:Segoe UI,Arial,sans-serif;padding:18px}"
+                "h1{color:#9fd2ff;font-size:20px}h2{color:#7fb3d3;font-size:15px;margin-top:20px}"
+                "th{background:#0f2030}td,th{border:1px solid #1e3a5f}</style></head><body>"
+                "<h1>Bin Driver Similarity</h1>"
+                f"<div style='color:#8aa1b8;font-size:12px'>Selected bins: {_h.escape(', '.join(L))}</div>"
+                f"{explain}{body}</body></html>")
+        out_path = os.path.join(str(out_dir), "bin_dependency.html")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(page)
+        return out_path
 
     def _build_target_specs(self):
         if self._mode_var.get() == "IB":
@@ -2275,9 +2555,13 @@ class App(tk.Tk):
                                            "mean_fail": None if (mf is None or math.isnan(mf)) else round(mf,4),
                                            "mean_pass": None if (mp is None or math.isnan(mp)) else round(mp,4)})
 
-        # ── Vectorized Spearman ────────────────────────────────────────────────
+        # ── Vectorized Spearman — chunked to avoid OOM on wide frames ────────────
         if pearson_cols and "spearman" in buckets:
-            rs_sp = feat_df[pearson_cols].corrwith(t_s, method="spearman", drop=True)
+            _SP_CHUNK = 30   # 30 cols × 262k rows × 8 bytes ≈ 60 MB peak per chunk
+            _sp_parts = [feat_df[pearson_cols[_i:_i+_SP_CHUNK]].corrwith(
+                             t_s, method="spearman", drop=True)
+                         for _i in range(0, len(pearson_cols), _SP_CHUNK)]
+            rs_sp = pd.concat(_sp_parts) if _sp_parts else pd.Series(dtype=float)
             for col, r in rs_sp.items():
                 if math.isnan(r): continue
                 valid = feat_df[col].notna() & t_s.notna()
@@ -2704,6 +2988,281 @@ class App(tk.Tk):
                 pass
         return {"zone_fail_rate": zfr, "interactions": interactions}
 
+    def _compute_intrafield_fails(self, df, reticle_dir, src_csv_paths=None):
+        """Intra-field fail analysis with WITHIN-SHOT pairing (removes shot/wafer noise).
+        Also writes _intra_rdx/_intra_rdy/_intra_shot/_intra_loc onto df for the
+        parameter cross-view."""
+        import math, os, glob
+        need = {"DieX","DieY","ReticleDieX","ReticleDieY"}
+        if "_TARGET" not in df.columns or "SORT_X" not in df.columns or "SORT_Y" not in df.columns:
+            return None
+        rmap = None
+        try:
+            for f in sorted(glob.glob(os.path.join(reticle_dir, "*.csv"))):
+                cols = set(pd.read_csv(f, nrows=0).columns)
+                if need.issubset(cols):
+                    use = list(need | ({"ReticleShot","Device"} & cols))
+                    rmap = pd.read_csv(f, usecols=use); break
+        except Exception:
+            rmap = None
+        if rmap is None or rmap.empty:
+            return None
+        for c in ("DieX","DieY","ReticleDieX","ReticleDieY"):
+            rmap[c] = pd.to_numeric(rmap[c], errors="coerce")
+        rmap = rmap.dropna(subset=["DieX","DieY","ReticleDieX","ReticleDieY"]).copy()
+        rmap = rmap.astype({"DieX":int,"DieY":int,"ReticleDieX":int,"ReticleDieY":int})
+        has_shot = "ReticleShot" in rmap.columns
+        lut = {}
+        for r in rmap.itertuples(index=False):
+            lut[(int(r.DieX), int(r.DieY))] = (int(r.ReticleDieX), int(r.ReticleDieY),
+                                               str(getattr(r, "ReticleShot", "")) if has_shot else "")
+        # stable DieLoc# ordering: row-major by rdy then rdx
+        locs = sorted({(v[0], v[1]) for v in lut.values()}, key=lambda p: (p[1], p[0]))
+        loc_num = {p: i+1 for i, p in enumerate(locs)}
+        sx = pd.to_numeric(df["SORT_X"], errors="coerce").values
+        sy = pd.to_numeric(df["SORT_Y"], errors="coerce").values
+        tgt = pd.to_numeric(df["_TARGET"], errors="coerce").values
+        rdx=[]; rdy=[]; shot=[]; loc=[]
+        for x, y in zip(sx, sy):
+            p = lut.get((int(x), int(y))) if not (pd.isna(x) or pd.isna(y)) else None
+            if p is None:
+                rdx.append(None); rdy.append(None); shot.append(None); loc.append(None)
+            else:
+                rdx.append(p[0]); rdy.append(p[1]); shot.append(p[2]); loc.append(loc_num[(p[0],p[1])])
+        df["_intra_rdx"]=rdx; df["_intra_rdy"]=rdy; df["_intra_shot"]=shot; df["_intra_loc"]=loc
+        # ---- COVERAGE DIAGNOSTIC (logging only; does not affect results) ----
+        try:
+            _mapped_mask = pd.Series([l is not None for l in loc], index=df.index)
+            _n_map = int(_mapped_mask.sum()); _n_tot = len(df)
+            self.after(0, lambda a=_n_map, b=_n_tot:
+                       self._log_line(f"  [coverage] mapped {a:,}/{b:,} dies "
+                                      f"({100*a/max(b,1):.1f}%)", "ok" if a else "warn"))
+            _devcol = next((c for c in df.columns
+                            if c.lower() in ("device","layout","devrevstep")
+                            or "device" in c.lower() or "layout" in c.lower()), None)
+            if _devcol:
+                _tmp = pd.DataFrame({"dev": df[_devcol].astype(str).values,
+                                     "m": _mapped_mask.values})
+                _g = _tmp.groupby("dev")["m"].agg(["sum","count"])
+                _g = _g.sort_values("count", ascending=False).head(12)
+                self.after(0, lambda: self._log_line(
+                    "  [coverage] mapped by device/layout:", "dim"))
+                for _dev, _row in _g.iterrows():
+                    s_=int(_row["sum"]); c_=int(_row["count"]); p_=100*s_/max(c_,1)
+                    self.after(0, lambda d=_dev, s=s_, c=c_, p=p_:
+                               self._log_line(f"      {d:<14} {s:>8,}/{c:>8,}  ({p:5.1f}%)",
+                                              "ok" if s else "warn"))
+            try:
+                _sxv = pd.to_numeric(df["SORT_X"], errors="coerce")
+                _syv = pd.to_numeric(df["SORT_Y"], errors="coerce")
+                _mx = [k[0] for k in lut.keys()]; _my = [k[1] for k in lut.keys()]
+                self.after(0, lambda x0=_sxv.min(), x1=_sxv.max(), y0=_syv.min(), y1=_syv.max(),
+                                  mx0=min(_mx), mx1=max(_mx), my0=min(_my), my1=max(_my):
+                           self._log_line(
+                               f"  [coverage] SORT_X range [{x0:.0f},{x1:.0f}] vs map DieX "
+                               f"[{mx0},{mx1}] ; SORT_Y [{y0:.0f},{y1:.0f}] vs map DieY "
+                               f"[{my0},{my1}]", "dim"))
+                _un = df.loc[~_mapped_mask, ["SORT_X","SORT_Y"]].head(5)
+                if len(_un):
+                    _pairs = ", ".join(f"({int(r.SORT_X)},{int(r.SORT_Y)})"
+                                       for r in _un.itertuples(index=False)
+                                       if pd.notna(r.SORT_X) and pd.notna(r.SORT_Y))
+                    self.after(0, lambda s=_pairs:
+                               self._log_line(f"  [coverage] sample UNMAPPED (SORT_X,SORT_Y): {s}", "dim"))
+                    _mk = ", ".join(f"({k[0]},{k[1]})" for k in list(lut.keys())[:5])
+                    self.after(0, lambda s=_mk:
+                               self._log_line(f"  [coverage] sample MAP (DieX,DieY): {s}", "dim"))
+            except Exception:
+                pass
+        except Exception as _ex:
+            self.after(0, lambda e=_ex: self._log_line(f"  [coverage] diag skipped: {e}", "warn"))
+        # ---- END COVERAGE DIAGNOSTIC ----
+        fld = pd.DataFrame({"rdx":rdx,"rdy":rdy,"loc":loc,"shot":shot,"t":tgt}).dropna(subset=["loc","t"])
+        n_mapped = len(fld)
+        self.after(0, lambda m=n_mapped, N=len(df):
+                   self._log_line(f"  Intra-field: {m:,} dies with a resolved reticle-die "
+                                  f"position for this target "
+                                  f"({100*m/max(N,1):.0f}% of {N:,} total dies; this is the "
+                                  f"analyzable set for this bin, not a coverage loss).",
+                                  "ok" if m else "warn"))
+        if fld.empty:
+            return None
+        overall = float(fld["t"].mean()); N = len(fld)
+        # ---- pooled per-DieLoc stats + relative risk ----
+        cells = []
+        for lc, g in fld.groupby("loc"):
+            n=len(g); fr=float(g["t"].mean())
+            z=None
+            if 0<overall<1 and n>=20:
+                se=math.sqrt(overall*(1-overall)*(1.0/n+1.0/max(N-n,1)))
+                z=(fr-overall)/se if se>0 else None
+            rr = round(fr/overall, 3) if overall>0 else None
+            sig = bool(z is not None and abs(z)>=2 and rr is not None and rr>=1.2)
+            rr0 = g.iloc[0]
+            cells.append({"loc":int(lc), "rdx":int(rr0["rdx"]), "rdy":int(rr0["rdy"]),
+                          "n":n, "fail_rate":round(fr,6), "z":(round(z,3) if z is not None else None),
+                          "rr":rr, "significant":sig})
+        cells.sort(key=lambda c:c["fail_rate"], reverse=True)
+        # ---- WITHIN-(wafer,shot) STRATIFIED rate-difference (removes wafer+shot noise) ----
+        paired = None
+        wafer_col = next((c for c in df.columns if "wafer" in c.lower()), None)
+        fld2 = fld.copy()
+        if wafer_col and wafer_col in df.columns:
+            fld2["waf"] = pd.Series(df[wafer_col].values, index=df.index).reindex(fld2.index).values
+            fld2 = fld2.dropna(subset=["waf"])
+            fld2["stratum"] = fld2["waf"].astype(str) + "|" + fld2["shot"].astype(str)
+            strat_label = "(wafer x shot)"
+        elif fld2["shot"].notna().any():
+            fld2 = fld2.dropna(subset=["shot"])
+            fld2["stratum"] = fld2["shot"].astype(str)
+            strat_label = "(shot only - no wafer column)"
+        else:
+            fld2 = None
+            strat_label = ""
+        if fld2 is not None and len(fld2) > 0:
+            g = fld2.groupby(["stratum", "loc"])["t"].agg(["mean", "count"]).reset_index()
+            srate = fld2.groupby("stratum")["t"].mean().rename("srate")
+            g = g.join(srate, on="stratum")
+            g["diff"] = g["mean"] - g["srate"]
+            n_strata = int(fld2["stratum"].nunique())
+            rows_out = []
+            for lc, gl in g.groupby("loc"):
+                w = gl["count"].values.astype(float)
+                d = gl["diff"].values.astype(float)
+                if w.sum() <= 0 or len(gl) < 2:
+                    continue
+                wm = float(np.average(d, weights=w))
+                var = float(np.average((d - wm) ** 2, weights=w))
+                se = math.sqrt(var / max(len(gl), 1)) if var > 0 else 0.0
+                z = (wm / se) if se > 0 else None
+                rows_out.append({"loc": int(lc),
+                                 "mean_dev": round(wm, 6),
+                                 "z": (round(z, 3) if z is not None else None),
+                                 "n_strata": len(gl)})
+            rows_out.sort(key=lambda r: (r["mean_dev"] if r["mean_dev"] is not None else -9), reverse=True)
+            if rows_out:
+                paired = {"method": "stratified_rate_diff", "strata": strat_label,
+                          "n_strata": n_strata, "rows": rows_out}
+        # ---- CONSISTENCY across views (flag real-but-modest signals) ----
+        consistency = None
+        try:
+            views = {}
+            if cells:
+                views["pooled_failrate"] = max(cells, key=lambda c: c["fail_rate"])["loc"]
+                views["relative_risk"]   = max(cells, key=lambda c: (c.get("rr") or 0))["loc"]
+            if paired and paired.get("rows"):
+                pr = [r for r in paired["rows"] if r.get("mean_dev") is not None]
+                if pr:
+                    views["stratified"] = max(pr, key=lambda r: r["mean_dev"])["loc"]
+            if views:
+                from collections import Counter as _Counter
+                tally = _Counter(views.values())
+                loc, cnt = tally.most_common(1)[0]
+                consistency = {"views": views, "worst_loc": int(loc),
+                               "agree": int(cnt), "n_views": len(views)}
+        except Exception:
+            consistency = None
+        return {"overall":round(overall,6), "n_total":N, "n_positions":len(loc_num),
+                "cells":cells, "paired":paired, "consistency":consistency}
+
+    def _compute_intrafield_fb_matrix(self, df, target_spec, min_fb_hits=100, max_fbs=12):
+        """For an IB target, run stratified (wafer×shot) DieLoc rate-diff per constituent FB."""
+        import math
+        if not target_spec.startswith("IB=="):
+            return None
+        if "_intra_loc" not in df.columns or "_intra_shot" not in df.columns:
+            return None
+        fb_col = _detect_fb_col(df.columns)
+        if not fb_col or fb_col not in df.columns:
+            return None
+        wafer_col = next((c for c in df.columns if "wafer" in c.lower()), None)
+        base = df[df["_intra_loc"].notna()].copy()
+        if base.empty:
+            return None
+        fbnum = pd.to_numeric(base[fb_col], errors="coerce")
+        if wafer_col and wafer_col in base.columns:
+            strat = base[wafer_col].astype(str) + "|" + base["_intra_shot"].astype(str)
+        else:
+            strat = base["_intra_shot"].astype(str)
+        base = base.assign(_fb=fbnum, _stratum=strat.values)
+        locs = sorted([int(x) for x in base["_intra_loc"].dropna().unique()])
+        hit = base[pd.to_numeric(base["_TARGET"], errors="coerce") == 1]
+        fb_counts = hit["_fb"].value_counts()
+        fbs = [int(fb) for fb, c in fb_counts.items() if c >= min_fb_hits][:max_fbs]
+        if not fbs:
+            return None
+
+        def _strat_z_for(binary):
+            tmp = base.assign(_b=binary.values)
+            g = tmp.groupby(["_stratum", "_intra_loc"])["_b"].agg(["mean", "count"]).reset_index()
+            sr = tmp.groupby("_stratum")["_b"].mean().rename("sr")
+            g = g.join(sr, on="_stratum")
+            g["d"] = g["mean"] - g["sr"]
+            out = {}
+            for lc, gl in g.groupby("_intra_loc"):
+                w = gl["count"].values.astype(float)
+                d = gl["d"].values.astype(float)
+                if w.sum() <= 0 or len(gl) < 2:
+                    continue
+                wm = float(np.average(d, weights=w))
+                var = float(np.average((d - wm) ** 2, weights=w))
+                se = math.sqrt(var / len(gl)) if var > 0 else 0.0
+                out[int(lc)] = (round(wm, 6), (round(wm / se, 3) if se > 0 else None))
+            return out
+
+        rows = []
+        for fb in fbs:
+            bin_fb = (base["_fb"] == fb).astype(int)
+            zr = _strat_z_for(bin_fb)
+            cells = []
+            for lc in locs:
+                md, z = zr.get(lc, (None, None))
+                cells.append({"loc": lc, "mean_dev": md, "z": z})
+            rows.append({"fb": fb, "n_hits": int((bin_fb == 1).sum()), "cells": cells})
+        best = None
+        for r in rows:
+            for c in r["cells"]:
+                if c["z"] is not None and c["mean_dev"] is not None and c["mean_dev"] > 0:
+                    if best is None or c["z"] > best["z"]:
+                        best = {"fb": r["fb"], "loc": c["loc"], "z": c["z"], "mean_dev": c["mean_dev"]}
+        return {"locs": locs, "rows": rows, "best": best}
+
+    def _compute_intrafield_params(self, df, intrafield, selected, min_n=200):
+        """% deviation of DIE-LEVEL params per hot intra-field cell. PCM excluded (scribe-line rule)."""
+        import math
+        if not intrafield or "_intra_rdx" not in df.columns or "_intra_rdy" not in df.columns:
+            return None
+        pcm = set(getattr(self, "_pcm_cols_discovered", set()))
+        die_cols = [c for c in selected
+                    if c in df.columns and c not in pcm and c != "_radius"
+                    and pd.api.types.is_numeric_dtype(pd.to_numeric(df[c], errors="coerce"))]
+        if not die_cols:
+            return None
+        sub = df[["_intra_rdx","_intra_rdy"] + die_cols].copy()
+        for c in die_cols:
+            sub[c] = pd.to_numeric(sub[c], errors="coerce")
+        field_mean = sub[die_cols].mean(numeric_only=True)
+        field_std  = sub[die_cols].std(numeric_only=True)
+        out_cells = []
+        for cell in intrafield["cells"][:8]:
+            cx, cy = cell["rdx"], cell["rdy"]
+            g = sub[(sub["_intra_rdx"]==cx) & (sub["_intra_rdy"]==cy)]
+            if len(g) < min_n:
+                continue
+            params = []
+            for c in die_cols:
+                v = pd.to_numeric(g[c], errors="coerce").dropna()
+                if len(v) < min_n:
+                    continue
+                m = float(v.mean()); fm = float(field_mean[c]); fs = float(field_std[c])
+                pct = None if (fm == 0 or math.isnan(fm)) else round(100.0*(m - fm)/abs(fm), 2)
+                z = round((m - fm)/fs, 3) if (fs and not math.isnan(fs) and fs > 0) else None
+                params.append({"param": c, "pct_dev": pct, "z": z, "n": len(v)})
+            params.sort(key=lambda p: (abs(p["z"]) if p["z"] is not None else 0), reverse=True)
+            out_cells.append({"rdx": cx, "rdy": cy, "fail_rate": cell["fail_rate"],
+                              "params": params[:12]})
+        return {"cells": out_cells, "n_die_params": len(die_cols)}
+
     # --- HTML report ---
 
     @staticmethod
@@ -2805,6 +3364,27 @@ function show(i){{
 }}
 </script>
 </body></html>"""
+
+    def _inject_bindep_into_sidebar(self, results, out_dir, dep_path):
+        """Rebuild correlation_report.html to include bin_dependency.html as a sidebar entry."""
+        dep_fname = Path(dep_path).name
+        if len(results) == 1:
+            # Single-target had no sidebar — create one wrapping the correlation report + dep
+            corr_fname = "correlation_report_inner.html"
+            inner = out_dir / corr_fname
+            outer = out_dir / "correlation_report.html"
+            if outer.exists() and not inner.exists():
+                outer.rename(inner)
+            report_files = [(results[0]["target"], corr_fname),
+                            ("Bin Driver Similarity", dep_fname)]
+        else:
+            report_files = [(r["target"], self._target_to_filename(r["target"]))
+                            for r in results]
+            report_files.append(("Bin Driver Similarity", dep_fname))
+        wrapper_path = out_dir / "correlation_report.html"
+        wrapper_path.write_text(
+            self._build_sidebar_wrapper(report_files), encoding="utf-8")
+        self._last_report_path = str(wrapper_path)
 
     def _save_report(self):
         if not self._last_report:
@@ -3139,6 +3719,23 @@ function show(i){{
                               f'"mode":"{target_mode}","ib_col":"{ib_col_wm or ""}","fb_col":"{fb_col_wm or ""}","wafer_col":"{wafer_col or ""}"}}'
                               )
 
+        intrafield = self._compute_intrafield_fails(df, _RETICLE_DIR,
+                                                    self._csv_paths or [self._csv_path])
+        intrafield_json = json.dumps(intrafield) if intrafield else "null"
+        intrafield_params = self._compute_intrafield_params(df, intrafield, selected)
+        intrafield_params_json = json.dumps(intrafield_params) if intrafield_params else "null"
+        intrafield_fb = (self._compute_intrafield_fb_matrix(df, target_name)
+                         if str(target_name).startswith("IB==") else None)
+        intrafield_fb_json = json.dumps(intrafield_fb) if intrafield_fb else "null"
+        # fold FB matrix best cell into the consistency tally (4th view for IB targets)
+        if intrafield and intrafield.get("consistency") and intrafield_fb and intrafield_fb.get("best"):
+            from collections import Counter as _Counter
+            c = intrafield["consistency"]
+            c["views"]["fb_best"] = int(intrafield_fb["best"]["loc"])
+            _t = _Counter(c["views"].values()); _loc, _cnt = _t.most_common(1)[0]
+            c["worst_loc"] = int(_loc); c["agree"] = int(_cnt); c["n_views"] = len(c["views"])
+            intrafield_json = json.dumps(intrafield)   # re-serialize with updated consistency
+
         page = (self._report_head(target_name, ts) +
                 self._report_body_open(meta) +
                 f"\n<script>\n"
@@ -3155,6 +3752,9 @@ function show(i){{
                 f"const JS_COMPUTE=META.js_compute;\n"
                 f"const ZONE_DATA={zone_json};\n"
                 f"const WAFER_MAP_DATA={wafer_map_json};\n"
+                f"const INTRAFIELD_DATA={intrafield_json};\n"
+                f"const INTRAFIELD_PARAMS={intrafield_params_json};\n"
+                f"const INTRAFIELD_FB={intrafield_fb_json};\n"
                 f"</script>\n" +
                 self._report_script() +
                 "</body></html>")
@@ -3242,21 +3842,55 @@ td{{padding:4px 8px;white-space:nowrap}}
                if meta.get("n_target_hits") is not None else "")
             + f'<div class="card"><div class="val" style="font-size:12px">{ts}</div><div class="lbl">Generated</div></div>'
         )
+        _PILL = ("padding:2px 8px;border-radius:10px;border:1px solid #2c4a6e;"
+                 "background:#162840;white-space:nowrap;font-size:11px")
+        _SHOW_N = 8
         lots_row = ""
-        if meta["lots"]:
-            cbs = " ".join(
-                f'<span class="lot-cb"><input type="checkbox" id="lcb_{i}" value="{h.escape(str(l))}" checked onchange="filterChanged()"><label for="lcb_{i}">{h.escape(str(l))}</label></span>'
-                for i, l in enumerate(meta["lots"]))
-            lots_row = (f'<div id="filters"><b style="color:#7fb3d3">Filter by Lot</b>'
-                        f'&nbsp;<button onclick="selAllLots(true)" style="{_BTN_STYLE}">All</button>'
-                        f'&nbsp;<button onclick="selAllLots(false)" style="{_BTN_STYLE}">None</button>'
-                        f'<div class="row">{cbs}</div>')
+        if meta["lots"] or meta["programs"]:
+            lots_row = ('<div style="background:#0f2030;border:1px solid #1e3a5f;'
+                        'border-radius:6px;padding:10px 14px;margin:10px 0">')
+            if meta["lots"]:
+                vis = meta["lots"][:_SHOW_N]
+                hid = meta["lots"][_SHOW_N:]
+                pills = "".join(
+                    f'<span style="{_PILL};color:#7fb3d3">{h.escape(str(l))}</span>'
+                    for l in vis)
+                more = ""
+                if hid:
+                    more_pills = "".join(
+                        f'<span style="{_PILL};color:#7fb3d3">{h.escape(str(l))}</span>'
+                        for l in hid)
+                    more = (f'<span id="lots-hidden" style="display:none;flex-wrap:wrap;gap:4px">'
+                            f'{more_pills}</span>'
+                            f'<button onclick="toggleExpandLots()" id="lots-xbtn" '
+                            f'data-more="+{len(hid)} more" style="{_BTN_STYLE}">+{len(hid)} more</button>')
+                lots_row += (f'<div style="margin-bottom:8px">'
+                             f'<span style="color:#7fb3d3;font-size:11px;font-weight:bold">'
+                             f'Analyzed Lots</span>'
+                             f'&nbsp;<span style="color:#5d7a99;font-size:11px">({len(meta["lots"])})</span>'
+                             f'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;align-items:center">'
+                             f'{pills}{more}</div></div>')
             if meta["programs"]:
-                pcbs = " ".join(
-                    f'<span class="lot-cb"><input type="checkbox" id="pcb_{i}" value="{h.escape(str(p))}" checked onchange="filterChanged()"><label for="pcb_{i}">{h.escape(str(p))}</label></span>'
-                    for i, p in enumerate(meta["programs"]))
-                lots_row += (f'<br><b style="color:#7fb3d3;margin-top:8px;display:block">Filter by Program</b>'
-                             f'<div class="row">{pcbs}</div>')
+                vis_p = meta["programs"][:_SHOW_N]
+                hid_p = meta["programs"][_SHOW_N:]
+                ppills = "".join(
+                    f'<span style="{_PILL};color:#95a5a6">{h.escape(str(p))}</span>'
+                    for p in vis_p)
+                pmore = ""
+                if hid_p:
+                    more_ppills = "".join(
+                        f'<span style="{_PILL};color:#95a5a6">{h.escape(str(p))}</span>'
+                        for p in hid_p)
+                    pmore = (f'<span id="progs-hidden" style="display:none;flex-wrap:wrap;gap:4px">'
+                             f'{more_ppills}</span>'
+                             f'<button onclick="toggleExpandProgs()" id="progs-xbtn" '
+                             f'data-more="+{len(hid_p)} more" style="{_BTN_STYLE}">+{len(hid_p)} more</button>')
+                lots_row += (f'<div>'
+                             f'<span style="color:#7fb3d3;font-size:11px;font-weight:bold">'
+                             f'Test Programs</span>'
+                             f'&nbsp;<span style="color:#5d7a99;font-size:11px">({len(meta["programs"])})</span>'
+                             f'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;align-items:center">'
+                             f'{ppills}{pmore}</div></div>')
             lots_row += "</div>"
         return (f'<h1>Correlation Report</h1><div class="cards">{cards}</div>{lots_row}'
                 f'<div id="js-status" style="font-size:11px;color:#2ecc71;margin:4px 0 8px;min-height:14px"></div>'
@@ -3275,15 +3909,18 @@ const strengthLabel=r=>{const a=Math.abs(r);if(a<0.05)return'<span style="color:
 const strengthLabelMI=mi=>{if(mi<0.001)return'<span style="color:#5d7a99">Negligible</span>';if(mi<0.005)return'<span style="color:#7fb3d3">Very weak</span>';if(mi<0.02)return'<span style="color:#f39c12">Weak ✓</span>';if(mi<0.05)return'<span style="color:#2ecc71">Moderate ✓✓</span>';return'<span style="color:#3498db;font-weight:bold">Strong ✓✓✓</span>';};
 const strengthText=r=>{const a=Math.abs(r||0);if(a<0.05)return'Negligible';if(a<0.10)return'Very weak';if(a<0.30)return'Weak';if(a<0.50)return'Moderate';return'Strong';};
 const strengthTextMI=mi=>{if(mi<0.001)return'Negligible';if(mi<0.005)return'Very weak';if(mi<0.02)return'Weak';if(mi<0.05)return'Moderate';return'Strong';};
+function dTier(d){const a=Math.abs(d||0);if(a>=0.8)return{label:'large',color:'#e74c3c'};if(a>=0.5)return{label:'medium',color:'#e67e22'};if(a>=0.2)return{label:'small',color:'#f1c40f'};return{label:'negligible',color:'#5d7a99'};}
+function ratioTier(x){if(x==null)return{label:'',color:'#5d7a99'};const d=Math.abs(x-1);if(d>=0.5)return{label:'strong',color:'#e74c3c'};if(d>=0.2)return{label:'notable',color:'#e67e22'};if(d>=0.05)return{label:'mild',color:'#f1c40f'};return{label:'flat',color:'#5d7a99'};}
+function rTier(r){const a=Math.abs(r||0);if(a>=0.5)return{label:'strong',color:'#e74c3c'};if(a>=0.3)return{label:'moderate',color:'#e67e22'};if(a>=0.1)return{label:'weak',color:'#f1c40f'};return{label:'negligible',color:'#5d7a99'};}
+function dirWord(r){return(r||0)<0?'lower \u2192 more fails':'higher \u2192 more fails';}
 const fmtP=p=>p==null?'':'p='+p.toExponential(2).replace(/e([+-])0+(\d)/,'e$1$2');
 const fmtN=n=>n.toLocaleString();
 const absR=row=>row.r!==undefined?Math.abs(row.r):(row.mi||0);
 const scoreLabel=(row,m)=>{if(m==='mutual_info')return'MI='+fmt(row.mi);const arrow=row.r>0?'up':'dn';return(row.r>0?'+':'')+fmt(row.r)+' '+arrow;};
 const rClass=(row,m)=>{if(m==='mutual_info')return'r-pos';return row.r>0.001?'r-pos':row.r<-0.001?'r-neg':'r-neu';};
 const dirSpan=(row,m)=>m==='mutual_info'?'':(row.r>0?'<span style="color:#2ecc71">positive</span>':'<span style="color:#e74c3c">negative</span>');
-function getActiveLots(){return[...document.querySelectorAll('#filters input[id^=lcb_]:checked')].map(cb=>cb.value);}
-function selAllLots(v){document.querySelectorAll('#filters input[id^=lcb_]').forEach(cb=>{cb.checked=v});filterChanged();}
-function filterChanged(){const m=activeMethod();if(m)refreshScatter(m,activeParam[m]);}
+function toggleExpandLots(){const h=document.getElementById('lots-hidden'),b=document.getElementById('lots-xbtn');if(!h||!b)return;const open=h.style.display!=='none';h.style.display=open?'none':'inline-flex';h.style.flexWrap='wrap';h.style.gap='4px';b.textContent=open?(b.dataset.more||'more'):'Show less';}
+function toggleExpandProgs(){const h=document.getElementById('progs-hidden'),b=document.getElementById('progs-xbtn');if(!h||!b)return;const open=h.style.display!=='none';h.style.display=open?'none':'inline-flex';h.style.flexWrap='wrap';h.style.gap='4px';b.textContent=open?(b.dataset.more||'more'):'Show less';}
 let activeParam={};
 function activeMethod(){const el=document.querySelector('.tab-btn.active');return el?el.dataset.method:null;}
 function showTab(method){document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.method===method));document.querySelectorAll('.tab-pane').forEach(p=>p.classList.toggle('active',p.id==='pane-'+method));if(!activeParam[method]){const rows=CORR[method]||[];activeParam[method]=rows.length?rows[0].param:null;}refreshScatter(method,activeParam[method]);}
@@ -3292,7 +3929,7 @@ function buildTabs(){const bar=document.getElementById('tab-bar');const area=doc
 function paramGroup(p){const u=p.toUpperCase();if(u.startsWith('TPI_BIN::'))return'TPI_BIN';if(u.startsWith('TPI_ADTL::'))return'TPI_ADTL';if(u.startsWith('UPM_')){const s=p.slice(4);const mx=s.match(/^(\w+)/);return mx?mx[1]:'UPM';}const pt=p.split('_');return pt.length>1?pt[0]:p;}
 function toggleGroup(gid){const rs=document.querySelectorAll('[data-gid="'+gid+'"]');const hdr=document.querySelector('[data-grphdr="'+gid+'"]');const tog=hdr?hdr.querySelector('.grp-toggle'):null;const hidden=rs.length&&rs[0].style.display==='none';rs.forEach(r=>r.style.display=hidden?'':'none');if(tog)tog.textContent=hidden?'▼':'▶';}
 function toggleAllGroups(m,open){document.querySelectorAll('#tbl-'+m+' [data-grphdr]').forEach(hdr=>{const gid=hdr.dataset.grphdr;const rs=document.querySelectorAll('[data-gid="'+gid+'"]');rs.forEach(r=>r.style.display=open?'':'none');const tog=hdr.querySelector('.grp-toggle');if(tog)tog.textContent=open?'▼':'▶';});}
-function buildPane(m){const rows=CORR[m]||[];const explain=METHOD_EXPLAIN[m]||'';const label=METHOD_LABELS[m]||m;const hasP=rows.length&&rows[0].p!==undefined;const colCount=8+(hasP?1:0)+(rows.length&&rows[0].ci_lo!=null?1:0)+(rows.length&&rows[0].spread_r!==undefined?1:0);const hasCi=rows.length&&rows[0].ci_lo!=null;const groups=new Map();rows.forEach((row,i)=>{const g=paramGroup(row.param);if(!groups.has(g))groups.set(g,[]);groups.get(g).push({row,i});});let trows='';let gIdx=0;groups.forEach((items,g)=>{const gid=m+'_g'+(gIdx++);const isOpen=items.length<=2;if(items.length>1){const bestRow=items[0].row;const bestSl=m==='mutual_info'?strengthLabelMI(bestRow.mi||0):strengthLabel(bestRow.r||0);trows+=`<tr class="grp-hdr" data-grphdr="${gid}" onclick="toggleGroup('${gid}')" style="cursor:pointer;background:#0f1d30"><td colspan="${colCount}" style="padding:4px 8px;font-weight:bold;color:#7fb3d3;user-select:none"><span class="grp-toggle" style="margin-right:6px;font-size:11px;display:inline-block;width:12px">${isOpen?'▼':'▶'}</span>${escQ(g)} <span style="color:#445566;font-weight:normal;font-size:11px">(${items.length})</span>&nbsp;&nbsp;<span style="font-size:11px;font-weight:normal">${bestSl}</span></td></tr>`;}items.forEach(({row,i})=>{const sc=scoreLabel(row,m);const pStr=hasP?`<td class="pval">${fmtP(row.p)}</td>`:'';const sl=m==='mutual_info'?strengthLabelMI(row.mi||0):strengthLabel(row.r||0);const ciStr=hasCi&&row.ci_lo!=null?`<td style="color:#556677;font-size:11px">[${row.ci_lo.toFixed(2)},${row.ci_hi.toFixed(2)}]</td>`:(hasCi?'<td></td>':'');const ds=(!isOpen&&items.length>1)?'display:none':'';trows+=`<tr onclick="selectRow(this,'${escQ(m)}','${escQ(row.param)}')" data-param="${escQ(row.param)}" data-gid="${gid}" style="${ds}"><td>${i+1}</td><td title="${escQ(row.param)}">${row.param.length>45?row.param.slice(0,44)+'…':row.param}</td><td class="${rClass(row,m)}">${sc}</td><td>${fmt(absR(row))}</td><td>${sl}</td><td>${fmtN(row.n)}</td><td>${dirSpan(row,m)}</td><td>${row.signal?'<span class="badge badge-'+(row.signal||'').toLowerCase().replace(/ \/ /g,'-').replace(/ /g,'-')+'">'+(row.signal||'')+'</span>':''}</td>${pStr}${ciStr}${(row.spread_r!==undefined)?`<td style="color:${Math.abs(row.spread_r||0)>=0.2?'#1abc9c':'#5d7a99'}" title="within-wafer non-uniformity correlation">${row.spread_r==null?'&ndash;':(row.spread_r>0?'+':'')+row.spread_r.toFixed(3)}</td>`:''}</tr>${row.note?`<tr class="note-row" data-gid="${gid}" style="${ds}"><td colspan="${colCount}"><em>${escQ(row.note||'')}</em></td></tr>`:''}`;});});const pHdr=hasP?'<th>p-value</th>':'';const _dupCnt=(CORR[m]||[]).filter(r=>r.is_duplicate_stat).length;const _dupBanner=_dupCnt?'<div class="warn-banner">⚠ '+_dupCnt+' parameters share identical statistics — likely duplicated, derived, or strongly coupled. Review before selecting root-cause candidates.</div>':'';return`<div class="explain" style="padding:0;border:none;background:none">${explain?`<details class="help"><summary>How to read this method</summary><div class="help-body">${explain}</div></details>`:''}</div><div class="split"><div class="tbl-wrap">${_dupBanner}<h3>${label} (${rows.length}) - click row to scatter &nbsp;<button onclick="toggleAllGroups('${m}',true)" style="font-size:11px;padding:2px 7px;background:#1a2e45;color:#7fb3d3;border:1px solid #2a4060;border-radius:3px;cursor:pointer">▼ All</button> <button onclick="toggleAllGroups('${m}',false)" style="font-size:11px;padding:2px 7px;background:#1a2e45;color:#7fb3d3;border:1px solid #2a4060;border-radius:3px;cursor:pointer">▶ All</button></h3><table id="tbl-${m}"><thead><tr><th>#</th><th>Parameter</th><th>Score</th><th>|Score|</th><th>Strength</th><th>n</th><th>Direction</th><th>Signal</th>${pHdr}${hasCi?'<th title="95% CI via Fisher z-transform">95% CI</th>':''}${(rows.length&&rows[0].spread_r!==undefined)?'<th title="Within-wafer die-to-die std vs %fail — non-uniformity signal">Spread r</th>':''}</tr></thead><tbody>${trows}</tbody></table></div><div><h3>Top 20</h3><div id="bar-${m}" style="height:360px"></div></div></div><div class="scatter-wrap"><h3 id="scatter-title-${m}">Distribution</h3><div id="scatter-${m}" style="height:400px"></div></div>`;}
+function buildPane(m){const rows=CORR[m]||[];const explain=METHOD_EXPLAIN[m]||'';const label=METHOD_LABELS[m]||m;const hasP=rows.length&&rows[0].p!==undefined;const colCount=8+(hasP?1:0)+(rows.length&&rows[0].ci_lo!=null?1:0)+(rows.length&&rows[0].spread_r!==undefined?1:0);const hasCi=rows.length&&rows[0].ci_lo!=null;const groups=new Map();rows.forEach((row,i)=>{const g=paramGroup(row.param);if(!groups.has(g))groups.set(g,[]);groups.get(g).push({row,i});});let trows='';let gIdx=0;groups.forEach((items,g)=>{const gid=m+'_g'+(gIdx++);const isOpen=items.length<=2;if(items.length>1){const bestRow=items[0].row;const bestSl=m==='mutual_info'?strengthLabelMI(bestRow.mi||0):strengthLabel(bestRow.r||0);trows+=`<tr class="grp-hdr" data-grphdr="${gid}" onclick="toggleGroup('${gid}')" style="cursor:pointer;background:#0f1d30"><td colspan="${colCount}" style="padding:4px 8px;font-weight:bold;color:#7fb3d3;user-select:none"><span class="grp-toggle" style="margin-right:6px;font-size:11px;display:inline-block;width:12px">${isOpen?'▼':'▶'}</span>${escQ(g)} <span style="color:#445566;font-weight:normal;font-size:11px">(${items.length})</span>&nbsp;&nbsp;<span style="font-size:11px;font-weight:normal">${bestSl}</span></td></tr>`;}items.forEach(({row,i})=>{const sc=scoreLabel(row,m);const pStr=hasP?`<td class="pval">${fmtP(row.p)}</td>`:'';const sl=m==='mutual_info'?strengthLabelMI(row.mi||0):((['pearson','spearman'].includes(m))?(t=>`<span style="color:${t.color};font-weight:bold">${t.label}</span>`)(dTier(row.d!=null?row.d:0)):(t=>`<span style="color:${t.color}">${t.label}</span>`)(rTier(row.r||0)));const ciStr=hasCi&&row.ci_lo!=null?`<td style="color:#556677;font-size:11px">[${row.ci_lo.toFixed(2)},${row.ci_hi.toFixed(2)}]</td>`:(hasCi?'<td></td>':'');const ds=(!isOpen&&items.length>1)?'display:none':'';trows+=`<tr onclick="selectRow(this,'${escQ(m)}','${escQ(row.param)}')" data-param="${escQ(row.param)}" data-gid="${gid}" style="${ds}"><td>${i+1}</td><td title="${escQ(row.param)}">${row.param.length>45?row.param.slice(0,44)+'…':row.param}</td><td class="${rClass(row,m)}" style="${(['pearson','spearman'].includes(m)&&row.d!=null)?'color:'+dTier(row.d).color:''}">${sc}</td><td>${fmt(absR(row))}</td><td>${sl}</td><td>${fmtN(row.n)}</td><td>${dirSpan(row,m)}</td><td>${row.signal?'<span class="badge badge-'+(row.signal||'').toLowerCase().replace(/ \/ /g,'-').replace(/ /g,'-')+'">'+(row.signal||'')+'</span>':''}</td>${pStr}${ciStr}${(row.spread_r!==undefined)?`<td style="color:${Math.abs(row.spread_r||0)>=0.2?'#1abc9c':'#5d7a99'}" title="within-wafer non-uniformity correlation">${row.spread_r==null?'&ndash;':(row.spread_r>0?'+':'')+row.spread_r.toFixed(3)}</td>`:''}</tr>${row.note?`<tr class="note-row" data-gid="${gid}" style="${ds}"><td colspan="${colCount}"><em>${escQ(row.note||'')}</em></td></tr>`:''}`;});});const pHdr=hasP?'<th>p-value</th>':'';const _dupCnt=(CORR[m]||[]).filter(r=>r.is_duplicate_stat).length;const _dupBanner=_dupCnt?'<div class="warn-banner">⚠ '+_dupCnt+' parameters share identical statistics — likely duplicated, derived, or strongly coupled. Review before selecting root-cause candidates.</div>':'';return`<div class="explain" style="padding:0;border:none;background:none">${explain?`<details class="help"><summary>How to read this method</summary><div class="help-body">${explain}</div></details>`:''}</div><div class="split"><div class="tbl-wrap">${_dupBanner}<h3>${label} (${rows.length}) - click row to scatter &nbsp;<button onclick="toggleAllGroups('${m}',true)" style="font-size:11px;padding:2px 7px;background:#1a2e45;color:#7fb3d3;border:1px solid #2a4060;border-radius:3px;cursor:pointer">▼ All</button> <button onclick="toggleAllGroups('${m}',false)" style="font-size:11px;padding:2px 7px;background:#1a2e45;color:#7fb3d3;border:1px solid #2a4060;border-radius:3px;cursor:pointer">▶ All</button></h3>${['pearson','spearman'].includes(m)?`<div style="font-size:11px;color:#8ba0b8;margin:6px 0 4px;padding:5px 10px;background:#0a1520;border-left:3px solid #e67e22">Note: for rare bins, Pearson r is compressed toward 0. Judge strength by <b>Cohen d</b> (<span style="color:#5d7a99">negligible</span> &lt;0.2 \u00b7 <span style="color:#f1c40f">small</span> 0.2&ndash;0.5 \u00b7 <span style="color:#e67e22">medium</span> 0.5&ndash;0.8 \u00b7 <span style="color:#e74c3c">large</span> &gt;0.8) and fail/pass ratio, not by r.</div>`:''}<table id="tbl-${m}"><thead><tr><th>#</th><th>Parameter</th><th>Score</th><th>|Score|</th><th>Strength</th><th>n</th><th>Direction</th><th>Signal</th>${pHdr}${hasCi?'<th title="95% CI via Fisher z-transform">95% CI</th>':''}${(rows.length&&rows[0].spread_r!==undefined)?'<th title="Within-wafer die-to-die std vs %fail — non-uniformity signal">Spread r</th>':''}</tr></thead><tbody>${trows}</tbody></table></div><div><h3>Top 20</h3><div id="bar-${m}" style="height:360px"></div></div></div><div class="scatter-wrap"><h3 id="scatter-title-${m}">Distribution</h3><div id="scatter-${m}" style="height:400px"></div></div>`;}
 function escQ(s){return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function selectRow(tr,m,param){document.querySelectorAll(`#tbl-${m} tr`).forEach(r=>r.classList.remove('selected'));tr.classList.add('selected');activeParam[m]=param;refreshScatter(m,param);}
 function renderBarChart(m){const rows=(CORR[m]||[]).slice(0,20);if(!rows.length)return;const x=rows.map(r=>absR(r)).reverse();const y=rows.map(r=>r.param.length>35?r.param.slice(0,34)+'\u2026':r.param).reverse();const colors=rows.map(r=>r.r===undefined?'#3498db':r.r>0?'#2ecc71':'#e74c3c').reverse();const strength=rows.map(r=>m==='mutual_info'?strengthTextMI(r.mi||0):strengthText(r.r||0)).reverse();Plotly.newPlot('bar-'+m,[{type:'bar',orientation:'h',x,y,marker:{color:colors},customdata:strength,hovertemplate:'<b>%{y}</b><br>|score|=%{x:.4f}<br>Strength: %{customdata}<extra></extra>'}],{paper_bgcolor:'#162840',plot_bgcolor:'#0d1b26',font:{color:'#95a5a6',size:11},margin:{l:20,r:20,t:10,b:30},xaxis:{color:'#5d6d7e',gridcolor:'#1e3a5f'},yaxis:{color:'#95a5a6',automargin:true}},{responsive:true,displayModeBar:false});const _bg=document.getElementById('bar-'+m);const _names=rows.map(r=>r.param).reverse();if(_bg&&_bg.on){_bg.on('plotly_click',function(ev){const pt=ev.points&&ev.points[0];if(!pt)return;const idx=(pt.pointIndex!=null?pt.pointIndex:pt.pointNumber);const param=_names[idx];if(param==null)return;activeParam[m]=param;try{refreshScatter(m,param);}catch(e){}document.querySelectorAll('#tbl-'+m+' tbody tr').forEach(r=>{r.classList.remove('selected');if(r.getAttribute('data-param')===param)r.classList.add('selected');});const sc=document.getElementById('scatter-'+m);if(sc&&sc.scrollIntoView)sc.scrollIntoView({behavior:'smooth',block:'nearest'});});_bg.style.cursor='pointer';}}
@@ -3301,9 +3938,9 @@ function refreshScatterLot(param){LOT_RECORDS&&LOT_RECORDS.forEach(r=>{if(!r['_L
 function refreshScatterWafer(param){refreshScatterAggregate(param,WAFER_RECORDS,'scatter-pcm_wafer','scatter-title-pcm_wafer','wafer');}
 function refreshScatterDev(param){if(!LOT_RECORDS||!param){document.getElementById('scatter-pcm_dev').innerHTML='<div class="no-data">No data</div>';return;}const med=(arr=>{const s=[...arr].sort((a,b)=>a-b);return s.length%2?s[~~(s.length/2)]:(s[s.length/2-1]+s[s.length/2])/2;});const xs=[],ys=[],texts=[];LOT_RECORDS.forEach(row=>{const x=row[param],y=row['_TARGET'];if(x==null||y==null)return;xs.push(+x);ys.push(+(y*100).toFixed(2));texts.push(String(row['_LABEL']||row[META.lot_col]||''));});if(!xs.length){document.getElementById('scatter-pcm_dev').innerHTML='<div class="no-data">No data</div>';return;}const m=med(xs);const devs=xs.map(x=>Math.abs(x-m));const xLabel=(param.length>35?param.slice(0,34)+'\u2026':param);const nBins=Math.max(3,Math.min(7,Math.floor(devs.length/2)));const dMax=Math.max(...devs)||1;const bw=dMax/nBins;const bins=Array.from({length:nBins},(_,i)=>({cx:(i+0.5)*bw,ys:[]}));devs.forEach((d,i)=>{const bi=Math.min(nBins-1,Math.floor(d/bw));bins[bi].ys.push(ys[i]);});const bxs=[],bys=[];bins.forEach(b=>{if(b.ys.length){bxs.push(b.cx);bys.push(b.ys.reduce((a,v)=>a+v,0)/b.ys.length);}});const el=document.getElementById('scatter-pcm_dev');Plotly.newPlot(el,[{type:'scatter',mode:'markers+text',x:devs,y:ys,text:texts,textposition:'top center',name:'lots',marker:{color:'#1abc9c',size:9,line:{color:'#17a589',width:1}},hovertemplate:'<b>%{text}</b><br>|x−median|=%{x:.6f}<br>% Hits: %{y:.2f}%<extra></extra>'},{type:'scatter',mode:'lines+markers',x:bxs,y:bys,name:'bin mean',line:{color:'#e74c3c',width:2,dash:'dot'},marker:{color:'#e74c3c',size:7},hovertemplate:'|dev| bin: %{x:.4f}<br>mean: %{y:.2f}%<extra>bin mean</extra>'}],{paper_bgcolor:'#162840',plot_bgcolor:'#0d1b26',font:{color:'#95a5a6',size:11},margin:{l:60,r:20,t:40,b:60},xaxis:{title:'|'+xLabel+' − median|',color:'#5d6d7e',gridcolor:'#1e3a5f'},yaxis:{title:'% Target Hits per Lot',color:'#5d6d7e',gridcolor:'#1e3a5f'},legend:{bgcolor:'#0d1b26',bordercolor:'#1e3a5f',borderwidth:1,orientation:'h',y:-0.22},hovermode:'closest'},{responsive:true,displayModeBar:true,modeBarButtonsToRemove:['lasso2d','select2d']});document.getElementById('scatter-title-pcm_dev').textContent='Deviation: |'+param+' − median| vs % Hits (n='+devs.length+' lots)';}
 function refreshScatterWdev(param){const el=document.getElementById('scatter-pcm_wdev');if(!el)return;if(typeof WAFER_TREND_RECORDS==='undefined'||!WAFER_TREND_RECORDS||!param){el.innerHTML='<div class="no-data">No wafer-level records (needs IDW per-wafer PCM).</div>';return;}const lotKey=META.lot_col;const byLot={};WAFER_TREND_RECORDS.forEach(r=>{const x=+r[param];if(isNaN(x))return;const lk=String(r[lotKey]||'?');if(!byLot[lk])byLot[lk]=[];byLot[lk].push(x);});const med=arr=>{const s=[...arr].sort((a,b)=>a-b);return s.length%2?s[(s.length-1)/2]:(s[s.length/2-1]+s[s.length/2])/2;};const lotMed={};Object.keys(byLot).forEach(lk=>{if(byLot[lk].length>=4)lotMed[lk]=med(byLot[lk]);});const xs=[],ys=[],txt=[];WAFER_TREND_RECORDS.forEach(r=>{const x=+r[param],y=r['_TARGET'];const lk=String(r[lotKey]||'?');if(isNaN(x)||y==null||!(lk in lotMed))return;xs.push(Math.abs(x-lotMed[lk]));ys.push(+(y*100).toFixed(3));txt.push(String(r['_LABEL']||lk));});if(!xs.length){el.innerHTML='<div class="no-data">No qualifying wafers (need lots with &ge;4 wafers and per-die PCM variation).</div>';return;}const xLabel=param.length>34?param.slice(0,33)+'\u2026':param;const nB=Math.max(3,Math.min(8,Math.floor(xs.length/2)));const dMax=Math.max(...xs)||1;const bw=dMax/nB;const bins=Array.from({length:nB},(_,i)=>({cx:(i+0.5)*bw,ys:[]}));xs.forEach((d,i)=>{const bi=Math.min(nB-1,Math.floor(d/bw));bins[bi].ys.push(ys[i]);});const bx=[],by=[];bins.forEach(b=>{if(b.ys.length){bx.push(b.cx);by.push(b.ys.reduce((a,v)=>a+v,0)/b.ys.length);}});Plotly.newPlot(el,[{type:'scatter',mode:'markers',x:xs,y:ys,text:txt,marker:{color:'#1abc9c',size:8,line:{color:'#0d1b26',width:1}},hovertemplate:'<b>%{text}</b><br>|wafer\u2212lotmed|=%{x:.5f}<br>Fail: %{y:.3f}%<extra></extra>',showlegend:false},{type:'scatter',mode:'lines+markers',x:bx,y:by,line:{color:'#e74c3c',width:2,dash:'dot'},marker:{color:'#e74c3c',size:6},hovertemplate:'bin: %{x:.4f}<br>mean: %{y:.3f}%<extra>bin mean</extra>',showlegend:false}],{paper_bgcolor:'#162840',plot_bgcolor:'#0d1b26',font:{color:'#95a5a6',size:11},margin:{l:60,r:20,t:20,b:55},xaxis:{title:'|'+xLabel+' \u2212 lot median|',color:'#5d6d7e',gridcolor:'#1e3a5f'},yaxis:{title:'% Fail per Wafer',color:'#5d6d7e',gridcolor:'#1e3a5f'},hovermode:'closest'},{responsive:true,displayModeBar:true,modeBarButtonsToRemove:['lasso2d','select2d']});const tt=document.getElementById('scatter-title-pcm_wdev');if(tt)tt.textContent='Within-lot wafer deviation: '+param+' (n='+xs.length+' wafers)';}
-function refreshScatter(m,param){if(m==='pcm_lot'){refreshScatterLot(param);return;}if(m==='pcm_wafer'){refreshScatterWafer(param);return;}if(m==='pcm_dev'){refreshScatterDev(param);return;}if(m==='pcm_wdev'){refreshScatterWdev(param);return;}const el=document.getElementById('scatter-'+m);if(!el)return;if(!param){el.innerHTML='<div class="no-data">Select a row to see scatter</div>';return;}const activeLots=new Set(getActiveLots());const buckets={0:[],1:[]};SCATTER_RECORDS.forEach(row=>{const x=row[param],y=row['_TARGET'];if(x===null||x===undefined||y===null||y===undefined)return;const lot=LOT_COL?String(row[LOT_COL]||'unknown'):'all';if(LOT_COL&&!activeLots.has(lot))return;buckets[y==1?1:0].push(+x);});const n0=buckets[0].length,n1=buckets[1].length;if(n0+n1===0){Plotly.purge(el);el.innerHTML='<div class="no-data">No data</div>';return;}const mean=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;const std=(arr,mu)=>arr.length<2?0:Math.sqrt(arr.reduce((s,v)=>s+(v-mu)**2,0)/(arr.length-1));const m0=mean(buckets[0]),m1=mean(buckets[1]);const s0=m0!==null?std(buckets[0],m0):0,s1=m1!==null?std(buckets[1],m1):0;const allX=buckets[0].concat(buckets[1]);const xMin=Math.min(...allX),xMax=Math.max(...allX);const binSize=(xMax-xMin)/40||1;const xLabel=param.length>35?param.slice(0,34)+'\u2026':param;const traces=[];if(n0)traces.push({type:'histogram',x:buckets[0],name:`Pass/Other (0) n=${n0.toLocaleString()}`,histnorm:'percent',xbins:{start:xMin,end:xMax+binSize,size:binSize},marker:{color:'rgba(52,152,219,0.75)',line:{color:'#2980b9',width:0.5}},xaxis:'x',yaxis:'y',hovertemplate:'%{x:.4f}<br>%{y:.1f}%<extra>Pass</extra>'});if(n1)traces.push({type:'histogram',x:buckets[1],name:`Bin Hit (1) n=${n1.toLocaleString()}`,histnorm:'percent',xbins:{start:xMin,end:xMax+binSize,size:binSize},marker:{color:'rgba(231,76,60,0.80)',line:{color:'#c0392b',width:0.5}},xaxis:'x2',yaxis:'y2',hovertemplate:'%{x:.4f}<br>%{y:.1f}%<extra>Bin Hit</extra>'});const shapes=[];if(m0!==null)shapes.push({type:'line',xref:'x',yref:'paper',x0:m0,x1:m0,y0:0,y1:1,line:{color:'#5dade2',width:2,dash:'dot'}});if(m1!==null)shapes.push({type:'line',xref:'x2',yref:'paper',x0:m1,x1:m1,y0:0,y1:1,line:{color:'#e74c3c',width:2,dash:'dot'}});const annotations=[];if(m0!==null)annotations.push({xref:'x',yref:'paper',x:m0,y:0.97,showarrow:false,text:`mean=${m0.toFixed(4)}<br>sd=${s0.toFixed(4)}`,font:{size:10,color:'#5dade2'},align:'left',bgcolor:'rgba(10,21,32,0.75)',borderpad:3});if(m1!==null)annotations.push({xref:'x2',yref:'paper',x:m1,y:0.97,showarrow:false,text:`mean=${m1.toFixed(4)}<br>sd=${s1.toFixed(4)}`,font:{size:10,color:'#e74c3c'},align:'left',bgcolor:'rgba(10,21,32,0.75)',borderpad:3});if(m0!==null&&m1!==null)annotations.push({xref:'paper',yref:'paper',x:0.5,y:1.08,showarrow:false,text:`delta mean = ${(m1-m0).toFixed(4)} (${s0>0?((m1-m0)/s0).toFixed(2):'n/a'} sd of pass)`,font:{size:11,color:'#f39c12'},align:'center'});const axCommon={range:[xMin-binSize*0.5,xMax+binSize*0.5],color:'#5d6d7e',gridcolor:'#1e3a5f',zeroline:false};Plotly.newPlot(el,traces,{paper_bgcolor:'#162840',plot_bgcolor:'#0d1b26',font:{color:'#95a5a6',size:11},margin:{l:50,r:20,t:42,b:50},grid:{rows:1,columns:2,pattern:'independent',xgap:0.10},xaxis:{...axCommon,title:xLabel},xaxis2:{...axCommon,title:xLabel},yaxis:{title:'% of group',color:'#5d6d7e',gridcolor:'#1e3a5f'},yaxis2:{title:'% of group',color:'#5d6d7e',gridcolor:'#1e3a5f'},shapes,annotations,legend:{bgcolor:'#0d1b26',bordercolor:'#1e3a5f',borderwidth:1,orientation:'h',y:-0.18,x:0},hovermode:'closest'},{responsive:true,displayModeBar:true,modeBarButtonsToRemove:['lasso2d','select2d','toImage']});const sub=(m0!==null&&m1!==null)?`  mean(pass)=${m0.toFixed(4)}  mean(bin)=${m1.toFixed(4)}  delta=${(m1-m0).toFixed(4)}`:'';document.getElementById('scatter-title-'+m).textContent=`Distribution: ${param}${sub}`;}
+function refreshScatter(m,param){if(m==='pcm_lot'){refreshScatterLot(param);return;}if(m==='pcm_wafer'){refreshScatterWafer(param);return;}if(m==='pcm_dev'){refreshScatterDev(param);return;}if(m==='pcm_wdev'){refreshScatterWdev(param);return;}const el=document.getElementById('scatter-'+m);if(!el)return;if(!param){el.innerHTML='<div class="no-data">Select a row to see scatter</div>';return;}const buckets={0:[],1:[]};SCATTER_RECORDS.forEach(row=>{const x=row[param],y=row['_TARGET'];if(x===null||x===undefined||y===null||y===undefined)return;buckets[y==1?1:0].push(+x);});const n0=buckets[0].length,n1=buckets[1].length;if(n0+n1===0){Plotly.purge(el);el.innerHTML='<div class="no-data">No data</div>';return;}const mean=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;const std=(arr,mu)=>arr.length<2?0:Math.sqrt(arr.reduce((s,v)=>s+(v-mu)**2,0)/(arr.length-1));const m0=mean(buckets[0]),m1=mean(buckets[1]);const s0=m0!==null?std(buckets[0],m0):0,s1=m1!==null?std(buckets[1],m1):0;const allX=buckets[0].concat(buckets[1]);const xMin=Math.min(...allX),xMax=Math.max(...allX);const binSize=(xMax-xMin)/40||1;const xLabel=param.length>35?param.slice(0,34)+'\u2026':param;const traces=[];if(n0)traces.push({type:'histogram',x:buckets[0],name:`Pass/Other (0) n=${n0.toLocaleString()}`,histnorm:'percent',xbins:{start:xMin,end:xMax+binSize,size:binSize},marker:{color:'rgba(52,152,219,0.75)',line:{color:'#2980b9',width:0.5}},xaxis:'x',yaxis:'y',hovertemplate:'%{x:.4f}<br>%{y:.1f}%<extra>Pass</extra>'});if(n1)traces.push({type:'histogram',x:buckets[1],name:`Bin Hit (1) n=${n1.toLocaleString()}`,histnorm:'percent',xbins:{start:xMin,end:xMax+binSize,size:binSize},marker:{color:'rgba(231,76,60,0.80)',line:{color:'#c0392b',width:0.5}},xaxis:'x2',yaxis:'y2',hovertemplate:'%{x:.4f}<br>%{y:.1f}%<extra>Bin Hit</extra>'});const shapes=[];if(m0!==null)shapes.push({type:'line',xref:'x',yref:'paper',x0:m0,x1:m0,y0:0,y1:1,line:{color:'#5dade2',width:2,dash:'dot'}});if(m1!==null)shapes.push({type:'line',xref:'x2',yref:'paper',x0:m1,x1:m1,y0:0,y1:1,line:{color:'#e74c3c',width:2,dash:'dot'}});const annotations=[];if(m0!==null)annotations.push({xref:'x',yref:'paper',x:m0,y:0.97,showarrow:false,text:`mean=${m0.toFixed(4)}<br>sd=${s0.toFixed(4)}`,font:{size:10,color:'#5dade2'},align:'left',bgcolor:'rgba(10,21,32,0.75)',borderpad:3});if(m1!==null)annotations.push({xref:'x2',yref:'paper',x:m1,y:0.97,showarrow:false,text:`mean=${m1.toFixed(4)}<br>sd=${s1.toFixed(4)}`,font:{size:10,color:'#e74c3c'},align:'left',bgcolor:'rgba(10,21,32,0.75)',borderpad:3});if(m0!==null&&m1!==null)annotations.push({xref:'paper',yref:'paper',x:0.5,y:1.08,showarrow:false,text:`delta mean = ${(m1-m0).toFixed(4)} (${s0>0?((m1-m0)/s0).toFixed(2):'n/a'} sd of pass)`,font:{size:11,color:'#f39c12'},align:'center'});const axCommon={range:[xMin-binSize*0.5,xMax+binSize*0.5],color:'#5d6d7e',gridcolor:'#1e3a5f',zeroline:false};Plotly.newPlot(el,traces,{paper_bgcolor:'#162840',plot_bgcolor:'#0d1b26',font:{color:'#95a5a6',size:11},margin:{l:50,r:20,t:42,b:50},grid:{rows:1,columns:2,pattern:'independent',xgap:0.10},xaxis:{...axCommon,title:xLabel},xaxis2:{...axCommon,title:xLabel},yaxis:{title:'% of group',color:'#5d6d7e',gridcolor:'#1e3a5f'},yaxis2:{title:'% of group',color:'#5d6d7e',gridcolor:'#1e3a5f'},shapes,annotations,legend:{bgcolor:'#0d1b26',bordercolor:'#1e3a5f',borderwidth:1,orientation:'h',y:-0.18,x:0},hovermode:'closest'},{responsive:true,displayModeBar:true,modeBarButtonsToRemove:['lasso2d','select2d','toImage']});const sub=(m0!==null&&m1!==null)?`  mean(pass)=${m0.toFixed(4)}  mean(bin)=${m1.toFixed(4)}  delta=${(m1-m0).toFixed(4)}`:'';document.getElementById('scatter-title-'+m).textContent=`Distribution: ${param}${sub}`;}
 function cardClick(m,param){/* die-level->pearson/spearman tab; lot-level->pcm_* tab */ const btn=document.querySelector('.tab-btn[data-method="'+m+'"]');if(btn){btn.click();}activeParam[m]=param;try{refreshScatter(m,param);}catch(e){}const pane=document.getElementById('pane-'+m);if(pane){pane.scrollIntoView({behavior:'smooth',block:'start'});const rows=pane.querySelectorAll('#tbl-'+m+' tbody tr');rows.forEach(r=>{r.classList.remove('selected');if(r.getAttribute('data-param')===param)r.classList.add('selected');});}}
-function buildSummary(){const dieMethods=['pearson','spearman'];const lotMethods=['pcm_lot','pcm_wafer','pcm_dev'];const bestByTier=(methods)=>{const best=new Map();methods.forEach(m=>{(CORR[m]||[]).forEach(row=>{const a=absR(row);if(!best.has(row.param)||a>absR(best.get(row.param).row))best.set(row.param,{param:row.param,method:m,row});});});return [...best.values()].sort((x,y)=>absR(y.row)-absR(x.row));};const card=(it,rank)=>{const row=it.row,m=it.method;const label=METHOD_LABELS[m]||m;const dir=(row.r>0)?'higher':'lower';const strong=strengthText(row.r||0);const sig=(row.q!=null)?(row.q<0.10?`<span style="color:#2ecc71">q=${row.q.toExponential(1)} \u2713</span>`:`<span style="color:#e67e22">q=${row.q.toExponential(1)} (weak after FDR)</span>`):(row.p!=null?`p=${row.p.toExponential(1)}`:'');const ci=(row.ci_lo!=null)?`95% CI [${row.ci_lo.toFixed(2)}, ${row.ci_hi.toFixed(2)}]`:'';const eff=(row.ratio!=null||row.d!=null)?`<div style="margin-top:4px;color:#f1c40f;font-size:12px">`+(row.ratio!=null?`Fail-group mean <b>${row.ratio.toFixed(2)}\u00d7</b> pass`:'')+(row.d!=null?`  \u00b7  Cohen d=<b>${row.d.toFixed(2)}</b>`:'')+`</div>`:'';const scaleNote=m.startsWith('pcm')?'lot/wafer-level':'die-level';return `<div onclick="cardClick('${m}','${escQ(it.param)}')" title="Click to open plot for this parameter" style="flex:1;min-width:260px;background:#12263c;border:1px solid #22405f;border-left:4px solid ${row.r>0?'#2ecc71':'#e74c3c'};border-radius:6px;padding:10px 14px;cursor:pointer">`+`<div style="font-size:11px;color:#5d7a99">#${rank} \u00b7 ${label} \u00b7 ${scaleNote}</div>`+`<div style="font-size:14px;color:#dfe8f2;font-weight:bold;margin:2px 0" title="${escQ(it.param)}">${it.param.length>42?it.param.slice(0,41)+'\u2026':it.param}</div>`+`<div style="font-size:13px">r = <b class="${row.r>0?'r-pos':'r-neg'}">${(row.r>0?'+':'')+(row.r||0).toFixed(3)}</b> \u00b7 higher \u21d2 <b>${dir==='higher'?'more':'fewer'} fails</b> \u00b7 ${strong}</div>`+`<div style="font-size:11px;color:#8ba0b8;margin-top:3px">${sig} &nbsp; ${ci} &nbsp; n=${fmtN(row.n)}</div>`+eff+`</div>`;};const dieTop=bestByTier(dieMethods).slice(0,5);const lotTop=bestByTier(lotMethods).slice(0,5);let H='';if(lotTop.length){H+=`<h3 style="color:#f39c12">\ud83c\udfaf Lot/Wafer-level drivers (best for rare bins \u2014 go investigate these lots)</h3><div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">`;lotTop.forEach((it,i)=>H+=card(it,i+1));H+='</div>';}if(dieTop.length){H+=`<h3 style="color:#7fb3d3">Die-level separators (effect size matters more than r here)</h3><div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">`;dieTop.forEach((it,i)=>H+=card(it,i+1));H+='</div>';}if(!H)H='<div class="no-data">No correlation results to summarize.</div>';document.getElementById('summary-area').innerHTML=H;if(META.dropped_columns&&META.dropped_columns.length){const dc=META.dropped_columns;let dH=`<details style="margin:10px 0 0 0;background:#0d1828;border:1px solid #d4a72c;border-radius:6px;padding:8px 12px"><summary style="cursor:pointer;color:#f39c12;font-size:12px;font-weight:bold">\u26a0 ${dc.length} parameter(s) removed by data-quality filter before ranking (click to expand)</summary><div style="margin-top:8px;font-size:11px;color:#c8d6e8"><table style="border-collapse:collapse;width:100%"><thead><tr><th style="padding:3px 8px;color:#5d7a99;background:#0f2030;text-align:left">Parameter</th><th style="padding:3px 8px;color:#5d7a99;background:#0f2030;text-align:left">Reason</th></tr></thead><tbody>`;dc.forEach(d=>{dH+=`<tr style="border-bottom:1px solid #1a2f45"><td style="padding:3px 8px;color:#f39c12;font-family:monospace;font-size:11px">${escQ(d.param||'')}</td><td style="padding:3px 8px;color:#7f8c8d">${escQ(d.reason||'')}</td></tr>`;});dH+=`</tbody></table></div></details>`;document.getElementById('summary-area').insertAdjacentHTML('beforeend',dH);}if(META.structural_covariates&&META.structural_covariates.length){const sc=META.structural_covariates;let sH=`<details style="margin:8px 0 0 0;background:#0d1828;border:1px solid #1e3a5f;border-radius:6px;padding:8px 12px"><summary style="cursor:pointer;color:#7fb3d3;font-size:12px;font-weight:bold">&#128205; ${sc.length} Spatial / Structural covariate(s) \u2014 not ranked with electrical params</summary><div style="margin-top:8px;font-size:11px;color:#c8d6e8"><div style="margin-bottom:6px;color:#95a5a6;line-height:1.6">These columns reflect wafer position or reticle geometry (e.g. ReticleShotRadius), not device electrical behaviour. A correlation here indicates a <b>spatial pattern</b> (edge effect, litho, CMP) \u2014 investigate with the Zone Analysis tab, not as an electrical root cause.</div><table style="border-collapse:collapse;width:100%"><thead><tr><th style="padding:3px 8px;color:#5d7a99;background:#0f2030;text-align:left">Column</th></tr></thead><tbody>`;sc.forEach(c=>{sH+=`<tr style="border-bottom:1px solid #1a2f45"><td style="padding:3px 8px;color:#7fb3d3;font-family:monospace;font-size:11px">${escQ(c)}</td></tr>`;});sH+=`</tbody></table></div></details>`;document.getElementById('summary-area').insertAdjacentHTML('beforeend',sH);}// Zone analysis summary
+function buildSummary(){const dieMethods=['pearson','spearman'];const lotMethods=['pcm_lot','pcm_wafer','pcm_dev'];const bestByTier=(methods)=>{const best=new Map();methods.forEach(m=>{(CORR[m]||[]).forEach(row=>{const a=absR(row);if(!best.has(row.param)||a>absR(best.get(row.param).row))best.set(row.param,{param:row.param,method:m,row});});});return [...best.values()].sort((x,y)=>absR(y.row)-absR(x.row));};const card=(it,rank)=>{const row=it.row,m=it.method;const label=METHOD_LABELS[m]||m;const isDie=['pearson','spearman'].includes(m);const dir=(row.r>0)?'higher':'lower';const sTier=isDie?dTier(row.d!=null?row.d:0):rTier(row.r||0);const strong=sTier.label;const strongColor=sTier.color;const sig=(row.q!=null)?(row.q<0.10?`<span style="color:#2ecc71">q=${row.q.toExponential(1)} \u2713</span>`:`<span style="color:#e67e22">q=${row.q.toExponential(1)} (weak after FDR)</span>`):(row.p!=null?`p=${row.p.toExponential(1)}`:'');const ci=(row.ci_lo!=null)?`95% CI [${row.ci_lo.toFixed(2)}, ${row.ci_hi.toFixed(2)}]`:'';const eff=(!isDie&&(row.ratio!=null||row.d!=null))?`<div style="margin-top:4px;color:#f1c40f;font-size:12px">`+(row.ratio!=null?`Fail-group mean <b>${row.ratio.toFixed(2)}\u00d7</b> pass`:'')+(row.d!=null?`  \u00b7  Cohen d=<b>${row.d.toFixed(2)}</b>`:'')+`</div>`:'';const scaleNote=m.startsWith('pcm')?'lot/wafer-level':'die-level';return `<div onclick="cardClick('${m}','${escQ(it.param)}')" title="Click to open plot for this parameter" style="flex:1;min-width:260px;background:#12263c;border:1px solid #22405f;border-left:4px solid ${row.r>0?'#2ecc71':'#e74c3c'};border-radius:6px;padding:10px 14px;cursor:pointer">`+`<div style="font-size:11px;color:#5d7a99">#${rank} \u00b7 ${label} \u00b7 ${scaleNote}</div>`+`<div style="font-size:14px;color:#dfe8f2;font-weight:bold;margin:2px 0" title="${escQ(it.param)}">${it.param.length>42?it.param.slice(0,41)+'\u2026':it.param}</div>`+`<div style="font-size:13px">${isDie?`<span style="color:${strongColor};font-weight:bold">${strong} effect</span>\u00b7${dirWord(row.r)}${row.d!=null?`\u00b7Cohen\u00a0d=<b>${row.d.toFixed(2)}</b>`:''}${row.ratio!=null?`\u00b7fails\u00a0${row.ratio.toFixed(2)}\u00d7\u00a0pass`:''}`:(`r\u00a0=\u00a0<b style="color:${strongColor}">${(row.r>0?'+':'')+(row.r||0).toFixed(3)}</b>\u00b7<span style="color:${strongColor}">${strong}</span>\u00b7${dirWord(row.r)}`)}</div>`+`<div style="font-size:11px;color:#8ba0b8;margin-top:3px">${isDie?`r=${(row.r>0?'+':'')+(row.r||0).toFixed(3)}<i style="color:#5d7a99">\u00a0(r compressed for rare bins)</i>\u00b7`:''}${sig} &nbsp; ${ci} &nbsp; n=${fmtN(row.n)}</div>`+eff+`</div>`;};const dieTop=bestByTier(dieMethods).slice(0,5);const lotTop=bestByTier(lotMethods).slice(0,5);let H='';if(lotTop.length){H+=`<h3 style="color:#f39c12">\ud83c\udfaf Lot/Wafer-level drivers (best for rare bins \u2014 go investigate these lots)</h3><div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">`;lotTop.forEach((it,i)=>H+=card(it,i+1));H+='</div>';}if(dieTop.length){H+=`<h3 style="color:#7fb3d3">Die-level separators (effect size matters more than r here)</h3><div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">`;dieTop.forEach((it,i)=>H+=card(it,i+1));H+='</div>';}if(!H)H='<div class="no-data">No correlation results to summarize.</div>';H+=`<div style="margin-top:14px;padding:8px 12px;background:#0a1520;border:1px solid #1e3a5f;border-radius:5px;font-size:11px;color:#8ba0b8"><b style="color:#9fc5e8">Strength scale:</b> <b>Die-level (Cohen d):</b> <span style="color:#5d7a99">negligible</span> &lt;0.2 &middot; <span style="color:#f1c40f">small</span> 0.2&ndash;0.5 &middot; <span style="color:#e67e22">medium</span> 0.5&ndash;0.8 &middot; <span style="color:#e74c3c">large</span> &gt;0.8. &nbsp;<b>PCM lot/wafer (r):</b> <span style="color:#f1c40f">weak</span> 0.1 &middot; <span style="color:#e67e22">moderate</span> 0.3 &middot; <span style="color:#e74c3c">strong</span> 0.5.</div>`;document.getElementById('summary-area').innerHTML=H;if(META.dropped_columns&&META.dropped_columns.length){const dc=META.dropped_columns;let dH=`<details style="margin:10px 0 0 0;background:#0d1828;border:1px solid #d4a72c;border-radius:6px;padding:8px 12px"><summary style="cursor:pointer;color:#f39c12;font-size:12px;font-weight:bold">\u26a0 ${dc.length} parameter(s) removed by data-quality filter before ranking (click to expand)</summary><div style="margin-top:8px;font-size:11px;color:#c8d6e8"><table style="border-collapse:collapse;width:100%"><thead><tr><th style="padding:3px 8px;color:#5d7a99;background:#0f2030;text-align:left">Parameter</th><th style="padding:3px 8px;color:#5d7a99;background:#0f2030;text-align:left">Reason</th></tr></thead><tbody>`;dc.forEach(d=>{dH+=`<tr style="border-bottom:1px solid #1a2f45"><td style="padding:3px 8px;color:#f39c12;font-family:monospace;font-size:11px">${escQ(d.param||'')}</td><td style="padding:3px 8px;color:#7f8c8d">${escQ(d.reason||'')}</td></tr>`;});dH+=`</tbody></table></div></details>`;document.getElementById('summary-area').insertAdjacentHTML('beforeend',dH);}if(META.structural_covariates&&META.structural_covariates.length){const sc=META.structural_covariates;let sH=`<details style="margin:8px 0 0 0;background:#0d1828;border:1px solid #1e3a5f;border-radius:6px;padding:8px 12px"><summary style="cursor:pointer;color:#7fb3d3;font-size:12px;font-weight:bold">&#128205; ${sc.length} Spatial / Structural covariate(s) \u2014 not ranked with electrical params</summary><div style="margin-top:8px;font-size:11px;color:#c8d6e8"><div style="margin-bottom:6px;color:#95a5a6;line-height:1.6">These columns reflect wafer position or reticle geometry (e.g. ReticleShotRadius), not device electrical behaviour. A correlation here indicates a <b>spatial pattern</b> (edge effect, litho, CMP) \u2014 investigate with the Zone Analysis tab, not as an electrical root cause.</div><table style="border-collapse:collapse;width:100%"><thead><tr><th style="padding:3px 8px;color:#5d7a99;background:#0f2030;text-align:left">Column</th></tr></thead><tbody>`;sc.forEach(c=>{sH+=`<tr style="border-bottom:1px solid #1a2f45"><td style="padding:3px 8px;color:#7fb3d3;font-family:monospace;font-size:11px">${escQ(c)}</td></tr>`;});sH+=`</tbody></table></div></details>`;document.getElementById('summary-area').insertAdjacentHTML('beforeend',sH);}// Zone analysis summary
 let zoneSumHtml='';
 if(ZONE_DATA&&ZONE_DATA.zone_fail_rate&&ZONE_DATA.zone_fail_rate.length){
   const zfr=ZONE_DATA.zone_fail_rate;
@@ -3439,7 +4076,7 @@ function buildAiReviewTab(){
   area.appendChild(pane);
 }
 function _aiSlimFindings(topN){
-  topN = topN || 15;
+  topN = topN || 30;
   const meta = (typeof META!=='undefined')?META:{};
   const out = {meta:{target:meta.target, n_total:meta.n_total, n_lots:(meta.lots||[]).length,
                      n_target_hits:meta.n_target_hits, hit_rate_pct:(meta.n_total?(100*(meta.n_target_hits||0)/meta.n_total):null)},
@@ -3456,15 +4093,44 @@ function _aiSlimFindings(topN){
       spread_r:(r.spread_r!=null?r.spread_r:undefined)
     }))};
   });
+  if(typeof INTRAFIELD_DATA!=='undefined' && INTRAFIELD_DATA){
+    out.intra_reticle = {
+      overall_fail_rate: INTRAFIELD_DATA.overall,
+      n_positions: INTRAFIELD_DATA.n_positions,
+      dieloc: (INTRAFIELD_DATA.cells||[]).map(c=>({loc:c.loc, fail_rate:c.fail_rate, rel_risk:c.rr, pooled_z:c.z})),
+      stratified: (INTRAFIELD_DATA.paired&&INTRAFIELD_DATA.paired.rows)
+        ? INTRAFIELD_DATA.paired.rows.map(r=>({loc:r.loc, mean_dev:r.mean_dev, z:r.z}))
+        : null,
+      consistency: INTRAFIELD_DATA.consistency || null,
+      fb_by_dieloc: (typeof INTRAFIELD_FB!=='undefined'&&INTRAFIELD_FB&&INTRAFIELD_FB.rows)
+        ? {rows: INTRAFIELD_FB.rows.map(r=>({fb:r.fb, n_hits:r.n_hits, cells:(r.cells||[]).map(c=>({loc:c.loc, z:c.z, mean_dev:c.mean_dev}))})),
+           best: INTRAFIELD_FB.best||null}
+        : null
+    };
+  }
   return out;
 }
-function _aiBuildPrompt(findings){
+function _aiZoneSummary(){
+  if(typeof ZONE_DATA==='undefined'||!ZONE_DATA||!ZONE_DATA.zone_fail_rate||!ZONE_DATA.zone_fail_rate.length)return'';
+  return'Zone fail rates: '+ZONE_DATA.zone_fail_rate.map(z=>z.zone+' '+(z.fail_rate*100).toFixed(2)+'% (n='+z.n.toLocaleString()+')').join(', ')+'.';
+}
+function _aiBuildPrompt(findings, glossaryText, zoneText){
   const m=findings.meta;
   const rate=(m.hit_rate_pct!=null)?m.hit_rate_pct.toFixed(2)+'%':'n/a';
   const rare=(m.hit_rate_pct!=null && m.hit_rate_pct<2)?' This is a RARE-EVENT regime, so prioritize effect size (Cohen d, fail ratio) and lot/wafer-level signals over tiny die-level r.':'';
   let lines=[];
   lines.push('You are a semiconductor yield-analysis expert reviewing a Sort + Etest / PCM correlation study.');
   lines.push('');
+  if(glossaryText&&glossaryText.trim()){
+    lines.push('Parameter meanings (domain context):');
+    lines.push(glossaryText.trim());
+    lines.push('');
+  }
+  if(zoneText&&zoneText.trim()){
+    lines.push('Spatial context:');
+    lines.push(zoneText.trim());
+    lines.push('');
+  }
   lines.push('Context:');
   lines.push('- Target bin: '+(m.target||'?'));
   lines.push('- Dies analyzed: '+(m.n_total!=null?m.n_total.toLocaleString():'?')+'  | Lots: '+(m.n_lots||'?')+'  | Target hits: '+(m.n_target_hits!=null?m.n_target_hits.toLocaleString():'?')+' ('+rate+').'+rare);
@@ -3474,7 +4140,7 @@ function _aiBuildPrompt(findings){
     const M=findings.methods[mk];
     lines.push('');
     lines.push('### '+M.label);
-    M.top.slice(0,10).forEach((r,i)=>{
+    M.top.slice(0,30).forEach((r,i)=>{
       let s='  '+(i+1)+'. '+r.param+'  r='+(r.r!=null?r.r.toFixed(4):'?');
       if(r.q!=null) s+='  q='+r.q.toExponential(1);
       else if(r.p!=null) s+='  p='+r.p.toExponential(1);
@@ -3486,12 +4152,45 @@ function _aiBuildPrompt(findings){
     });
   });
   lines.push('');
-  lines.push('Please write a concise EXECUTIVE SUMMARY for engineering management:');
-  lines.push('1. The 3-5 most credible drivers (prioritize q<0.10 and effect size over raw r).');
-  lines.push('2. Which lots or wafers to investigate first.');
-  lines.push('3. Explicitly flag any result where a tiny p but large q means likely noise from testing many parameters.');
-  lines.push('4. Note any groups of parameters with identical correlations (likely duplicate/collinear inputs).');
-  lines.push('5. Keep it under ~200 words, plain language, actionable.');
+  if(findings.intra_reticle){
+    const ir=findings.intra_reticle;
+    lines.push('### Intra-Reticle (die position within the reticle field)');
+    lines.push('Note: PCM/etest params are scribe-line (~1 per field) and have NO intra-field resolution, so die-position signals come only from die-level data. ReticleShotRadius is wafer position, NOT die-in-field.');
+    (ir.dieloc||[]).forEach(c=>{
+      let strat='';
+      if(ir.stratified){
+        const sr=ir.stratified.find(s=>s.loc===c.loc);
+        if(sr) strat=' stratified_z='+(sr.z!=null?sr.z.toFixed(2):'n/a');
+      }
+      lines.push('DieLoc '+c.loc+': fail '+(c.fail_rate!=null?(c.fail_rate*100).toFixed(2)+'%':'n/a')+
+        ' rel_risk '+(c.rel_risk!=null?c.rel_risk.toFixed(2):'n/a')+'x'+
+        ' pooled_z '+(c.pooled_z!=null?c.pooled_z.toFixed(2):'n/a')+strat);
+    });
+    if(ir.consistency){
+      const co=ir.consistency;
+      lines.push('Consistency: DieLoc '+(co.worst_loc||'?')+' worst-ranked in '+(co.agree!=null?co.agree:'?')+'/'+(co.n_views!=null?co.n_views:'?')+' views.');
+    }
+    if(ir.fb_by_dieloc&&ir.fb_by_dieloc.best){
+      const b=ir.fb_by_dieloc.best;
+      lines.push('Strongest FB x DieLoc: FB '+(b.fb||'?')+' at DieLoc '+(b.loc||'?')+
+        ' (z='+(b.z!=null?b.z.toFixed(2):'n/a')+', +'+(b.mean_dev!=null?(b.mean_dev*100).toFixed(2)+'%':'n/a')+').');
+    }
+    lines.push('');
+  }
+  lines.push('Please produce the following sections:');
+  lines.push('');
+  lines.push('(A) A markdown table with columns: Driver | Level | Evidence (r, q, effect) | Physical hypothesis | Recommended action');
+  lines.push('    Include the top credible drivers only (q<0.10 or strong effect size). Use the parameter meanings above to fill Physical hypothesis.');
+  lines.push('');
+  lines.push('(B) Investigate first — list the specific lots or wafers (by ID if visible in the data) that are most likely to explain the failure, and why.');
+  lines.push('');
+  lines.push('(C) Likely noise — explicitly call out any result where p is tiny but q is large (>0.20), meaning it is probably a false positive from testing many parameters simultaneously.');
+  lines.push('');
+  lines.push('(D) Collinear / duplicate inputs — note any groups of parameters that share nearly identical correlations (same r/p/q rounded), indicating they are derived from the same underlying signal and should not be double-counted.');
+  lines.push('');
+  lines.push('(E) Failure-mode interpretation — one paragraph explaining the most likely physical failure mechanism given all of the above, including any spatial (zone/edge) contribution.');
+  lines.push('');
+  lines.push('(F) Die-position (reticle/die-frame) signature — state whether there is a credible die-position signal in the intra-reticle data, and if so which DieLoc and FB show the strongest effect.');
   return lines.join('\n');
 }
 function _aiDownload(name, text, mime){
@@ -3501,11 +4200,34 @@ function _aiDownload(name, text, mime){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url), 1500);
 }
+function _aiRebuildPrompt(){
+  const gl=document.getElementById('ai-glossary');
+  const ta=document.getElementById('ai-prompt');
+  if(!gl||!ta)return;
+  const findings=_aiSlimFindings(30);
+  ta.value=_aiBuildPrompt(findings, gl.value, _aiZoneSummary());
+}
 function renderAiReviewTab(){
   const el=document.getElementById('aireview-content');
   if(!el) return;
-  const findings=_aiSlimFindings(15);
-  const promptText=_aiBuildPrompt(findings);
+  const findings=_aiSlimFindings(30);
+  const storedGlossary=localStorage.getItem('aiReviewGlossary');
+  const defaultGlossary=[
+    'Rc_* = contact / via resistance',
+    'Isat_* = transistor drive current (saturation)',
+    'Ioff_* / Poff_* = leakage current / off-state power',
+    'Vts_* = threshold voltage shift',
+    'Con_* = continuity / shorts screen',
+    'Pwr_* = active power',
+    'Td_* = timing / propagation delay',
+    'SPA_M* = stress / parametric aging monitor (fill in specific meaning)',
+    'UPM_* = speed / Vmin sweep (ultra-parametric measurement)',
+    'PTH_POWER_* = SICC / power-supply screen',
+    'ReticleShotRadius = wafer position covariate (geometry, not electrical)'
+  ].join('\n');
+  const glossaryText=storedGlossary!=null?storedGlossary:defaultGlossary;
+  const zoneText=_aiZoneSummary();
+  const promptText=_aiBuildPrompt(findings, glossaryText, zoneText);
   const jsonText=JSON.stringify(findings,null,1);
   const tgt=(findings.meta.target||'report').replace(/[^\w=.-]/g,'_');
   el.innerHTML=''
@@ -3514,6 +4236,7 @@ function renderAiReviewTab(){
    +'This tab runs entirely in your browser - <b>no data is sent anywhere</b>. It packages the findings so you can review them with Intel Enterprise LLM chatbot, e.g Co-Pilot 365, VSCode Co-Pilot.'
    +'<ol style="margin:8px 0 0 18px;padding:0">'
    +'<li>Click <b>Download findings.json</b> and save it into your VS Code workspace.</li>'
+   +'<li>Edit the parameter glossary below if needed (saved automatically).</li>'
    +'<li>Click <b>Copy prompt</b> (or Download prompt.md).</li>'
    +'<li>In Copilot Chat, type <code>#file:findings.json</code> then paste the prompt.</li>'
    +'</ol></div>'
@@ -3523,8 +4246,16 @@ function renderAiReviewTab(){
    +'<button id="ai-copy" style="padding:6px 12px;background:#0e6655;color:#ecf0f1;border:1px solid #148f77;border-radius:5px;cursor:pointer;font-size:12px">Copy prompt</button>'
    +'<span id="ai-copied" style="align-self:center;color:#2ecc71;font-size:12px;display:none">copied</span>'
    +'</div>'
-   +'<div style="color:#7fb3d3;font-size:12px;margin:6px 0 4px"><b>Editable prompt</b> (tweak before copying if you like):</div>'
+   +'<div style="color:#7fb3d3;font-size:12px;margin:6px 0 2px"><b>Parameter glossary</b> (one entry per line, edit to add domain context — saved in browser):</div>'
+   +'<textarea id="ai-glossary" style="width:100%;height:140px;background:#0b1622;color:#b8d0e8;border:1px solid #22405f;border-radius:6px;padding:8px 10px;font-family:Consolas,monospace;font-size:11px;line-height:1.5;margin-bottom:8px"></textarea>'
+   +'<div style="color:#7fb3d3;font-size:12px;margin:6px 0 4px"><b>Editable prompt</b> (auto-updates when you edit the glossary; tweak before copying):</div>'
    +'<textarea id="ai-prompt" style="width:100%;height:320px;background:#0b1622;color:#dbe7f3;border:1px solid #22405f;border-radius:6px;padding:10px;font-family:Consolas,monospace;font-size:12px;line-height:1.5"></textarea>';
+  const gl=document.getElementById('ai-glossary');
+  gl.value=glossaryText;
+  gl.oninput=()=>{
+    localStorage.setItem('aiReviewGlossary', gl.value);
+    _aiRebuildPrompt();
+  };
   document.getElementById('ai-prompt').value=promptText;
   document.getElementById('ai-dl-json').onclick=()=>_aiDownload('findings_'+tgt+'.json', jsonText, 'application/json');
   document.getElementById('ai-dl-md').onclick=()=>_aiDownload('prompt_'+tgt+'.md', document.getElementById('ai-prompt').value, 'text/markdown');
@@ -3655,7 +4386,123 @@ function buildHowToReadTab(){
   });
 }
 /* END HOW TO READ TAB */
-(function init(){buildSummary();buildRcaTab('lottrend','Lot Level Trend',renderLotTrendTab);buildRcaTab('wafertrend','Wafer Level Trend',renderWaferTrendTab);buildOneMethodTab('pcm_wdev');buildOneMethodTab('pcm_dev');buildOneMethodTab('pcm_wafer');buildOneMethodTab('pcm_lot');buildZoneTab();buildOneMethodTab('pearson');buildOneMethodTab('spearman');buildSpatialTab();buildRcaTab('repeatability','Repeatability',renderRepeatabilityTab);buildRcaTab('cofailure','Co-Failure',renderCoFailureTab);buildRcaTab('reticle','Reticle',renderReticleTab);buildAiReviewTab();buildHowToReadTab();activateTab('lottrend');renderLotTrendTab();})();
+function renderIntraFieldBadge(){
+  if(typeof INTRAFIELD_DATA==='undefined'||!INTRAFIELD_DATA)return;
+  let msg=null,level='info';
+  const C=(typeof INTRAFIELD_DATA!=='undefined'&&INTRAFIELD_DATA)?INTRAFIELD_DATA.consistency:null;
+  // C.agree>=3 banner is owned by renderIntraFieldBadgeConsistency — skip here to avoid duplicates
+  if(!msg&&typeof INTRAFIELD_FB!=='undefined'&&INTRAFIELD_FB&&INTRAFIELD_FB.best
+     &&INTRAFIELD_FB.best.z!=null&&INTRAFIELD_FB.best.z>=3){
+    const b=INTRAFIELD_FB.best;
+    msg=`Intra-Reticle: within this IB, <b>FB ${b.fb}</b> fails `
+       +`<b>${(b.mean_dev*100).toFixed(2)}%</b> above baseline at <b>DieLoc ${b.loc}</b> `
+       +`(stratified z=${b.z}). Likely a die-frame / reticle field signature isolated to that FB.`;
+    level='warn';
+  }
+  const P=INTRAFIELD_DATA.paired;
+  if(!msg&&P&&P.rows&&P.rows.length){
+    const top=P.rows[0];
+    if(top.z!=null&&top.z>=3&&top.mean_dev!=null&&top.mean_dev>0){
+      msg=`Intra-Reticle: <b>DieLoc ${top.loc}</b> fails `
+         +`<b>${(top.mean_dev*100).toFixed(2)}%</b> above its shot/wafer baseline `
+         +`(stratified z=${top.z}). Likely a reticle/litho field signature.`;
+      level='warn';
+    }
+  }
+  if(!msg){
+    const hot=(INTRAFIELD_DATA.cells||[]).find(c=>c.significant);
+    if(hot){msg=`Intra-Reticle: <b>DieLoc ${hot.loc}</b> fail ${(hot.fail_rate*100).toFixed(2)}% `
+                +`(${hot.rr}x field, z=${hot.z}).`;level='warn';}
+  }
+  if(!msg)return;
+  const host=document.getElementById('summary-area');
+  if(!host)return;
+  const div=document.createElement('div');
+  div.style.cssText='margin:8px 0;padding:10px 14px;border-radius:6px;border:1px solid '
+    +(level==='warn'?'#a5641a':'#22405f')+';background:'+(level==='warn'?'#2a1e0d':'#0d1828')
+    +';color:#f0d8b0;font-size:13px;cursor:pointer';
+  div.innerHTML='\u26A0\uFE0F '+msg+' <span style="color:#7fb3d3;text-decoration:underline">Open Intra-Reticle tab</span>';
+  div.onclick=()=>{const b=document.querySelector('.tab-btn[data-method="intrafield"]');if(b)b.click();};
+  host.parentNode.insertBefore(div,host);
+}
+/* ---- Intra-Reticle relative-risk magnitude tier ---- */
+function _rrTier(rr){
+  if(rr==null) return {label:'', color:'#5d7a99'};
+  if(rr>=2.0) return {label:'strong',      color:'#e74c3c'};
+  if(rr>=1.5) return {label:'notable',     color:'#e67e22'};
+  if(rr>=1.2) return {label:'real but modest', color:'#f1c40f'};
+  return               {label:'weak',       color:'#5d7a99'};
+}
+/* ---- Intra-Reticle consistency (JS-only; reads existing report data) ---- */
+function _intraConsistency(){
+  if(typeof INTRAFIELD_DATA==='undefined' || !INTRAFIELD_DATA) return null;
+  const D=INTRAFIELD_DATA, views={};
+  if(D.cells && D.cells.length){
+    views.pooled_failrate = D.cells.reduce((a,c)=>c.fail_rate>a.fail_rate?c:a).loc;
+    views.relative_risk   = D.cells.reduce((a,c)=>((c.rr||0)>(a.rr||0))?c:a).loc;
+  }
+  if(D.paired && D.paired.rows && D.paired.rows.length){
+    const pr=D.paired.rows.filter(r=>r.mean_dev!=null);
+    if(pr.length) views.stratified = pr.reduce((a,r)=>r.mean_dev>a.mean_dev?r:a).loc;
+  }
+  if(typeof INTRAFIELD_FB!=='undefined' && INTRAFIELD_FB && INTRAFIELD_FB.best
+     && INTRAFIELD_FB.best.z!=null){
+    views.fb_best = INTRAFIELD_FB.best.loc;
+  }
+  const vals=Object.values(views);
+  if(!vals.length) return null;
+  const tally={}; vals.forEach(v=>tally[v]=(tally[v]||0)+1);
+  let worst=null,agree=0;
+  Object.keys(tally).forEach(k=>{if(tally[k]>agree){agree=tally[k];worst=+k;}});
+  return {views, worst_loc:worst, agree, n_views:vals.length};
+}
+function renderIntraConsistency(){
+  const host=document.getElementById('intrafield-content')||document.getElementById('pane-intrafield');
+  if(!host) return;
+  const C=_intraConsistency(); if(!C) return;
+  if(document.getElementById('intra-consistency-box')) return;
+  const strong=C.agree>=3;
+  const div=document.createElement('div'); div.id='intra-consistency-box';
+  div.style.cssText='margin:12px 0;padding:11px 14px;border-radius:6px;border:1px solid '
+    +(strong?'#a5641a':'#22405f')+';background:'+(strong?'#2a1e0d':'#0d1828')+';color:'
+    +(strong?'#f0d8b0':'#c8d6e8')+';font-size:13px;line-height:1.55';
+  const vlist=Object.keys(C.views).map(k=>k.replace('_',' ')+'\u2192DieLoc '+C.views[k]).join(' \u00b7 ');
+  const worstCell=(INTRAFIELD_DATA.cells||[]).find(c=>c.loc===C.worst_loc);
+  const wTier=_rrTier(worstCell?worstCell.rr:null);
+  const magSentence=worstCell&&worstCell.rr!=null
+    ?' Magnitude is <b>'+wTier.label+'</b> ('+worstCell.rr.toFixed(2)+'\u00d7 the field average) \u2014 significance confirms it is real; the relative risk indicates how large it is.'
+    :'';
+  if(strong){
+    div.innerHTML='\u26A0\uFE0F <b>Consistency flag: DieLoc '+C.worst_loc+'</b> is the worst-ranked '
+      +'position in <b>'+C.agree+'/'+C.n_views+'</b> independent views ('+vlist+'). '
+      +'No single test is dramatic, but agreement across independent views is a credible '
+      +'intra-field signature \u2014 consistent with a die-frame / reticle field issue at this position.'
+      +magSentence;
+  } else {
+    div.innerHTML='Consistency: no die position is worst across a majority of views ('+vlist+')'+magSentence;
+  }
+  host.appendChild(div);
+}
+function renderIntraFieldBadgeConsistency(){
+  const C=_intraConsistency(); if(!C || C.agree<3) return;
+  const host=document.getElementById('summary-area'); if(!host) return;
+  const _old=document.getElementById('intra-consistency-badge'); if(_old) _old.remove();
+  const div=document.createElement('div'); div.id='intra-consistency-badge';
+  div.style.cssText='margin:8px 0;padding:10px 14px;border-radius:6px;border:1px solid #a5641a;'
+    +'background:#2a1e0d;color:#f0d8b0;font-size:13px;cursor:pointer';
+  const worstCellB=(INTRAFIELD_DATA.cells||[]).find(c=>c.loc===C.worst_loc);
+  const wTierB=_rrTier(worstCellB?worstCellB.rr:null);
+  const magB=worstCellB&&worstCellB.rr!=null
+    ?' Magnitude is <b>'+wTierB.label+'</b> ('+worstCellB.rr.toFixed(2)+'\u00d7 the field average) \u2014 significance confirms it is real; the relative risk indicates how large it is.'
+    :'';
+  div.innerHTML='\u26A0\uFE0F Intra-Reticle: <b>DieLoc '+C.worst_loc+'</b> is worst-ranked in <b>'
+    +C.agree+'/'+C.n_views+'</b> independent views \u2014 a consistent intra-field signature '
+    +'(likely a die-frame / reticle field issue), even though no single test is dramatic.'
+    +magB+' <span style="color:#7fb3d3;text-decoration:underline">Open Intra-Reticle tab</span>';
+  div.onclick=()=>{const b=document.querySelector('.tab-btn[data-method="intrafield"]');if(b)b.click();};
+  host.parentNode.insertBefore(div, host);
+}
+(function init(){buildSummary();renderIntraFieldBadge();renderIntraFieldBadgeConsistency();buildRcaTab('lottrend','Lot Level Trend',renderLotTrendTab);buildRcaTab('wafertrend','Wafer Level Trend',renderWaferTrendTab);buildOneMethodTab('pcm_wdev');buildOneMethodTab('pcm_dev');buildOneMethodTab('pcm_wafer');buildOneMethodTab('pcm_lot');buildZoneTab();buildOneMethodTab('pearson');buildOneMethodTab('spearman');buildSpatialTab();buildRcaTab('repeatability','Repeatability',renderRepeatabilityTab);buildRcaTab('cofailure','Co-Failure',renderCoFailureTab);buildRcaTab('reticle','Reticle',renderReticleTab);buildIntraFieldTab();buildAiReviewTab();buildHowToReadTab();activateTab('lottrend');renderLotTrendTab();})();
 const FB_PAL={804:'#29b6f6',806:'#26d9b0',807:'#a78bfa',808:'#ffb347',809:'#ff6e40',811:'#ff5252',812:'#ff1744',815:'#e8c999',816:'#ffd740',817:'#80cbc4',818:'#b0bec5',819:'#ffab76',820:'#80deea',821:'#b388ff',822:'#fff176',823:'#69f0ae',824:'#40c4ff',825:'#ea80fc',827:'#18ffff',828:'#ff9100',829:'#7986cb',830:'#9575cd',831:'#f48fb1',833:'#40e0ff',835:'#f72585',837:'#be00ff',899:'#ffe57a'};
 function fbColor(fb){return FB_PAL[fb]||'#5577aa';}
 const IB_COLS=['#3498db','#2ecc71','#e67e22','#9b59b6','#1abc9c','#e74c3c','#f1c40f','#34495e','#16a085','#8e44ad'];
@@ -4198,6 +5045,184 @@ function _trendFactory(cfg){
   drawTrend();
 }
 function renderLotTrendTab(){_trendFactory({records:LOT_RECORDS,idField:null,prefix:'lt',granLabel:'lot',elId:'lottrend-content',scrollable:false,title:'Lot-to-Lot Fail Rate Trend'});}
+function buildIntraFieldTab(){buildRcaTab('intrafield','Intra-Reticle',renderIntraFieldTab);}
+let _ifRendered=false;
+function renderIntraFieldTab(){
+  if(_ifRendered)return;_ifRendered=true;
+  const el=document.getElementById('intrafield-content');
+  if(!el)return;
+  if(!INTRAFIELD_DATA){
+    el.innerHTML='<div style="padding:16px;background:#0d1828;border:1px solid #2c4a6e;border-radius:6px;font-size:12px;color:#7f8c8d;line-height:1.8">'
+      +'<b style="color:#e74c3c">Intra-Reticle analysis unavailable.</b><br><br>'
+      +'Requires a reticle map CSV in <code>shared/reticle/</code> with columns '
+      +'<code>DieX, DieY, ReticleDieX, ReticleDieY</code>, '
+      +'and the sort CSV must include <code>SORT_X</code> / <code>SORT_Y</code> columns '
+      +'whose values match the map\'s <code>DieX</code> / <code>DieY</code>.</div>';
+    return;
+  }
+  const d=INTRAFIELD_DATA;
+  const overall=(d.overall*100).toFixed(3);
+  let html='<div style="margin-bottom:10px;padding:8px 12px;background:#0d1828;border:1px solid #1e3a5f;border-radius:6px;font-size:12px;color:#c8d6e8;line-height:1.7">';
+  html+='<b style="color:#7fb3d3">Intra-Reticle Analysis</b> &mdash; Fail rate by die position ';
+  html+='<b>within the reticle field</b>, pooled across all shots. A hot cell repeated ';
+  html+='across shots suggests a reticle/mask or litho-field issue, not a random or wafer-radial defect. ';
+  html+=`Overall field fail rate: <b style="color:#f39c12">${overall}%</b>. Based on <b>${d.n_total.toLocaleString()}</b> dies with a resolved reticle-die position for this target (${d.n_positions||'?'} die positions). This is the analyzable set for this bin, not a coverage loss.`;
+  html+='</div>';
+  // --- field grid heatmap with DieLoc# labels ---
+  if(d.cells&&d.cells.length){
+    const allX=d.cells.map(c=>c.rdx),allY=d.cells.map(c=>c.rdy);
+    const minX=Math.min(...allX),maxX=Math.max(...allX),minY=Math.min(...allY),maxY=Math.max(...allY);
+    const maxFr=Math.max(...d.cells.map(c=>c.fail_rate),0.001);
+    const CW=64,CH=40,PAD=4;
+    const W=PAD*2+(maxX-minX+1)*CW,H=PAD*2+(maxY-minY+1)*CH;
+    const cellMap={};
+    d.cells.forEach(c=>{cellMap[c.rdx+','+c.rdy]=c;});
+    let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" style="display:block;border:1px solid #1e3a5f;border-radius:4px;background:#0a1520;margin-bottom:12px">`;
+    for(let cy=maxY;cy>=minY;cy--){
+      for(let cx=minX;cx<=maxX;cx++){
+        const px=PAD+(cx-minX)*CW,py=PAD+(maxY-cy)*CH;
+        const cell=cellMap[cx+','+cy];
+        if(!cell){svg+=`<rect x="${px}" y="${py}" width="${CW-2}" height="${CH-2}" fill="#0f1d2e" rx="2"/>`;continue;}
+        const t=cell.fail_rate/maxFr;
+        const col=t<0.3?`rgba(26,58,92,${(0.3+t).toFixed(2)})`:t<0.6?`rgba(243,156,18,${(0.5+t*0.5).toFixed(2)})`:t<0.85?`rgba(231,76,60,${(0.7+t*0.3).toFixed(2)})`:'#ff1744';
+        // yellow border when significant (|z|>=2 AND rr>=1.2)
+        const sig=cell.significant===true;
+        svg+=`<rect x="${px}" y="${py}" width="${CW-2}" height="${CH-2}" fill="${col}" rx="2" stroke="${sig?'#fff176':'none'}" stroke-width="${sig?2:0}"/>`;
+        svg+=`<text x="${px+(CW-2)/2}" y="${py+(CH-2)*0.28}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#a0c8f0">DieLoc ${cell.loc!=null?cell.loc:'?'}</text>`;
+        svg+=`<text x="${px+(CW-2)/2}" y="${py+(CH-2)*0.62}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#ecf0f1">${(cell.fail_rate*100).toFixed(1)}%</text>`;
+        svg+=`<text x="${px+(CW-2)/2}" y="${py+(CH-2)*0.90}" text-anchor="middle" dominant-baseline="middle" font-size="8" fill="#7f8c8d">n=${cell.n.toLocaleString()}</text>`;
+      }
+    }
+    for(let cx=minX;cx<=maxX;cx++){const px=PAD+(cx-minX)*CW+(CW-2)/2;svg+=`<text x="${px}" y="${H-2}" text-anchor="middle" font-size="8" fill="#5d7a99">x${cx}</text>`;}
+    for(let cy=maxY;cy>=minY;cy--){const py=PAD+(maxY-cy)*CH+(CH-2)/2;svg+=`<text x="2" y="${py}" dominant-baseline="middle" font-size="8" fill="#5d7a99">y${cy}</text>`;}
+    svg+='</svg>';
+    html+=`<div style="margin-bottom:6px;font-size:11px;color:#7f8c8d">Field grid \u2014 each cell labelled DieLoc# (row-major). <span style="outline:2px solid #fff176;padding:1px 4px">yellow border</span> = |z|&ge;2 &amp; RelRisk&ge;1.2x.</div>`;
+    html+=svg;
+    // hottest cells table: DieLoc, (RdX,RdY), Fail%, RelRisk, n, z, Significant?
+    html+='<h3 style="color:#7fb3d3;margin:10px 0 6px">Hottest Die-in-Field Positions (top 10)</h3>';
+    html+='<table style="border-collapse:collapse;font-size:11px"><thead><tr>';
+    ['#','DieLoc','(RdX,RdY)','Fail%','RelRisk','n','z','Significant?'].forEach(h=>{html+=`<th style="padding:4px 8px;color:#5d7a99;background:#0f2030">${h}</th>`;});
+    html+='</tr></thead><tbody>';
+    d.cells.slice(0,10).forEach((c,i)=>{
+      const sig=c.significant===true;
+      const zStr=c.z!=null?c.z.toFixed(2):'\u2014';
+      const rrStr=c.rr!=null?c.rr.toFixed(2)+'x':'\u2014';
+      const bg=sig?'rgba(231,76,60,0.10)':'';
+      html+=`<tr style="border-bottom:1px solid #1a2f45;background:${bg}">`;
+      html+=`<td style="padding:3px 8px;color:#5d7a99">${i+1}</td>`;
+      html+=`<td style="padding:3px 8px;color:#a0c8f0;font-weight:bold">DieLoc ${c.loc!=null?c.loc:'?'}</td>`;
+      html+=`<td style="padding:3px 8px;color:#7f8c8d">(${c.rdx},${c.rdy})</td>`;
+      html+=`<td style="padding:3px 8px;color:#e74c3c;font-weight:bold">${(c.fail_rate*100).toFixed(2)}%</td>`;
+      html+=`<td style="padding:3px 8px;color:${c.rr!=null&&c.rr>=1.2?'#f39c12':'#7f8c8d'}">${rrStr}</td>`;
+      html+=`<td style="padding:3px 8px;color:#7f8c8d">${c.n.toLocaleString()}</td>`;
+      html+=`<td style="padding:3px 8px;color:${Math.abs(c.z||0)>=2?'#e74c3c':Math.abs(c.z||0)>=1.5?'#f39c12':'#7f8c8d'}">${zStr}</td>`;
+      const tier=_rrTier(c.rr);
+      html+=`<td style="padding:3px 8px">${sig?`<span style="color:${tier.color};font-weight:bold">\u2713 ${tier.label} (${c.rr!=null?c.rr.toFixed(2):'?'}\u00d7)</span>`:'<span style="color:#5d7a99">\u2013</span>'}</td>`;
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+    html+='<div style="margin:6px 0 14px;padding:6px 10px;background:#0d1828;border-left:3px solid #22405f;font-size:11px;color:#7f8c8d">Note: z-score (and the stratified test) indicate whether a difference is <i>real</i>; the RelRisk column indicates how <i>large</i> it is. A high z with a low RelRisk (~1.2&#215;) is a statistically real but practically modest lean.</div>';
+    // --- stratified paired section ---
+    const P=d.paired;
+    if(P&&P.rows&&P.rows.length){
+      html+='<div style="margin-top:18px;padding:8px 12px;background:#0d1828;border:1px solid #2c4a6e;border-radius:6px;font-size:12px;color:#c8d6e8;line-height:1.7">';
+      html+='<b style="color:#7fb3d3">Stratified paired test (within each wafer\u00d7shot instance)</b>';
+      html+='<div style="margin-top:4px;color:#95a5a6;font-size:11px">Stratified paired test: within each '+(P.strata||'stratum')+' instance, each DieLoc is compared to that instance\u2019s own mean, then averaged across all instances. This removes wafer AND shot variation and uses every mapped die. A DieLoc with a large positive deviation and high z is a strong intra-field signature.</div>';
+      html+=`<div style="margin-top:4px;color:#5d7a99;font-size:11px">Strata: ${P.n_strata!=null?P.n_strata.toLocaleString():'?'} (${P.strata||''})</div>`;
+      html+='</div>';
+      html+='<table style="border-collapse:collapse;font-size:11px;margin-top:8px"><thead><tr>';
+      ['DieLoc','Mean \u0394 vs baseline','z','# strata'].forEach(h=>{html+=`<th style="padding:4px 8px;color:#5d7a99;background:#0f2030">${h}</th>`;});
+      html+='</tr></thead><tbody>';
+      P.rows.forEach(r=>{
+        const hiZ=r.z!=null&&r.z>=3&&r.mean_dev!=null&&r.mean_dev>0;
+        const bg=hiZ?'rgba(231,76,60,0.13)':'';
+        const devStr=r.mean_dev!=null?(r.mean_dev>=0?'+':'')+`${(r.mean_dev*100).toFixed(3)}%`:'\u2014';
+        const devCol=r.mean_dev!=null&&r.mean_dev>0?'#e74c3c':r.mean_dev!=null&&r.mean_dev<0?'#2ecc71':'#7f8c8d';
+        html+=`<tr style="border-bottom:1px solid #1a2f45;background:${bg}">`;
+        html+=`<td style="padding:3px 8px;color:#a0c8f0;font-weight:bold">DieLoc ${r.loc}</td>`;
+        html+=`<td style="padding:3px 8px;text-align:right;color:${devCol};font-weight:${hiZ?'bold':'normal'}">${devStr}</td>`;
+        html+=`<td style="padding:3px 8px;text-align:right;color:${hiZ?'#e74c3c':r.z!=null&&r.z>=2?'#f39c12':'#7f8c8d'};font-weight:${hiZ?'bold':'normal'}">${r.z!=null?r.z.toFixed(2):'\u2014'}</td>`;
+        html+=`<td style="padding:3px 8px;text-align:right;color:#7f8c8d">${r.n_strata!=null?r.n_strata.toLocaleString():'\u2014'}</td>`;
+        html+='</tr>';
+      });
+      html+='</tbody></table>';
+    }
+    // --- FB x DieLoc matrix (IB targets only) ---
+    if(typeof INTRAFIELD_FB!=='undefined'&&INTRAFIELD_FB&&INTRAFIELD_FB.rows&&INTRAFIELD_FB.rows.length){
+      const F=INTRAFIELD_FB;
+      html+='<div style="margin-top:18px;padding:8px 12px;background:#0d1828;border:1px solid #2c6e2c;border-radius:6px;font-size:12px;color:#c8d6e8;line-height:1.7">';
+      html+='<b style="color:#2ecc71">FB \u00d7 DieLoc breakdown (IB targets only)</b>';
+      html+='<div style="margin-top:4px;color:#95a5a6;font-size:11px">Each constituent FB is tested separately with the same stratified (wafer\u00d7shot) method. A die-frame / reticle die-position defect usually drives ONE FB, so it stands out here even when the pooled IB looks flat. Cells show stratified z; <span style="color:#e74c3c;font-weight:bold">red/bold</span> = z\u22653 (positive dev), <span style="color:#f39c12">orange</span> = 1.5\u20133.</div>';
+      if(F.best&&F.best.z>=3){html+=`<div style="margin-top:6px;color:#e74c3c;font-size:12px;font-weight:bold">\u2605 Strongest: FB ${F.best.fb} at DieLoc ${F.best.loc} (z=${F.best.z}, +${(F.best.mean_dev*100).toFixed(2)}%)</div>`;}
+      html+='</div>';
+      html+='<div style="overflow-x:auto;margin-top:8px"><table style="border-collapse:collapse;font-size:11px"><thead><tr>';
+      html+='<th style="padding:4px 8px;color:#5d7a99;background:#0f2030;white-space:nowrap">FB (n hits)</th>';
+      F.locs.forEach(lc=>{html+=`<th style="padding:4px 8px;color:#5d7a99;background:#0f2030;white-space:nowrap">DieLoc ${lc}</th>`;});
+      html+='</tr></thead><tbody>';
+      F.rows.forEach(r=>{
+        html+=`<tr style="border-bottom:1px solid #1a2f45"><td style="padding:3px 8px;color:#2ecc71;white-space:nowrap;font-weight:bold">FB ${r.fb}<br><span style="color:#5d7a99;font-size:10px;font-weight:normal">(${r.n_hits.toLocaleString()})</span></td>`;
+        r.cells.forEach(c=>{
+          const z=c.z;const hiZ=z!=null&&z>=3&&c.mean_dev!=null&&c.mean_dev>0;
+          const midZ=z!=null&&z>=1.5&&!hiZ;
+          const bg=hiZ?'rgba(231,76,60,0.20)':midZ?'rgba(243,156,18,0.15)':'';
+          const col=hiZ?'#e74c3c':midZ?'#f39c12':'#5d7a99';
+          const fw=hiZ?'bold':'normal';
+          const title=c.mean_dev!=null?`title="${(c.mean_dev*100).toFixed(3)}% dev"`:'';
+          html+=`<td style="padding:3px 8px;text-align:center;background:${bg};color:${col};font-weight:${fw}" ${title}>${z!=null?z.toFixed(2):'\u2014'}</td>`;
+        });
+        html+='</tr>';
+      });
+      html+='</tbody></table></div>';
+    }
+  }
+  // --- parameter fingerprint (Part B) ---
+  if(INTRAFIELD_PARAMS&&INTRAFIELD_PARAMS.cells&&INTRAFIELD_PARAMS.cells.length){
+    html+='<div style="margin-top:18px;padding:8px 12px;background:#0d1828;border:1px solid #1e3a5f;border-radius:6px;font-size:12px;color:#c8d6e8;line-height:1.7">';
+    html+='<b style="color:#7fb3d3">Parameter Fingerprint</b> &mdash; Mean % deviation vs field average ';
+    html+='for die-level sort parameters at the hottest locations. ';
+    html+='<b>PCM / etest parameters are excluded</b> (scribe-line measurements have no intra-field resolution). ';
+    html+=`${INTRAFIELD_PARAMS.n_die_params} die-level parameter(s) evaluated. `;
+    html+='Interpretation: slow (negative Vmin / low Isat) hot cells &rarr; speed/CD field signature; flat parameters &rarr; likely defect or probe artefact.';
+    html+='</div>';
+    INTRAFIELD_PARAMS.cells.forEach(cell=>{
+      html+=`<h3 style="color:#f39c12;margin:14px 0 6px">Cell (${cell.rdx}, ${cell.rdy}) &mdash; fail ${(cell.fail_rate*100).toFixed(2)}%</h3>`;
+      if(!cell.params||!cell.params.length){html+='<div class="no-data">No die-level parameters met the minimum-n threshold for this cell.</div>';return;}
+      html+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11px"><thead><tr>';
+      ['Parameter','% dev vs field','z','n'].forEach(h=>{html+=`<th style="padding:4px 8px;color:#5d7a99;background:#0f2030;white-space:nowrap">${h}</th>`;});
+      html+='</tr></thead><tbody>';
+      cell.params.forEach(p=>{
+        const az=Math.abs(p.z||0);
+        const zCol=az>=3?'#e74c3c':az>=1.5?'#f39c12':'#7f8c8d';
+        const pctStr=p.pct_dev!=null?(p.pct_dev>0?'+':'')+p.pct_dev.toFixed(2)+'%':'—';
+        const zStr=p.z!=null?(p.z>0?'+':'')+p.z.toFixed(3):'—';
+        html+=`<tr style="border-bottom:1px solid #1a2f45">`;
+        html+=`<td style="padding:3px 8px;color:#7fb3d3;font-family:monospace;font-size:11px" title="${escQ(p.param)}">${p.param.length>50?p.param.slice(0,49)+'\u2026':p.param}</td>`;
+        html+=`<td style="padding:3px 8px;color:${p.pct_dev!=null&&p.pct_dev<0?'#2ecc71':'#e74c3c'};text-align:right">${pctStr}</td>`;
+        html+=`<td style="padding:3px 8px;color:${zCol};text-align:right;font-weight:${az>=3?'bold':'normal'}">${zStr}</td>`;
+        html+=`<td style="padding:3px 8px;color:#7f8c8d;text-align:right">${p.n.toLocaleString()}</td></tr>`;
+      });
+      html+='</tbody></table></div>';
+    });
+  } else if(INTRAFIELD_DATA){
+    html+='<div style="margin-top:12px;color:#7f8c8d;font-size:12px">No die-level parameters available for the parameter fingerprint (need UPM/SICC columns selected and &ge;200 dies per hot cell).</div>';
+  }
+  // --- consistency verdict ---
+  const C=INTRAFIELD_DATA&&INTRAFIELD_DATA.consistency;
+  if(C&&C.n_views){
+    if(C.agree>=3){
+      const vNames=Object.keys(C.views).map(k=>({'pooled_failrate':'pooled fail rate','relative_risk':'relative risk','stratified':'stratified paired','fb_best':'FB breakdown'}[k]||k)).join(', ');
+      html+=`<div style="margin-top:18px;padding:10px 14px;background:#2a1a06;border:2px solid #e67e22;border-radius:6px;font-size:12px;color:#f0d0a0;line-height:1.7">`;
+      html+=`<b style="color:#f39c12;font-size:13px">&#9654; Consistency flag: DieLoc ${C.worst_loc}</b> is the worst-ranked position in `;
+      html+=`<b>${C.agree}/${C.n_views}</b> independent views (${vNames}). `;
+      html+=`No single test is dramatic, but agreement across independent views is a credible intra-field signature &mdash; `;
+      html+=`consistent with a die-frame / reticle field issue at this position.</div>`;
+    } else {
+      html+=`<div style="margin-top:12px;color:#5d7a99;font-size:11px">No die position is consistently worst across views (max agreement: ${C.agree}/${C.n_views}).</div>`;
+    }
+  }
+  el.innerHTML=html;
+  renderIntraConsistency();
+}
 function renderWaferTrendTab(){_trendFactory({records:(typeof WAFER_TREND_RECORDS!=='undefined'?WAFER_TREND_RECORDS:null),idField:'_LABEL',prefix:'wt',granLabel:'wafer',elId:'wafertrend-content',scrollable:true,title:'Lot·Wafer Fail Rate Trend (find outlier wafers)'});}
 
 function _lerpColor(c1,c2,t){
@@ -4256,7 +5281,40 @@ function _buildHeatmapSvg(dies,g,retShots,clipId,showZoneRings){
     rings+=`<ellipse cx="${g.eCx}" cy="${g.eCy}" rx="${(g.eRx*0.40).toFixed(1)}" ry="${(g.eRy*0.40).toFixed(1)}" fill="none" stroke="rgba(52,152,219,0.6)" stroke-width="1.5" stroke-dasharray="5,3"/>`;
     rings+=`<ellipse cx="${g.eCx}" cy="${g.eCy}" rx="${(g.eRx*0.70).toFixed(1)}" ry="${(g.eRy*0.70).toFixed(1)}" fill="none" stroke="rgba(230,126,34,0.6)" stroke-width="1.5" stroke-dasharray="5,3"/>`;
   }
-  return`<svg xmlns="http://www.w3.org/2000/svg" width="${g.TW}" height="${g.TH}">${cd}<g clip-path="url(#${clipId})">${rects}${_retSvg(g,retShots)}</g>${rings}${cb}</svg>`;
+  // --- colour-scale legend appended below the wafer map ---
+  const LH=18, LPad=8, LW=g.TW-LPad*2, totalH=g.TH+LH+20;
+  const ly=g.TH+6;
+  let legend='';
+  const gradId=clipId+'_lg';
+  if(mode==='zone'){
+    // discrete: Center / Mid / Edge swatches
+    const sw=Math.floor(LW/3)-4;
+    const zones=[['Center','#00c8ff'],['Mid','#f9ca24'],['Edge','#ff3f3f']];
+    zones.forEach(([lbl,col],i)=>{
+      const bx=LPad+i*(sw+6);
+      legend+=`<rect x="${bx}" y="${ly}" width="${sw}" height="${LH-2}" fill="${col}" rx="2"/>`;
+      legend+=`<text x="${bx+sw/2}" y="${ly+LH/2+1}" text-anchor="middle" dominant-baseline="middle" font-size="10" fill="#0d1b26" font-weight="bold">${lbl}</text>`;
+    });
+  } else {
+    // continuous gradient bar
+    let gStops='';
+    const stops=mode==='ib'||mode==='fb'?numStops:failStops;
+    stops.forEach(([t,col])=>{gStops+=`<stop offset="${(t*100).toFixed(0)}%" stop-color="${col}"/>`;});
+    legend+=`<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">${gStops}</linearGradient></defs>`;
+    legend+=`<rect x="${LPad}" y="${ly}" width="${LW}" height="${LH-2}" fill="url(#${gradId})" rx="2"/>`;
+    // tick marks at 0 / 50 / 100 %
+    const tickPts=mode==='target'?[[0,'0%'],[0.5,`${(_maxCellFr*50).toFixed(1)}%`],[1,`${(_maxCellFr*100).toFixed(1)}%`]]:[[0,'Low'],[0.5,'Mid'],[1,'High']];
+    tickPts.forEach(([t,lbl])=>{
+      const tx=(LPad+t*LW).toFixed(1);
+      const anchor=t===0?'start':t===1?'end':'middle';
+      legend+=`<line x1="${tx}" y1="${ly+LH-2}" x2="${tx}" y2="${ly+LH+2}" stroke="#a0bcd8" stroke-width="1"/>`;
+      legend+=`<text x="${tx}" y="${ly+LH+10}" text-anchor="${anchor}" font-size="9" fill="#a0bcd8">${lbl}</text>`;
+    });
+    // mode label on left above bar
+    const modeLabel=mode==='target'?'Fail rate (% of dies)':mode==='ib'?'Interface Bin':mode==='fb'?'Functional Bin':'Zone';
+    legend+=`<text x="${LPad}" y="${ly-2}" font-size="9" fill="#7fb3d3">${modeLabel}</text>`;
+  }
+  return`<svg xmlns="http://www.w3.org/2000/svg" width="${g.TW}" height="${totalH}">${cd}<g clip-path="url(#${clipId})">${rects}${_retSvg(g,retShots)}</g>${rings}${cb}${legend}</svg>`;
 }
 function _renderSvgHeatmap(){
   const hw=document.getElementById('wm-heatmap-wrap');
