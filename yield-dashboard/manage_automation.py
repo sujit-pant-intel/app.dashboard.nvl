@@ -174,7 +174,6 @@ class AutomationManager(tk.Frame):
 
         self._apply_styles()
         self._build_ui()
-        self.after(500, self._auto_rebuild_index)
 
     @property
     def _task_name(self) -> str:
@@ -638,11 +637,20 @@ class AutomationManager(tk.Frame):
             self.hist_status.set(f"No output/ folder found under {self.base_dir}")
             return
 
+        def _quick_dir_size(p: Path) -> int:
+            """Fast, non-recursive estimate to keep UI responsive on network shares."""
+            try:
+                return sum(f.stat().st_size for f in p.iterdir() if f.is_file())
+            except Exception:
+                return 0
+
         def _folder_ts(d):
             m = re.search(r'(\d{8})[_T](\d{6})', d.name)
             return (m.group(1) + m.group(2)) if m else d.name
 
-        pattern = re.compile(rf'^NVL_{re.escape(self.program_series)}', re.IGNORECASE)
+        # Show all run folders for the selected product base dir, regardless of
+        # series prefix (e.g. NVL_0H80A_..., NVL_H61A_..., NVL_M61H_...).
+        pattern = re.compile(r'^NVL_.+_(\d{8})[_T](\d{6})$', re.IGNORECASE)
         folders = sorted(
             [d for d in output_dir.iterdir()
              if d.is_dir() and pattern.match(d.name)],
@@ -666,7 +674,7 @@ class AutomationManager(tk.Frame):
                 folder_disp = f'{d.name}/{_names}{"…" if tp_count > 2 else ""}'
             else:
                 folder_disp = d.name
-            sz       = _dir_size(d)
+            sz       = _quick_dir_size(d)
             tag_file = d / ".tag"
             tag      = tag_file.read_text(encoding="utf-8").strip() if tag_file.exists() else ""
             self.hist_tree.insert("", "end", iid=str(d),
@@ -911,13 +919,6 @@ class AutomationManager(tk.Frame):
                     _reports_dir.mkdir(parents=True, exist_ok=True)
                     _saved = _reports_dir / f"Yield_Report_{latest_ts}.html"
                     _saved.write_text(body_html, encoding="utf-8")
-                    # regenerate index
-                    import importlib.util as _ilu
-                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "yield_automation.py")
-                    _gi   = _ilu.module_from_spec(_spec)
-                    _gi.__dict__['logging'] = __import__('logging')
-                    _spec.loader.exec_module(_gi)
-                    _gi.build_index(self.base_dir, product_name=self._product_var.get())
                     self.after(0, lambda: self.hist_status.set(
                         f"Sent to {to}  ({letters_str} — {len(found_prog_keys)} program(s))  •  Saved → {_saved.name}"))
                 finally:
@@ -962,13 +963,6 @@ class AutomationManager(tk.Frame):
                                                    product_name=self._product_var.get())
                 out_path = reports_dir / f"Yield_Report_{ts_file}.html"
                 out_path.write_text(body, encoding="utf-8")
-                # regenerate index
-                import importlib.util as _ilu
-                _spec2 = _ilu.spec_from_file_location("_gi", _HERE / "yld" / "yield_automation.py")
-                _gi   = _ilu.module_from_spec(_spec2)
-                _gi.__dict__['logging'] = _logging
-                _spec2.loader.exec_module(_gi)
-                _gi.build_index(self.base_dir, product_name=self._product_var.get())
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_path.name}")
                     import webbrowser
@@ -981,29 +975,16 @@ class AutomationManager(tk.Frame):
         threading.Thread(target=_save, daemon=True).start()
 
     def _rebuild_index(self):
-        """Scan samba reports/ and rewrite index.html with only files that exist."""
-        import importlib.util, logging as _logging
-        spec = importlib.util.spec_from_file_location("_gi", _HERE / "yld" / "yield_automation.py")
-        mod  = importlib.util.module_from_spec(spec)
-        mod.__dict__['logging'] = _logging
-        spec.loader.exec_module(mod)
-        mod.build_index(self.base_dir, product_name=self._product_var.get())
+        """Index generation is intentionally disabled."""
+        return
 
     def _auto_rebuild_index(self) -> None:
-        """Silently rebuild index.html on startup so deleted files are removed."""
-        try:
-            self._rebuild_index()
-        except Exception:
-            pass
+        """No-op: index generation is disabled."""
+        return
 
     def _hist_generate_index(self) -> None:
-        """Generate reports/index.html listing all Yield_Report_*.html files."""
-        try:
-            self._rebuild_index()
-            out = self.base_dir / "reports" / "index.html"
-            self.hist_status.set(f"Index written \u2192 {out}")
-        except Exception as e:
-            messagebox.showerror("Generate Index failed", str(e))
+        """Index generation is disabled by request."""
+        self.hist_status.set("Index generation is disabled.")
 
     def _hist_cleanup(self) -> None:
         """Open a dialog to delete old run folders, keeping the N most-recent
