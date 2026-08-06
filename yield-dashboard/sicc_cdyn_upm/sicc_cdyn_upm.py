@@ -712,7 +712,7 @@ function renderStatsTable(stats,containerId,dec){
   var _td='padding:6px 14px;font-size:12px;text-align:center;white-space:nowrap;border-right:1px solid #e8e8e8;color:#2c3e50';
   var _tdHL='padding:6px 14px;font-size:13px;font-weight:700;text-align:center;white-space:nowrap;color:#1a4a7a;border-right:1px solid #c8ddf5;background:#eef6ff';
   el.innerHTML=
-    '<table style="border-collapse:collapse;width:100%;margin-top:10px;border-radius:6px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.12)">'
+    '<div style="display:inline-block"><table style="border-collapse:collapse;width:auto;margin-top:10px;border-radius:6px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.12)">'
     +'<thead><tr>'
     +'<th style="'+_th+'">N (dies)</th>'
     +'<th style="'+_th+'">Min</th>'
@@ -728,7 +728,7 @@ function renderStatsTable(stats,containerId,dec){
     +'<td style="'+_td+'">'+fv(stats.mean)+'</td>'
     +'<td style="'+_td+'">'+fv(stats.max)+'</td>'
     +'<td style="'+_td+';border-right:none">'+fv(stats.stddev)+'</td>'
-    +'</tr></tbody></table>';
+    +'</tr></tbody></table></div>';
 }
 function drawSVG(edges,counts,medVal,tgt,ylabel,svgId,showCounts,overlay,barLabel){
   var svg=document.getElementById(svgId||'hist-svg');
@@ -778,7 +778,7 @@ function drawSVG(edges,counts,medVal,tgt,ylabel,svgId,showCounts,overlay,barLabe
           var cx=pl+(bi+0.5)*bw;
           var cy=pt+cH-((binMeds[bi]-uMin)/uRange)*cH;
           var nw=binU[bi].length;
-          p.push('<circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="5" fill="#e67e22" stroke="#fff" stroke-width="1" opacity="0.85"><title>Bin '+bi+': '+nw+' die(s)\\nUPM Med: '+binMeds[bi].toFixed(2)+'%</title></circle>');
+          p.push('<circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="5" fill="#e67e22" stroke="#fff" stroke-width="1" opacity="0.85"><title>Bin '+bi+': '+nw+' die(s)\\nUPM Med: '+binMeds[bi].toFixed(1)+'%</title></circle>');
         }
       }
       // Overall UPM median horizontal dashed line — label on right Y-axis only
@@ -1586,7 +1586,10 @@ function _ptComputeRow(row,ai){
     actual=medArr(v); tgt=CDYN_TARGETS[row.testName]||null;
   }else{
     var v=ai.map(function(i){return ROWS[i].medians[row.testName];}).filter(function(v){return v!=null&&!isNaN(v);});
-    actual=medArr(v); tgt=TARGETS[row.testName.toUpperCase()]||null;
+    actual=medArr(v);
+    tgt=row.isUpm
+      ?((typeof UPM_TARGETS!=='undefined'?(UPM_TARGETS[row.testName]||UPM_TARGETS[row.testName.toUpperCase()]||null):null)||TARGETS[row.testName.toUpperCase()]||null)
+      :(TARGETS[row.testName.toUpperCase()]||null);
   }
   ratio=(actual!=null&&tgt!=null&&tgt!==0)?actual/tgt:null;
   if(row.upmCol&&!row.isUpm){
@@ -1622,8 +1625,7 @@ function _ptRender(){
     {k:'actual',l:'Median',w:'72px'},
     {k:'tgt',l:'Target',w:'72px'},
     {k:'ratio',l:'Ratio',w:'52px'},
-    {k:'upm',l:'UPM%',w:'52px'},
-    {k:'upmtgt',l:'UPM Tgt',w:'60px'}
+    {k:'upm',l:'UPM%',w:'52px'}
   ];
   var th='background:#2c3e50;color:#fff;padding:4px 7px;font-size:11px;position:sticky;top:0;z-index:2;cursor:pointer;user-select:none;white-space:nowrap';
   var hdrHtml='<tr>';
@@ -1680,11 +1682,10 @@ function _ptRender(){
       +'<td style="'+td+';text-align:right;'+medBg+'">'+(cv.actual!=null?cv.actual.toFixed(2):'&#8212;')+'</td>'
       +'<td style="'+td+';text-align:right">'+(cv.tgt!=null?cv.tgt.toFixed(2):'&#8212;')+'</td>'
       +'<td style="'+td+';text-align:right;'+ratioBg+'">'+(cv.ratio!=null?cv.ratio.toFixed(2):'&#8212;')+'</td>'
-      +'<td style="'+td+';text-align:right">'+(cv.upmMed!=null?cv.upmMed.toFixed(2):'&#8212;')+'</td>'
-      +'<td style="'+td+';text-align:right">'+(cv.upmTgt!=null?cv.upmTgt.toFixed(2):'&#8212;')+'</td>'
+      +'<td style="'+td+';text-align:right">'+(cv.upmMed!=null?cv.upmMed.toFixed(1):'&#8212;')+'</td>'
       +'</tr>';
   });
-  if(!body)body='<tr><td colspan="10" style="padding:14px;color:#7f8c8d;text-align:center">No data.</td></tr>';;
+  if(!body)body='<tr><td colspan="9" style="padding:14px;color:#7f8c8d;text-align:center">No data.</td></tr>';
   bd.innerHTML=body;
 }
 
@@ -1697,7 +1698,6 @@ function _ptSortVal(i,cv){
   if(_ptSortCol==='tgt')return cv.tgt;
   if(_ptSortCol==='ratio')return cv.ratio;
   if(_ptSortCol==='upm')return cv.upmMed;
-  if(_ptSortCol==='upmtgt')return cv.upmTgt;
   return null;
 }
 
@@ -1866,11 +1866,11 @@ function _ptRedrawHistModal(active,testName,isCdyn){
   var _tdUM='padding:6px 10px;font-size:13px;font-weight:700;text-align:center;white-space:nowrap;color:#c0650a;background:#fff8f0;border-right:1px solid #f5d5b0';
   var uCols=[
     {l:'N (UPM)',v:_uSt.count.toLocaleString(),th:_thU,td:_tdBase},
-    {l:'Min UPM%',v:_uSt.min.toFixed(2)+'%',th:_thU,td:_tdBase},
-    {l:'Med UPM%',v:_uSt.median.toFixed(2)+'%',th:_thUM,td:_tdUM},
-    {l:'Mean UPM%',v:_uSt.mean.toFixed(2)+'%',th:_thU,td:_tdBase},
-    {l:'Max UPM%',v:_uSt.max.toFixed(2)+'%',th:_thU,td:_tdBase},
-    {l:'SD UPM%',v:_uSt.stddev.toFixed(2)+'%',th:_thU,td:_tdBase}
+    {l:'Min UPM%',v:_uSt.min.toFixed(1)+'%',th:_thU,td:_tdBase},
+    {l:'Med UPM%',v:_uSt.median.toFixed(1)+'%',th:_thUM,td:_tdUM},
+    {l:'Mean UPM%',v:_uSt.mean.toFixed(1)+'%',th:_thU,td:_tdBase},
+    {l:'Max UPM%',v:_uSt.max.toFixed(1)+'%',th:_thU,td:_tdBase},
+    {l:'SD UPM%',v:_uSt.stddev.toFixed(1)+'%',th:_thU,td:_tdBase}
   ];
   var _hRow=_tbl.querySelector('thead tr'),_dRow=_tbl.querySelector('tbody tr');
   uCols.forEach(function(c){
@@ -2035,10 +2035,10 @@ function _ptRenderGroupStats(active,testName,isCdyn,showUpm,containerId){
       +'<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right'+(hasUpm?'':';border-right:none')+'">'+fv(st.stddev)+suf+'</td>'
       +(_uSt
         ?'<td style="'+_tdU+'">'+_uSt.count.toLocaleString()+'</td>'
-         +'<td style="'+_tdU+'">'+_uSt.min.toFixed(2)+'%</td>'
-         +'<td style="'+_tdUM+'">'+_uSt.median.toFixed(2)+'%</td>'
-         +'<td style="'+_tdU+'">'+_uSt.mean.toFixed(2)+'%</td>'
-         +'<td style="'+_tdU+'">'+_uSt.max.toFixed(2)+'%</td>'
+         +'<td style="'+_tdU+'">'+_uSt.min.toFixed(1)+'%</td>'
+         +'<td style="'+_tdUM+'">'+_uSt.median.toFixed(1)+'%</td>'
+         +'<td style="'+_tdU+'">'+_uSt.mean.toFixed(1)+'%</td>'
+         +'<td style="'+_tdU+'">'+_uSt.max.toFixed(1)+'%</td>'
          +'<td style="'+_tdU+';border-right:none">'+_uSt.stddev.toFixed(2)+'%</td>'
         :'')
       +'</tr>';
@@ -2161,8 +2161,8 @@ function _ptExportCsv(){
       cv.actual!=null?cv.actual.toFixed(6):'',
       cv.tgt!=null?cv.tgt.toFixed(6):'',
       cv.ratio!=null?cv.ratio.toFixed(4):'',
-      cv.upmMed!=null?cv.upmMed.toFixed(4):'',
-      cv.upmTgt!=null?cv.upmTgt.toFixed(4):'',
+      cv.upmMed!=null?cv.upmMed.toFixed(1):'',
+      cv.upmTgt!=null?cv.upmTgt.toFixed(1):'',
       checked];
     lines.push(vals.map(function(v){var s=String(v);return s.indexOf(',')>=0||s.indexOf('"')>=0?'"'+s.replace(/"/g,'""')+'"':s;}).join(','));
   });
@@ -2302,8 +2302,8 @@ function _renderCatTable(cfg,ai,isCdyn,headId,bodyId,legendId,offSet){
     body+='<td class="'+ccls(actual,tgt,isCdyn)+'">'+(actual!=null?actual.toFixed(2):'&#8212;')+'</td>';
     body+='<td class="tgt">'+(tgt!=null?tgt.toFixed(2):'&#8212;')+'</td>';
     body+='<td class="'+ratioCls(ratio)+'">'+(ratio!=null?ratio.toFixed(2):'&#8212;')+'</td>';
-    body+='<td class="'+upmCls(upmMed,upmTgt)+'">'+(upmMed!=null?upmMed.toFixed(2):'&#8212;')+'</td>';
-    body+='<td class="tgt">'+(upmTgt!=null?upmTgt.toFixed(2):'&#8212;')+'</td>';
+    body+='<td class="'+upmCls(upmMed,upmTgt)+'">'+(upmMed!=null?upmMed.toFixed(1):'&#8212;')+'</td>';
+    body+='<td class="tgt">'+(upmTgt!=null?upmTgt.toFixed(1):'&#8212;')+'</td>';
     body+='</tr>';
   });
   if(bodyEl)bodyEl.innerHTML=body;
@@ -2377,11 +2377,12 @@ def _sicc_tab_html() -> str:
         <div id="sicc-cat-panel" style="position:relative;display:inline-block"></div>
         <button onclick="_siccDownloadStatsCsv()" title="Download stats table as CSV" style="font-size:11px;padding:3px 8px;border:1px solid #bbb;border-radius:3px;background:#fff;cursor:pointer;margin-left:auto;white-space:nowrap">&#11015; Table CSV</button>
       </div>
-      <div style="overflow-x:auto;margin:4px 0 6px">
-        <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;min-width:600px">
+      <div style="overflow-x:auto;margin:4px 0 2px;display:inline-block;max-width:100%">
+        <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;width:auto">
           <thead id="sicc-stats-head"></thead><tbody id="sicc-stats-body"></tbody>
         </table>
       </div>
+      <div id="upm-tgt-info" style="font-size:11px;color:#555;margin:2px 0 6px;min-height:16px"></div>
     </div>
   </div>
 </div>
@@ -2518,18 +2519,16 @@ function _drawUpmMainDist(active,col){
     annotations.push({xref:'x',yref:'paper',x:med,y:0.97,xanchor:'left',yanchor:'top',
       text:'<b>Med: '+med.toFixed(2)+'</b>',showarrow:false,font:{size:11,color:'#8B4513'}});
   }
-  // Target line
+  // Target shown as bottom info text (integer), not as a chart line
   if(tgt!=null){
-    shapes.push({type:'line',x0:tgt,x1:tgt,yref:'paper',y0:0,y1:1,
-      line:{color:'#27ae60',dash:'dot',width:2}});
-    annotations.push({xref:'x',yref:'paper',x:tgt,y:0.87,xanchor:'left',yanchor:'top',
-      text:'<b>Tgt: '+Number(tgt).toFixed(2)+'</b>',showarrow:false,font:{size:11,color:'#27ae60'}});
+    annotations.push({xref:'paper',yref:'paper',x:0,y:-0.16,xanchor:'left',yanchor:'top',
+      text:'Target: '+Math.round(tgt),showarrow:false,font:{size:11,color:'#555'}});
   }
   var layout={
     title:{text:col+' \u2014 Distribution ('+allVals.length.toLocaleString()+' dies, '+active.length+' wafer'+(active.length>1?'s':'')+')',font:{size:12,color:'#2c3e50'}},
     xaxis:{title:{text:col,font:{size:12}},tickfont:{size:10},automargin:true},
     yaxis:{title:{text:'Count',font:{size:12}},tickfont:{size:10}},
-    margin:{t:40,b:48,l:60,r:20},
+    margin:{t:40,b:62,l:60,r:20},
     plot_bgcolor:'#fff',paper_bgcolor:'#fff',
     shapes:shapes,annotations:annotations,showlegend:false,bargap:0.04
   };
@@ -2540,7 +2539,9 @@ function _drawUpmMainDist(active,col){
 function _renderUpmMainStats(active,col){
   var hd=document.getElementById('sicc-stats-head'),bd=document.getElementById('sicc-stats-body');
   if(!hd||!bd)return;
-  var tgt=TARGETS[col.toUpperCase()]||null;
+  var tgt=(typeof UPM_TARGETS!=='undefined'?(UPM_TARGETS[col]||UPM_TARGETS[col.toUpperCase()]||null):null)||TARGETS[col.toUpperCase()]||null;
+  var tgtInfoEl=document.getElementById('upm-tgt-info');
+  if(tgtInfoEl)tgtInfoEl.innerHTML='';
   var groupMap={},groupOrder=[],allVals=[];
   active.forEach(function(i){
     var r=ROWS[i];
@@ -2571,8 +2572,6 @@ function _renderUpmMainStats(active,col){
     +'<th style="'+th+'">Mean</th>'
     +'<th style="'+th+'">Max</th>'
     +'<th style="'+th+'">Std Dev</th>'
-    +'<th style="'+th+'">Target</th>'
-    +'<th style="'+th+'">Ratio</th>'
     +'</tr>';
   var COLORS=['#1f77b4','#ff7f0e','#d62728','#9467bd','#8c564b','#e377c2','#00c853','#f39c12'];
   var td='padding:3px 8px;border-bottom:1px solid #eee;font-size:11px';
@@ -2589,18 +2588,16 @@ function _renderUpmMainStats(active,col){
       +cbCell
       +'<td style="'+td+';text-align:left'+(isTotal?';font-weight:bold':';color:#555')+'">'+esc(gk)+'</td>'
       +'<td style="'+td+';text-align:right">'+st.n+'</td>'
-      +'<td style="'+td+';text-align:right">'+st.min.toFixed(2)+'</td>'
-      +'<td style="'+td+';text-align:right'+(over?';background:#fdecea':warn?';background:#fef9e7':'')+'">'+st.median.toFixed(2)+'</td>'
-      +'<td style="'+td+';text-align:right">'+st.mean.toFixed(2)+'</td>'
-      +'<td style="'+td+';text-align:right">'+st.max.toFixed(2)+'</td>'
-      +'<td style="'+td+';text-align:right">'+st.std.toFixed(2)+'</td>'
-      +'<td style="'+td+';text-align:right">'+(tgt!=null?tgt.toFixed(2):'--')+'</td>'
-      +'<td style="'+td+';text-align:right'+(over?';background:#fdecea;color:#c0392b;font-weight:bold':warn?';background:#fef9e7':'')+'">'+( ratio!=null?ratio.toFixed(2):'--')+'</td>'
+      +'<td style="'+td+';text-align:right">'+st.min.toFixed(1)+'</td>'
+      +'<td style="'+td+';text-align:right'+(over?';background:#fdecea':warn?';background:#fef9e7':'')+'">'+st.median.toFixed(1)+'</td>'
+      +'<td style="'+td+';text-align:right">'+st.mean.toFixed(1)+'</td>'
+      +'<td style="'+td+';text-align:right">'+st.max.toFixed(1)+'</td>'
+      +'<td style="'+td+';text-align:right">'+st.std.toFixed(1)+'</td>'
       +'</tr>';
   }
   var body=totSt?_mkRow('All (Total)',totSt,true,null):'';
   groupOrder.forEach(function(gk,gi){body+=_mkRow(gk,_stCalc(groupMap[gk]),false,gi);});
-  bd.innerHTML=body||'<tr><td colspan="10" style="padding:8px;color:#aaa;text-align:center">No data</td></tr>';
+  bd.innerHTML=body||'<tr><td colspan="8" style="padding:8px;color:#aaa;text-align:center">No data</td></tr>';
 }
 window._renderUpmMainStats=_renderUpmMainStats;
 function _upmGrpToggle(cb){
@@ -3004,7 +3001,7 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
           if(dp.s[di]!=null&&dp.s[di]>0&&dp.u[di]!=null&&dp.u[di]>=0&&dp.u[di]<=_uFence){
             groups[gk].x.push(dp.u[di]);
             groups[gk].y.push(dp.s[di]);
-            groups[gk].t.push('<b>'+col+'</b><br>Wafer: '+wid+'<br>UPM%: '+dp.u[di].toFixed(2)+'<br>'+(isCdyn?'CDYN (nF)':'SICC')+': '+dp.s[di].toFixed(4));
+            groups[gk].t.push('<b>'+col+'</b><br>Wafer: '+wid+'<br>UPM%: '+dp.u[di].toFixed(1)+'<br>'+(isCdyn?'CDYN (nF)':'SICC')+': '+dp.s[di].toFixed(4));
           }
         }
       }else if(dp&&dp.s&&dp.s.length){
@@ -3227,6 +3224,9 @@ function _renderSiccStats(active,cols,isCdyn){
       var dieN=groupDieN[gk];
       var med=medArr(vals);
       var upmMed=medArr(groupUpmVals[gk]);
+      var upmCol=_getUpmCol(col);
+      var upmTgt=upmCol?(TARGETS[upmCol.toUpperCase()]||null):null;
+      var upmRatio=(upmMed!=null&&upmTgt!=null&&upmTgt!==0)?upmMed/upmTgt:null;
       var ratio=(med!=null&&tgt&&tgt!==0)?med/tgt:null;
       var mn=vals.length?_safeMin(vals):null,mx=vals.length?_safeMax(vals):null;
       var mean=vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:null,std=null;
@@ -3257,7 +3257,7 @@ function _renderSiccStats(active,cols,isCdyn){
         +'<td style="'+td+borderTop+(over?';background:#fdecea':warn?';background:#fef9e7':'')+'">'+(med!=null?med.toFixed(2):'--')+'</td>'
         +'<td style="'+td+borderTop+'">'+(tgt!=null?tgt.toFixed(2):'--')+'</td>'
         +'<td style="'+td+borderTop+(over?';background:#fdecea;color:#c0392b;font-weight:bold':warn?';background:#fef9e7':'')+'">'+(ratio!=null?ratio.toFixed(2):'--')+'</td>'
-        +'<td style="'+td+borderTop+'">'+(upmMed!=null?upmMed.toFixed(2)+'%':'--')+'</td>'
+        +'<td style="'+td+borderTop+'">'+(upmMed!=null?upmMed.toFixed(1)+'%':'--')+'</td>'
         +'<td style="'+td+borderTop+'">'+(mn!=null?mn.toFixed(2):'--')+'</td>'
         +'<td style="'+td+borderTop+'">'+(mx!=null?mx.toFixed(2):'--')+'</td>'
         +'<td style="'+td+borderTop+'">'+(mean!=null?mean.toFixed(2):'--')+'</td>'
@@ -3301,7 +3301,7 @@ function _renderSiccHistOnly(active,col,isCdyn){
   allVals.forEach(function(m){var idx=Math.min(nb-1,Math.floor((m-lo)/step));if(idx<0)idx=0;counts[idx]++;});
   var uov=(typeof _buildUpmOverlay!=='undefined')?_buildUpmOverlay(active,col,isCdyn):null;
   drawSVG(edges,counts,medArr(allVals),tgt,col,'upm-hist-svg',false,uov,isCdyn?'CDYN':'SICC');
-  renderStatsTable(computeStats(allVals),'upm-stats-tbl',4);
+  renderStatsTable(computeStats(allVals),'upm-stats-tbl',1);
   /* UPM stats table */
   var upmTblEl=document.getElementById('upm-stats-tbl');
   if(upmTblEl&&uov&&uov.uMed!=null){
@@ -3314,9 +3314,9 @@ function _renderSiccHistOnly(active,col,isCdyn){
         +'<thead><tr><th style="padding:2px 8px;background:#e67e22;color:#fff;text-align:left">Stat</th><th style="padding:2px 8px;background:#e67e22;color:#fff">Value</th></tr></thead>'
         +'<tbody>'
         +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Count (dies)</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right">'+uStats.count+'</td></tr>'
-        +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Median UPM</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:#c0650a">'+uStats.median.toFixed(2)+'%</td></tr>'
-        +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Min UPM</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right">'+uStats.min.toFixed(2)+'%</td></tr>'
-        +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Max UPM</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right">'+uStats.max.toFixed(2)+'%</td></tr>'
+        +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Median UPM</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:#c0650a">'+uStats.median.toFixed(1)+'%</td></tr>'
+        +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Min UPM</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right">'+uStats.min.toFixed(1)+'%</td></tr>'
+        +'<tr><td style="padding:2px 8px;border-bottom:1px solid #eee">Max UPM</td><td style="padding:2px 8px;border-bottom:1px solid #eee;text-align:right">'+uStats.max.toFixed(1)+'%</td></tr>'
         +'<tr><td style="padding:2px 8px">Std Dev</td><td style="padding:2px 8px;text-align:right">'+uStats.stddev.toFixed(2)+'%</td></tr>'
         +'</tbody></table>';
       upmTblEl.innerHTML=(upmTblEl.innerHTML||'')+uTbl;
@@ -3343,7 +3343,10 @@ function render_upm_dist(){
     _drawUpmMainDist(active,col);
     _renderUpmMainStats(active,col);
     var ne2=document.getElementById('sicc-scatter-note');
-    if(ne2)ne2.textContent=active.length+' wafer(s) | UPM: '+col;
+    if(ne2){
+      var _ntgt=(typeof UPM_TARGETS!=='undefined'?(UPM_TARGETS[col]||UPM_TARGETS[col.toUpperCase()]||null):null)||TARGETS[col.toUpperCase()]||null;
+      ne2.textContent=active.length+' wafer(s) | UPM: '+col+(_ntgt!=null?' (Target - '+Math.round(_ntgt)+' MHz)':'');
+    }
     return;
   }
   /* ── SICC / CDYN scatter mode ────────────────────────────────────── */
@@ -3459,8 +3462,8 @@ function render_cdyn(){
       body+='<td class="'+ccls(actual,tgt,true)+'">'+(actual!=null?actual.toFixed(2):'&#8212;')+'</td>';
       body+='<td class="tgt">'+(tgt!=null?tgt.toFixed(2):'&#8212;')+'</td>';
       body+='<td class="'+ratioCls(ratio)+'">'+(ratio!=null?ratio.toFixed(2):'&#8212;')+'</td>';
-      body+='<td class="'+upmCls(upmMed,upmTgt)+'">'+(upmMed!=null?upmMed.toFixed(2):'&#8212;')+'</td>';
-      body+='<td class="tgt">'+(upmTgt!=null?upmTgt.toFixed(2):'&#8212;')+'</td>';
+      body+='<td class="'+upmCls(upmMed,upmTgt)+'">'+(upmMed!=null?upmMed.toFixed(1):'&#8212;')+'</td>';
+      body+='<td class="tgt">'+(upmTgt!=null?upmTgt.toFixed(1):'&#8212;')+'</td>';
       body+='</tr>';
     });
     document.getElementById('cdyn-head').innerHTML=hdr;
@@ -3896,6 +3899,20 @@ def generate_html_svg(data: dict, output_path: str, title: str = '') -> str:
         if c.upper() not in tgt_map and c in targets:
             tgt_map[c.upper()] = targets[c]
 
+    # Map every possible UPM column reference (new_name AND upmTableConfig testName) to its target
+    upm_tgt_map = {}
+    for i, col_name in enumerate(upm_dist):
+        val = tgt_map.get(col_name.upper())
+        if val is not None:
+            upm_tgt_map[col_name] = val
+            upm_tgt_map[col_name.upper()] = val
+        if i < len(upm_tbl_cfg) and upm_tbl_cfg[i] and len(upm_tbl_cfg[i]) > 2 and upm_tbl_cfg[i][2]:
+            tn = upm_tbl_cfg[i][2]
+            tv = val if val is not None else tgt_map.get(tn.upper())
+            if tv is not None:
+                upm_tgt_map[tn] = tv
+                upm_tgt_map[tn.upper()] = tv
+
     data_json     = _esc_json(rows)
     sicc_json     = _esc_json(sicc_cols)
     upm_json      = _esc_json(upm_cols)
@@ -3906,6 +3923,7 @@ def generate_html_svg(data: dict, output_path: str, title: str = '') -> str:
     cdyn_tbl_json = _esc_json(cdyn_tbl_cfg)
     upm_tbl_json  = _esc_json(upm_tbl_cfg)
     upm_dist_json = _esc_json(upm_dist)
+    upm_tgt_json  = _esc_json(upm_tgt_map)
     _def_col      = (sicc_tbl_cfg[0][2] if sicc_tbl_cfg
                      else (sicc_cols + cdyn_cols + [''])[0])
     default_col   = _esc_json(_def_col)
@@ -3946,6 +3964,7 @@ def generate_html_svg(data: dict, output_path: str, title: str = '') -> str:
         f'var CDYN_TBL_CFG={cdyn_tbl_json};\n'
         f'var UPM_TBL_CFG={upm_tbl_json};\n'
         f'var UPM_DIST_COLS={upm_dist_json};\n'
+        f'var UPM_TARGETS={upm_tgt_json};\n'
         f'var ALL_COLS=SICC_COLS.concat(UPM_COLS);\n'
         f'var SEL_COL={default_col};\n'
         f'var IS_CDYN=false;\n'
@@ -4262,13 +4281,17 @@ def process_csv(csv_path: str,
                 df[new_name] = scaled_vals if np.isfinite(divisor) and divisor != 0 else src_vals
 
             _upm_dist_cols.append(new_name)
-        # Extract target from 4th element if present (e.g. "94%" → 94)
-        if len(entry) >= 4:
-            tgt_str = str(entry[3]).replace('%', '').strip()
-            try:
-                _upm_targets[new_name] = float(tgt_str)
-            except (ValueError, TypeError):
-                pass
+        # Extract target from 3rd element (index 2); 4th element (index 3) is legacy/unused
+        for _tgt_idx in (2, 3):
+            if len(entry) > _tgt_idx:
+                tgt_str = str(entry[_tgt_idx]).replace('%', '').strip()
+                try:
+                    _v = float(tgt_str)
+                    if _v > 0:
+                        _upm_targets[new_name] = _v
+                        break
+                except (ValueError, TypeError):
+                    pass
 
     # ── Step 4: CDYN columns ───────────────────────────────────────────────
     cdyn_col_names: list[str] = []
@@ -4425,9 +4448,21 @@ def process_csv(csv_path: str,
         targets.update(override_targets)
     if override_cdyn_targets:
         resolved_cdyn_targets.update(override_cdyn_targets)
+    # Also pick up UPM targets from upmTableConfig 5th element if present
+    for _e in config.get('upmTableConfig', []):
+        if len(_e) >= 5 and _e[2] and _e[4] is not None and _e[4] != '':
+            try:
+                _upm_targets.setdefault(str(_e[2]), float(str(_e[4]).replace('%', '').strip()))
+            except (ValueError, TypeError):
+                pass
     # Merge UPM targets from upmInfo into main targets dict
+    print(f'[DIAG] _upm_targets before merge: {_upm_targets}')
+    print(f'[DIAG] upm_dist_cols: {_upm_dist_cols}')
     for _n, _v in _upm_targets.items():
         targets[_n.upper()] = _v
+    print(f'[DIAG] targets keys with upm: {[k for k in targets if "upm" in k.lower()]}')
+    print(f'[DIAG] upmInfo config: {config.get("upmInfo", [][:3])}')
+
 
     # ── Step 8: Build SICC/CDYN → UPM die-pair mapping ────────────────────
     _pair_map: dict[str, str] = {}  # sicc_or_cdyn_col → upm_col
@@ -4713,6 +4748,20 @@ def run_python_pipeline(csv_path: str,
                     if _t and _v is not None:
                         try: _override_cdyn_targets[_t] = float(_v)
                         except (ValueError, TypeError): pass
+                # Extract UPM targets from product config (dict or list format)
+                _upm_tgt_raw = _pcfg.get('upm_targets')
+                if isinstance(_upm_tgt_raw, dict):
+                    for _k, _v in _upm_tgt_raw.items():
+                        try: _override_targets[str(_k).strip().upper()] = float(str(_v).replace('%','').strip())
+                        except (ValueError, TypeError): pass
+                elif isinstance(_upm_tgt_raw, list):
+                    for _e in _upm_tgt_raw:
+                        if not isinstance(_e, dict): continue
+                        _t = str(_e.get('test','') or _e.get('name','')).strip()
+                        _v = _e.get('target') or _e.get('target_pct') or _e.get('value')
+                        if _t and _v is not None:
+                            try: _override_targets[_t.upper()] = float(str(_v).replace('%','').strip())
+                            except (ValueError, TypeError): pass
                 if _override_targets or _override_cdyn_targets:
                     status_cb(f'Loaded {len(_override_targets)} SICC + {len(_override_cdyn_targets)} CDYN targets from product config.')
                 # Merge testlist configs from product config (takes precedence)
@@ -4728,6 +4777,14 @@ def run_python_pipeline(csv_path: str,
         data = process_csv(csv_path, cfg, target_csv=target_csv,
                            override_targets=_override_targets or None,
                            override_cdyn_targets=_override_cdyn_targets or None)
+
+        # Diagnostic: verify UPM target extraction so naming mismatches are visible in log
+        _udist = data.get('upm_dist_cols', [])
+        _upm_tgts = {k: v for k, v in data.get('targets', {}).items() if 'upm' in k.lower()}
+        status_cb(f'UPM dist cols: {_udist}')
+        print(f'[DIAG] UPM dist cols: {_udist}')
+        status_cb(f'UPM targets in TARGETS: {_upm_tgts or "(NONE — check upmInfo 4th element)"}')
+        print(f'[DIAG] UPM targets in TARGETS: {_upm_tgts or "(NONE — check upmInfo 4th element)"}')
 
         n_rows   = len(data.get('rows', []))
         n_sicc   = len(data.get('sicc_columns', []))
