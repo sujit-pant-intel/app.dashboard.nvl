@@ -421,8 +421,8 @@ def update_tp_gz(
     Returns (gz_path, changed).
     """
     prog_dir = data_dir / "programs"
-    _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', key)
-    _letter_sub = f"0H61{_m.group(1).upper()}" if _m else "0H61X"
+    _m = re.search(r'([A-Za-z]\d{2}[A-Za-z])', key)
+    _letter_sub = _m.group(1).upper() if _m else "0H61X"
     letter_dir  = prog_dir / _letter_sub
     gz_path     = letter_dir / f"{key}.csv.gz"
     z7_path     = letter_dir / f"{key}.7z"
@@ -1006,7 +1006,7 @@ def _build_run_report(
 <tr><td colspan='9' class='ts' style='padding:2px 12px 8px'>{lots_str}</td></tr>
 """
 
-    title_str = (f"Scan Dashboard \u2014 NVL816-BLLC 0H61{letter.upper()} \u2014 {run_ts}"
+    title_str = (f"Scan Dashboard \u2014 NVL816-BLLC {letter.upper()} \u2014 {run_ts}"
                  if letter else f"Scan Dashboard \u2014 NVL816-BLLC \u2014 {run_ts}")
 
     # ── History section ───────────────────────────────────────────────────────
@@ -1226,12 +1226,12 @@ def _collect_history(
     if not output_dir.exists():
         return []
 
-    # Collect all NVL_0H61* run dirs, excluding the current one
+    # Collect all NVL_H61* run dirs, excluding the current one
     try:
         all_dirs = [
             d for d in output_dir.iterdir()
             if d.is_dir()
-            and re.search(r'^NVL_0H61[A-Za-z]_\d{8}_\d{6}$', d.name, re.IGNORECASE)
+            and re.search(r'^NVL_[A-Za-z]61[A-Za-z]_\d{8}_\d{6}$', d.name, re.IGNORECASE)
             and d.resolve() != current_run_dir.resolve()
         ]
     except OSError:
@@ -1241,7 +1241,7 @@ def _collect_history(
     history: list[tuple] = []
     for rd in past_dirs:
         m = re.search(r'_(\d{8})_(\d{6})$', rd.name)
-        lm = re.search(r'NVL_(0H61[A-Za-z])_', rd.name, re.IGNORECASE)
+        lm = re.search(r'NVL_([A-Za-z]61[A-Za-z])_', rd.name, re.IGNORECASE)
         run_letter = lm.group(1).upper() if lm else ""
         if m:
             d, t = m.group(1), m.group(2)
@@ -1540,8 +1540,8 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
 
     _excluded = set(excluded_keys or [])
 
-    run_pattern = re.compile(r'^NVL_0H(\d+)([A-Za-z])_(\d{8}_\d{6})$')
-    tp_pattern  = re.compile(r'(?:0H)?(\d+)([A-Za-z]).*?_(\d{5,6})$')
+    run_pattern = re.compile(r'^NVL_([A-Za-z](\d+)[A-Za-z])_(\d{8}_\d{6})$')
+    tp_pattern  = re.compile(r'([A-Za-z]\d{2}[A-Za-z]).*?_(\d{5,6})$')
     history: dict[str, list[dict]] = defaultdict(list)
 
     for rd in sorted(output_dir.iterdir()):
@@ -1550,8 +1550,8 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         m = run_pattern.match(rd.name)
         if not m:
             continue
-        gen, letter, ts = m.group(1), m.group(2).upper(), m.group(3)
-        prog_key = f"{gen}{letter}"
+        prog_key = m.group(1).upper()  # e.g. H61G, M61H
+        ts = m.group(3)
         dt_str = f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} {ts[9:11]}:{ts[11:13]}"
         for tp_dir in sorted(rd.iterdir()):
             if not tp_dir.is_dir():
@@ -1559,14 +1559,14 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             if tp_dir.name in _excluded:
                 continue
             tm = tp_pattern.search(tp_dir.name)
-            if not tm or tm.group(1) != gen or tm.group(2).upper() != letter:
+            if not tm:
                 continue
             data_js = tp_dir / "dashboard" / "data.js"
             sm = _parse_scan_summary(data_js) if data_js.exists() else {}
             history[prog_key].append({
                 "ts":     ts,
                 "dt_str": dt_str,
-                "op":     tm.group(3),
+                "op":     tm.group(2),
                 "tp_key": tp_dir.name,
                 "tp_dir": tp_dir,
                 "sm":     sm,
@@ -1577,7 +1577,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
 
     sorted_keys = sorted(
         history.keys(),
-        key=lambda k: (int(k[:-1]), k[-1]),
+        key=lambda k: (int(k[1:-1]), k[-1]),
         reverse=True,
     )
 
@@ -1680,9 +1680,9 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         link = _idx_uri(e)
         prog_cell = (
             f'<td class="c-prog"><a href="{link}" class="tl">'
-            f'<span class="prog-pill">0H{k}</span></a></td>'
+            f'<span class="prog-pill">{k}</span></a></td>'
             if link else
-            f'<td class="c-prog"><span class="prog-pill">0H{k}</span></td>'
+            f'<td class="c-prog"><span class="prog-pill">{k}</span></td>'
         )
         sum_rows += _data_row(e, prog_prefix=prog_cell)
 
@@ -1707,7 +1707,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             continue
         def _prog_cell(e, ltr):
             link = _idx_uri(e)
-            pill = f'<span class="prog-pill">0H{ltr}</span>'
+            pill = f'<span class="prog-pill">{ltr}</span>'
             return (
                 f'<td class="c-prog"><a href="{link}" class="tl">{pill}</a></td>'
                 if link else f'<td class="c-prog">{pill}</td>'
@@ -1724,7 +1724,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         prog_panels += (
             f'<div id="panel-{k}" class="panel">\n'
             f'  <h2 class="panel-hdr">\n'
-            f'    <span class="prog-pill">0H{k}</span>\n'
+            f'    <span class="prog-pill">{k}</span>\n'
             f'    <span class="yld-badge" style="background:{badge_col}">{latest_ff} FF</span>\n'
             f'    <span class="panel-sub-inline">{len(entries)} run{"s" if len(entries)!=1 else ""}</span>\n'
             f'  </h2>\n'
@@ -1746,7 +1746,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         n  = len(history[k])
         sb += (
             f'<li><button class="tab-btn" data-panel="{k}">'
-            f'<span class="nav-prog">0H{k}</span>'
+            f'<span class="nav-prog">{k}</span>'
             f'<span class="nav-meta">{n} run{"s" if n!=1 else ""} &bull; FF: {ff}</span>'
             f'</button></li>\n'
         )
@@ -1926,7 +1926,7 @@ def _cleanup_old_runs(base_dir: Path, letter: str, keep: int = 10, dry_run: bool
     output_dir = base_dir / "output"
     if not output_dir.exists():
         return
-    pattern = f"NVL_0H61{letter}_"
+    pattern = f"NVL_{letter}_"
     try:
         all_dirs = sorted(
             [d for d in output_dir.iterdir()
@@ -1940,7 +1940,7 @@ def _cleanup_old_runs(base_dir: Path, letter: str, keep: int = 10, dry_run: bool
     to_delete = untagged[keep:]                # keep newest `keep` untagged; delete the rest
     if not to_delete:
         return
-    _log(f"  Cleanup 0H61{letter}: keeping {min(keep, len(untagged))} run(s), "
+    _log(f"  Cleanup {letter}: keeping {min(keep, len(untagged))} run(s), "
          f"removing {len(to_delete)} old run(s)  "
          f"({len(tagged)} tagged run(s) preserved)")
     for d in to_delete:
@@ -2070,8 +2070,8 @@ def main() -> None:
 
     _letter_rows: dict[str, tuple[list[dict], list[str]]] = {}
     for _key, (_krows, _khdrs) in groups.items():
-        _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', _key)
-        _letter = f"0H61{_m.group(1).upper()}" if _m else "0H61X"
+        _m = re.search(r'([A-Za-z]\d{2}[A-Za-z])', _key)
+        _letter = _m.group(1).upper() if _m else "0H61X"
         if _letter not in _letter_rows:
             _letter_rows[_letter] = ([], list(_khdrs))
         _lrows, _lhdrs = _letter_rows[_letter]
@@ -2147,17 +2147,17 @@ def main() -> None:
     # ── 4. Group by letter and run ────────────────────────────────────────────
     _letter_groups: dict[str, list[str]] = {}
     for _k in sorted(keys_to_run):
-        _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', _k)
-        _letter_groups.setdefault(_m.group(1).upper() if _m else "X", []).append(_k)
+        _m = re.search(r'([A-Za-z]\d{2}[A-Za-z])', _k)
+        _letter_groups.setdefault(_m.group(1).upper() if _m else "?", []).append(_k)
     _log(f"\nProgram groups: {list(_letter_groups.keys())} ({len(_letter_groups)} run folder(s))")
 
     env        = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
     all_results: list[tuple] = []
 
     for _letter, _letter_keys in sorted(_letter_groups.items(), reverse=True):
-        run_dir = base_dir / "output" / f"NVL_0H61{_letter}_{ts}"
+        run_dir = base_dir / "output" / f"NVL_{_letter}_{ts}"
         _log(f"\n{'='*65}")
-        _log(f"=== Program 0H61{_letter}  ({len(_letter_keys)} TP(s))  →  {run_dir.name} ===")
+        _log(f"=== Program {_letter}  ({len(_letter_keys)} TP(s))  →  {run_dir.name} ===")
 
         tp_results: list[tuple] = []   # (tp_key, ok, tp_output_dir, data_js_path)
 
@@ -2165,7 +2165,7 @@ def main() -> None:
         # runs once with a single combined CSV (e.g. L0 + L5 both containing H61E).
         # The L0 key (matching '0H61') is used as the primary identifier.
         _primary_key = next(
-            (k for k in sorted(_letter_keys) if re.search(r'0H61', k)),
+            (k for k in sorted(_letter_keys) if re.search(re.escape(_letter), k)),
             sorted(_letter_keys)[0]
         )
         if len(_letter_keys) > 1:
@@ -2183,8 +2183,8 @@ def main() -> None:
         _exec_keys = [_primary_key]
 
         for tp_key in _exec_keys:
-            _m_key  = re.search(r'[0-9A-Za-z]H61([A-Za-z])', tp_key)
-            _sub    = f"0H61{_m_key.group(1).upper()}" if _m_key else "0H61X"
+            _m_key  = re.search(r'([A-Za-z]\d{2}[A-Za-z])', tp_key)
+            _sub    = _m_key.group(1).upper() if _m_key else "0H61X"
             # Write temp gz from in-memory data (deleted after pipeline; raw_<ts>.7z is the archival copy)
             _tp_letter_dir = prog_dir / _sub
             if not args.dry_run:
@@ -2225,7 +2225,7 @@ def main() -> None:
             )
 
         # ── Per-letter run log ────────────────────────────────────────────────
-        _log(f"\nUpdating run log for 0H61{_letter}…")
+        _log(f"\nUpdating run log for {_letter}…")
         update_run_log(
             results=[(r[0], r[1], r[2]) for r in tp_results],
             aqua_file=str(aqua_file),
@@ -2243,7 +2243,7 @@ def main() -> None:
 
         # ── Auto-cleanup old runs for this letter ──────────────────────────────
         if _keep_runs > 0:
-            _log(f"\nAuto-cleanup 0H61{_letter} (keep={_keep_runs})…")
+            _log(f"\nAuto-cleanup {_letter} (keep={_keep_runs})…")
             _cleanup_old_runs(base_dir, _letter, keep=_keep_runs, dry_run=args.dry_run)
 
     # ── Send single consolidated email after all letters are processed ─────────
@@ -2267,12 +2267,6 @@ def main() -> None:
         _report_save = _reports_dir / f"Scan_Report_{ts_label}.html"
         _report_save.write_text(body, encoding="utf-8")
         _log(f"Report saved: {_report_save}")
-        try:
-            from generate_index import build_index as _build_index
-            _idx = _build_index(base_dir)
-            _log(f"Index regenerated: {_idx}")
-        except Exception as _ie:
-            _log(f"WARNING: could not regenerate index.html: {_ie}")
         _att_dir  = Path(tempfile.mkdtemp(prefix="nvl_scan_att_"))
         try:
             att_path = _att_dir / f"NVL816-BLLC Scan Report {ts_label}.html"
