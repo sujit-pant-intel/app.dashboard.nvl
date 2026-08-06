@@ -3173,7 +3173,11 @@ def pull_aqua(
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     ts       = _ts()
-    out_base = data_dir / f"NCXSDJXL0H61_{ts}"
+    # derive prefix from config filename (e.g. "NVLG_Sort_Yield - AutoPull.txt" -> "NVLG_Sort_Yield")
+    _cfg_stem   = Path(report_config).stem  # e.g. "NVLG_Sort_Yield - AutoPull"
+    _cfg_prefix = re.sub(r'\s*-\s*AutoPull.*$', '', _cfg_stem, flags=re.IGNORECASE).strip() or "AQUA"
+    _cfg_prefix = re.sub(r'[^\w\-]', '_', _cfg_prefix)  # filesystem-safe
+    out_base = data_dir / f"{_cfg_prefix}_{ts}"
 
     # AQUA ignores the extension we request and always writes .csv.gz;
     # request a .zip so we can detect the actual file by globbing out_base.*
@@ -3235,7 +3239,7 @@ def pull_aqua(
     if new_csvs:
         plain = [p for p in new_csvs if p.suffix.lower() == ".csv"]
         src   = max(plain or new_csvs, key=lambda p: p.stat().st_mtime)
-        dest  = data_dir / f"NCXSDJXL0H61_{ts}.csv"
+        dest  = data_dir / f"{_cfg_prefix}_{ts}.csv"
         shutil.copy2(src, dest)
         _log(f"  Fallback: copied from %TEMP%: {src.name} -> {dest.name} ({dest.stat().st_size:,} bytes)")
         return dest
@@ -3792,18 +3796,6 @@ def build_index(base_dir: Path, product_name: str = "NVL816-BLLC") -> Path:
     return out
 
 
-if __name__ == "__main__":
-    import webbrowser
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--base-dir", default=None)
-    args = ap.parse_args()
-    _BASE = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield")
-    base = Path(args.base_dir) if args.base_dir else _BASE
-    out  = build_index(base)
-    print(f"Index written -> {out}")
-    webbrowser.open(out.as_uri())
-
-
 # ════════════════════════════════════════════════════════════════
 # (formerly manage_email.py)
 # ════════════════════════════════════════════════════════════════
@@ -3876,13 +3868,12 @@ def _discover_keys(base_dir: Path) -> list[str]:
 
 
 def _group_keys(keys: list[str]) -> dict[str, list[str]]:
-    """Group keys by program letter (61A, 61B, 61C …)."""
+    """Group keys by full program variant (H61G, M61H …)."""
     groups: dict[str, list[str]] = {}
     for k in keys:
-        m = re.search(r'61([A-Za-z])', k)
-        letter = m.group(1).upper() if m else "?"
-        groups.setdefault(letter, []).append(k)
-    # Sort: letter descending (61C first), keys ascending within group
+        m = re.search(r'([A-Za-z]\d{2}[A-Za-z])', k)
+        group_key = m.group(1).upper() if m else "?"
+        groups.setdefault(group_key, []).append(k)
     return dict(sorted(groups.items(), reverse=True))
 
 
@@ -4014,7 +4005,7 @@ class EmailManagerApp(tk.Tk):
             return
 
         for letter, tp_keys in groups.items():
-            prog_name = f"0H61{letter}"
+            prog_name = letter  # e.g. H61G, M61H
 
             # Group header
             hdr = tk.Frame(self.inner, bg=BG3)
@@ -4532,7 +4523,7 @@ def pull_aqua(aqua_exe: str, report_config: Path, data_dir: Path, dry_run: bool)
     """Run AquaCmdLine.exe with the repo config. Returns path to the downloaded file."""
     data_dir.mkdir(parents=True, exist_ok=True)
     ts       = _ts()
-    out_base = data_dir / f"NCXSDJXL0H61_{ts}"
+    out_base = data_dir / f"aqua_pull_{ts}"
     out_req  = out_base.with_suffix(".zip")   # AQUA ignores extension; we glob after
 
     report_name = _aqua_report_name(report_config)
@@ -4586,7 +4577,7 @@ def pull_aqua(aqua_exe: str, report_config: Path, data_dir: Path, dry_run: bool)
     new_csvs   = sorted(after_temp - before_temp, key=lambda p: p.stat().st_mtime)
     if new_csvs:
         src  = max(new_csvs, key=lambda p: p.stat().st_mtime)
-        dest = data_dir / f"NCXSDJXL0H61_{ts}.csv"
+        dest = data_dir / f"aqua_pull_{ts}.csv"
         shutil.copy2(src, dest)
         _log(f"  Fallback from %TEMP%: {src.name} → {dest.name}")
         return dest
@@ -4788,8 +4779,8 @@ def update_tp_gz(
     Returns (gz_path, True) always (or (gz_path, False) in dry-run).
     """
     prog_dir = data_dir / "programs"
-    _m = re.search(r'[0-9A-Za-z]H61([A-Za-z])', key)
-    _letter_sub = f"0H61{_m.group(1).upper()}" if _m else "0H61X"
+    _m = re.search(r'([A-Za-z]\d{2}[A-Za-z])', key)
+    _letter_sub = _m.group(1).upper() if _m else "H61X"
     letter_dir  = prog_dir / _letter_sub
     gz_path     = letter_dir / f"{key}.csv.gz"
     z7_path     = letter_dir / f"{key}.7z"
@@ -5333,6 +5324,8 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
         return m.group(1) if m else "?"
 
     _auto_dir = run_dir.parent.parent  # …/auto/
+    _gen = re.search(r'(\d+)$', prog_series)
+    _gen = _gen.group(1) if _gen else '61'
 
     # ── Load FF / FF+DF targets from product config ───────────────────────────
     _ff_tgt = _ff_df_tgt = None
@@ -5365,7 +5358,7 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
 
         def _hbar(letter: str, val: float, max_v: float, lbl: str) -> str:
             pct   = min(100.0, val / max_v * 100) if max_v > 0 else 0.0
-            color = clrs.get(letter, "#90a4ae")
+            color = clrs.get(letter[-1], "#90a4ae")
             disp  = f"{val:.1f}%" if val > 0 else "\u2013"
             return (
                 f"<div style='display:flex;align-items:center;gap:6px;margin:3px 0'>"
@@ -5377,7 +5370,7 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
             )
 
         def _grp(title: str, pts: list, max_v: float, tgt: float | None = None) -> str:
-            bars     = "".join(_hbar(l, v, max_v, f"{prog_series}{l}") for l, v in pts)
+            bars     = "".join(_hbar(l, v, max_v, l) for l, v in pts)
             tgt_note = (f"<div style='font-size:0.8em;color:#78909c;margin-left:44px'>"
                         f"Target:\u00a0{tgt:.1f}%</div>"
                         if tgt is not None else "")
@@ -5460,7 +5453,7 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
             prog_col = clrs.get(letter, "#80cbc4")
             table_rows += (
                 f"<tr>"
-                f"<td style='color:{prog_col};font-weight:bold;font-family:monospace'>{prog_series}{letter}</td>"
+                f"<td style='color:{prog_col};font-weight:bold;font-family:monospace'>{letter}</td>"
                 f"<td>{die}</td>"
                 f"<td style='color:{ff_col};font-weight:bold'>{ff:.1f}%</td>"
                 f"<td style='color:{ffdf_col};font-weight:bold'>{ffdf:.1f}%</td>"
@@ -5489,10 +5482,10 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
                         pass
             if not bd_html:
                 bd_html = "<p style='color:#90a4ae;font-size:0.88em'>BinDistribution not available</p>"
-            col = clrs.get(letter, "#80cbc4")
+            col = clrs.get(letter[-1], "#80cbc4")
             bindist_cols += (
                 f"<div style='flex:1;min-width:340px'>"
-                f"<div style='color:{col};font-weight:bold;font-size:1em;margin-bottom:6px'>{prog_series}{letter}</div>"
+                f"<div style='color:{col};font-weight:bold;font-size:1em;margin-bottom:6px'>{letter}</div>"
                 f"{bd_html}</div>"
             )
 
@@ -5500,7 +5493,7 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
             f"<span style='display:inline-flex;align-items:center;gap:5px'>"
             f"<span style='width:14px;height:14px;background:{clrs.get(l,'#90a4ae')};"
             f"border-radius:3px;display:inline-block'></span>"
-            f"<span style='color:#cde;font-size:0.9em'>{prog_series}{l}</span></span>"
+            f"<span style='color:#cde;font-size:0.9em'>{l}</span></span>"
             for l, _, _ in letter_data
         )
         ts_now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -5655,7 +5648,7 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
             return m.group(0) if m else ''
         _hist_dirs = sorted(
             [d for d in run_dir.parent.iterdir()
-             if d.is_dir() and re.match(rf'NVL_{re.escape(prog_series)}[A-Za-z]_', d.name) and d != run_dir],
+             if d.is_dir() and re.match(rf'NVL_[A-Za-z0-9]+{_gen}[A-Za-z]_', d.name) and d != run_dir],
             key=_folder_ts, reverse=True,
         )[:30]
         _hist_latest: dict = {}  # letter -> (item, hdate)  — most recent
@@ -5674,10 +5667,10 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
             for _td in _td_list:
                 if not _td.is_dir() or _td.name.endswith("_R0"):
                     continue
-                _ml = re.search(rf'{re.escape(prog_series)}([A-Za-z])', _td.name)
+                _ml = re.search(rf'([A-Za-z0-9]+{_gen}[A-Za-z])', _td.name)
                 if not _ml:
                     continue
-                _let = _ml.group(1).upper()
+                _let = _ml.group(1).upper()  # full group key e.g. H61G
                 if _let in letter_best:
                     continue   # covered by current run
                 _op_m = re.search(r"_(\d{5,6})$", _td.name)
@@ -5720,7 +5713,7 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
             _r_cells = f"<td>{die}</td>{_cells(smry)}{_repair_cells(smry)}"
         rows1 += (
             f"<tr>"
-            f"<td class='cmp-prog'{_dim_style}>{prog_series}{letter}{_idx_link}{note}</td>"
+            f"<td class='cmp-prog'{_dim_style}>{letter}{_idx_link}{note}</td>"
             f"<td class='cmp-op'{_dim_style}>{_op(best)}</td>"
             f"{_r_cells}"
             f"</tr>\n"
@@ -5747,8 +5740,8 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
     )
 
     # ── Card 2: current-letter run history ─────────────────────────────────────
-    _m_curr_ltr = re.search(rf'NVL_{re.escape(prog_series)}([A-Za-z])', run_dir.name)
-    _curr_ltr = _m_curr_ltr.group(1).upper() if _m_curr_ltr else 'C'
+    _m_curr_ltr = re.search(rf'NVL_([A-Za-z0-9]+{_gen}[A-Za-z])_', run_dir.name)
+    _curr_ltr = _m_curr_ltr.group(1).upper() if _m_curr_ltr else f'H{_gen}C'
     rows2 = ""
     row_count2 = 0
     card2_cp = None
@@ -5763,14 +5756,14 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
         # from the same automation run are treated as separate entries.
         _rf_all = sorted(
             [d for d in output_dir.iterdir()
-             if d.is_dir() and re.match(rf'NVL_{re.escape(prog_series)}[A-Za-z]_', d.name)],
+             if d.is_dir() and re.match(rf'NVL_[A-Za-z0-9]+{_gen}[A-Za-z]_', d.name)],
             key=_folder_ts2, reverse=True,
         )
         _seen_ts: set[str] = set()
         run_folders: list[Path] = []
         for _rfd in _rf_all:
-            _m_ltr = re.search(rf'NVL_{re.escape(prog_series)}([A-Za-z])', _rfd.name)
-            _rk = (f"{_m_ltr.group(1)}_{_folder_ts2(_rfd)}"
+            _m_ltr = re.search(rf'NVL_([A-Za-z0-9]+{_gen}[A-Za-z])_', _rfd.name)
+            _rk = (_m_ltr.group(1) + '_' + _folder_ts2(_rfd)
                    if _m_ltr else _folder_ts2(_rfd))
             if _rk not in _seen_ts:
                 _seen_ts.add(_rk)
@@ -5785,7 +5778,7 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
             ) if m else rf.name
             c_dirs = sorted(
                 [d for d in rf.iterdir()
-                 if d.is_dir() and re.search(rf'{re.escape(prog_series)}{_curr_ltr}', d.name)
+                 if d.is_dir() and re.search(re.escape(_curr_ltr), d.name)
                  and not d.name.endswith("_R0")
                  and not any(d.name.endswith(f"_{op}") for op in _excl_ops)],
                 key=lambda d: int(re.search(r"_(\d{5,6})$", d.name).group(1))
@@ -5891,7 +5884,7 @@ def _build_run_report(
     # key e.g. NCXSDJXL0H61C002620_132322  →  letter='C', op='132322'
     _ps_escaped = re.escape(prog_series)
     def _parse(tp_key: str):
-        m = re.search(rf'{_ps_escaped}([A-Za-z]).*?_(\d{{5,6}})$', tp_key)
+        m = re.search(r'([A-Za-z]\d{2}[A-Za-z]).*?_(\d{5,6})$', tp_key)
         return (m.group(1).upper(), m.group(2)) if m else ('?', '0')
 
     groups: dict[str, list] = defaultdict(list)
@@ -5913,7 +5906,7 @@ def _build_run_report(
     categories_html = ""
     _first_card = False  # all BinDist dropdowns start collapsed
     for letter, entries in sorted_groups:
-        prog_name  = f"{prog_series}{letter}"
+        prog_name  = letter  # e.g. H61G, M61H
         ok_count   = sum(1 for _, item in entries if item[1])
         fail_count = len(entries) - ok_count
         cat_status = (f'<span class="ok">{ok_count} OK</span>'
@@ -5960,7 +5953,7 @@ def _build_run_report(
             bd_search_dir = tp_dir
 
             # Inline BinDistribution via srcdoc — open only for latest series-C, collapsed otherwise
-            bd_open = not is_stale and bool(re.search(rf'{re.escape(prog_series)}C', tp_key))
+            bd_open = not is_stale and letter[-1] == 'C'
             bindist_block = '<p class="ts">BinDistribution not available.</p>'
             if bd_search_dir.exists():
                 bdfiles = sorted(bd_search_dir.glob("*BinDistribution*.html"))
@@ -6287,7 +6280,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
     _series_digits = re.search(r'(\d+)$', prog_series)
     _gen = _series_digits.group(1) if _series_digits else "61"
 
-    run_pattern = re.compile(rf'^NVL_{re.escape(prog_series)}([A-Za-z])_(\d{{8}}_\d{{6}})$')
+    run_pattern = re.compile(rf'^NVL_([A-Za-z0-9]+{_gen}[A-Za-z])_(\d{{8}}_\d{{6}})$')
     # Match both '0H61H' and 'XH61H' style TP key prefixes (some steppings differ in leading char)
     tp_pattern  = re.compile(rf'[A-Za-z0-9]H{_gen}([A-Za-z]).*?_(\d{{5,6}})$')
     history: dict[str, list[dict]] = defaultdict(list)
@@ -6301,7 +6294,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         if not m:
             continue
         letter, ts = m.group(1).upper(), m.group(2)
-        prog_key = f"{_gen}{letter}"   # e.g. "61E", "80A"
+        prog_key = letter   # e.g. "H61G", "M61H"
         if _run_count.get(prog_key, 0) >= _MAX_HISTORY:
             continue
         _run_count[prog_key] = _run_count.get(prog_key, 0) + 1
@@ -6312,7 +6305,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             if tp_dir.name in _excluded:
                 continue
             tm = tp_pattern.search(tp_dir.name)
-            if not tm or tm.group(1).upper() != letter or tp_dir.name.endswith("_R0"):
+            if not tm or tm.group(1).upper() != letter[-1] or tp_dir.name.endswith("_R0"):
                 continue
             history[prog_key].append({
                 "ts":      ts,
@@ -6450,9 +6443,9 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         link = _idx_uri(e)
         prog_cell = (
             f'<td class="c-prog"><a href="{link}" class="tl">'
-            f'<span class="prog-pill">0H{letter}</span></a></td>'
+            f'<span class="prog-pill">{letter}</span></a></td>'
             if link else
-            f'<td class="c-prog"><span class="prog-pill">0H{letter}</span></td>'
+            f'<td class="c-prog"><span class="prog-pill">{letter}</span></td>'
         )
         sum_rows += _material_rows_for_entry(e, is_latest=True, prog_prefix=prog_cell)
 
@@ -6479,7 +6472,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             continue
         def _prog_cell(e, ltr):
             link = _idx_uri(e)
-            pill = f'<span class="prog-pill">0H{ltr}</span>'
+            pill = f'<span class="prog-pill">{ltr}</span>'
             return (
                 f'<td class="c-prog"><a href="{link}" class="tl">{pill}</a></td>'
                 if link else f'<td class="c-prog">{pill}</td>'
@@ -6497,7 +6490,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         prog_panels += (
             f'<div id="panel-{letter}" class="panel">\n'
             f'  <h2 class="panel-hdr">\n'
-            f'    <span class="prog-pill">0H{letter}</span>\n'
+            f'    <span class="prog-pill">{letter}</span>\n'
             f'    <span class="yld-badge" style="background:{badge_col}">{latest_ff} FF</span>\n'
             f'    <span class="panel-sub-inline">{len(entries)} run{"s" if len(entries)!=1 else ""}</span>\n'
             f'    <button class="csv-btn" onclick="downloadCSV(this)" title="Download visible rows as CSV">&#11123; CSV</button>\n'
@@ -6520,7 +6513,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         n  = len(history[letter])
         sb += (
             f'<li><button class="tab-btn" data-panel="{letter}">'
-            f'<span class="nav-prog">0H{letter}</span>'
+            f'<span class="nav-prog">{letter}</span>'
             f'<span class="nav-meta">{n} run{"s" if n!=1 else ""} &bull; FF: {ff}</span>'
             f'</button></li>\n'
         )
@@ -7133,11 +7126,11 @@ was detected since the last run. Pipelines were not re-executed.</p>
 
 def cleanup_old_runs(output_dir: Path, keep_runs: int, dry_run: bool = False, prog_series: str = "0H61") -> int:
     """Delete old output run folders, keeping the *keep_runs* most-recent per
-    program letter (0H61A, 0H61B, 0H61C, …).
+    program variant (H61G, M61H, …).
 
     Rules:
-      - Folders are grouped by program letter (NVL_0H61C_* → letter C).
-      - Within each letter, folders are sorted newest-first by name (date-encoded).
+      - Folders are grouped by program variant (NVL_H61G_* → group H61G).
+      - Within each group, folders are sorted newest-first by name (date-encoded).
       - The *keep_runs* most-recent folders are kept.
       - Folders that contain a ``.tag`` file are **always** preserved (not counted
         against keep_runs).
@@ -7146,7 +7139,9 @@ def cleanup_old_runs(output_dir: Path, keep_runs: int, dry_run: bool = False, pr
     if keep_runs <= 0 or not output_dir.exists():
         return 0
 
-    pattern = re.compile(rf'^NVL_{re.escape(prog_series)}([A-Za-z])_', re.IGNORECASE)
+    _gd = re.search(r'(\d+)$', prog_series)
+    _gen = _gd.group(1) if _gd else '61'
+    pattern = re.compile(rf'^NVL_([A-Za-z0-9]+{re.escape(_gen)}[A-Za-z])_', re.IGNORECASE)
     letter_groups: dict[str, list[Path]] = {}
     for d in output_dir.iterdir():
         if not d.is_dir():
@@ -7158,7 +7153,7 @@ def cleanup_old_runs(output_dir: Path, keep_runs: int, dry_run: bool = False, pr
 
     deleted = 0
     for letter in sorted(letter_groups):
-        # Newest run first (folder names are NVL_0H61X_YYYYMMDD_HHMMSS)
+        # Newest run first (folder names are NVL_H61G_YYYYMMDD_HHMMSS)
         folders = sorted(letter_groups[letter], key=lambda d: d.name, reverse=True)
         kept = 0
         for d in folders:
@@ -7189,7 +7184,9 @@ def _preview_cleanup(output_dir: Path, keep_runs: int, prog_series: str = "0H61"
     if keep_runs <= 0 or not output_dir.exists():
         return []
 
-    pattern = re.compile(rf'^NVL_{re.escape(prog_series)}([A-Za-z])_', re.IGNORECASE)
+    _gd2 = re.search(r'(\d+)$', prog_series)
+    _gen2 = _gd2.group(1) if _gd2 else '61'
+    pattern = re.compile(rf'^NVL_([A-Za-z0-9]+{re.escape(_gen2)}[A-Za-z])_', re.IGNORECASE)
     letter_groups: dict[str, list[Path]] = {}
     for d in output_dir.iterdir():
         if not d.is_dir():
@@ -7244,8 +7241,8 @@ def main() -> None:
     ap.add_argument("--email",         default=_EMAIL_TO)
     ap.add_argument("--product-name",   default="NVL816-BLLC",
                     help="Product label used in email subjects and report filenames")
-    ap.add_argument("--program-series",  default="0H61",
-                    help="Program series code in TP keys/folder names (e.g. 0H61 or 0H80)")
+    ap.add_argument("--program-series",  default="H61",
+                    help="Program series code in TP keys/folder names (e.g. H61 or H80)")
     ap.add_argument("--keep-runs",     type=int, default=None, metavar="N",
                     help="Keep the N most-recent output run folders per program letter "
                          "after this run; older folders are deleted automatically. "
@@ -7267,6 +7264,8 @@ def main() -> None:
 
     _product_name  = args.product_name
     _prog_series   = args.program_series  # e.g. '0H61' or '0H80'
+    _series_digits = re.search(r'(\d+)$', _prog_series)
+    _series_code   = f"H{_series_digits.group(1)}" if _series_digits else _prog_series
 
     # Resolve base_dir: CLI arg → product config → module default
     _setup_cfg: dict = {}
@@ -7421,16 +7420,18 @@ def main() -> None:
     # Write a dated per-letter raw snapshot BEFORE any processing so that each
     # program's input is independently recoverable regardless of how many programs
     # (1, 2, 3, 4 …) are present in the AQUA pull.
-    #   data/programs/0H61A/raw_YYYYMMDD_HHMMSS.csv.gz
-    #   data/programs/0H61B/raw_YYYYMMDD_HHMMSS.csv.gz   …etc.
+    #   data/programs/H61A/raw_YYYYMMDD_HHMMSS.csv.gz
+    #   data/programs/H61B/raw_YYYYMMDD_HHMMSS.csv.gz   …etc.
     _ts_match = re.search(r'(\d{8}_\d{6})', Path(aqua_file).stem)
     _raw_ts   = _ts_match.group(1) if _ts_match else datetime.now().strftime('%Y%m%d_%H%M%S')
 
     # Collect rows + union-headers per program letter
     _letter_rows: dict[str, tuple[list[dict], list[str]]] = {}
     for _key, (_krows, _khdrs) in groups.items():
-        _m = re.search(rf'{re.escape(_prog_series)}([A-Za-z])', _key)
-        _letter = f"{_prog_series}{_m.group(1).upper()}" if _m else f"{_prog_series}X"
+        # Canonicalize per-program folder names to HxxA (e.g. H80A),
+        # even when configured series is 0H80.
+        _m = re.search(rf'[A-Za-z0-9]?H{re.escape(_series_code[1:])}([A-Za-z])', _key)
+        _letter = f"{_series_code}{_m.group(1).upper()}" if _m else f"{_series_code}X"
         if _letter not in _letter_rows:
             _letter_rows[_letter] = ([], list(_khdrs))
         _lrows, _lhdrs = _letter_rows[_letter]
@@ -7515,10 +7516,8 @@ def main() -> None:
     #    base_dir/Dashboard_{tp_key}.html           ← top-level latest pointer
     _letter_groups: dict[str, list[str]] = {}
     for _k in sorted(keys_to_run):
-        _digits = re.search(r'(\d+)$', _prog_series)
-        _letter_pat = rf"{_digits.group(1)}([A-Za-z])" if _digits else r'61([A-Za-z])'
-        _m = re.search(_letter_pat, _k)
-        _letter_groups.setdefault(_m.group(1).upper() if _m else 'X', []).append(_k)
+        _m = re.search(r'([A-Za-z]\d{2}[A-Za-z])', _k)
+        _letter_groups.setdefault(_m.group(1).upper() if _m else '?', []).append(_k)
     _log(f"\nProgram groups: {list(_letter_groups.keys())} ({len(_letter_groups)} run folder(s))")
 
     all_results:       list[tuple[str, bool, str]] = []
@@ -7538,12 +7537,12 @@ def main() -> None:
     prod_cfg = _find_product_config(_drs)
     if _drs:
         _log(f"  DevRevStep: {_drs}  →  {Path(prod_cfg).name if prod_cfg else '(none)'}")
-    run_dir  = base_dir / "output" / f"NVL_{_prog_series}_{ts}"   # fallback; overwritten per-letter
+    run_dir  = base_dir / "output" / f"NVL_unknown_{ts}"   # fallback; overwritten per-group
 
     for _letter, _letter_keys in sorted(_letter_groups.items(), reverse=True):
-        run_dir = base_dir / "output" / f"NVL_{_prog_series}{_letter}_{ts}"
+        run_dir = base_dir / "output" / f"NVL_{_letter}_{ts}"
         _log(f"\n{'='*65}")
-        _log(f"=== Program {_prog_series}{_letter}  ({len(_letter_keys)} TP(s))  →  {run_dir.name} ===")
+        _log(f"=== Program {_letter}  ({len(_letter_keys)} TP(s))  →  {run_dir.name} ===")
 
         results:    list[tuple[str, bool, str]] = []
         tp_outputs: list[tuple] = []
@@ -7570,8 +7569,8 @@ def main() -> None:
         _exec_keys = [_primary_key]
 
         for tp_key in _exec_keys:
-            _m_key  = re.search(rf'{re.escape(_prog_series)}([A-Za-z])', tp_key)
-            _sub    = f"{_prog_series}{_m_key.group(1).upper()}" if _m_key else f"{_prog_series}X"
+            _m_key  = re.search(r'([A-Za-z]\d{2}[A-Za-z])', tp_key)
+            _sub    = _m_key.group(1).upper() if _m_key else "0H61X"
             # Write temp gz from in-memory data (deleted after pipeline; raw_<ts>.7z is the archival copy)
             _tp_letter_dir = prog_dir / _sub
             if not args.dry_run:
@@ -7588,8 +7587,8 @@ def main() -> None:
             _misc_dir.mkdir(parents=True, exist_ok=True)
             dashboard     = str(_misc_dir / f"Dashboard_{tp_key}.html")  # top-level latest pointer
 
-            # Detect program letter for R0 merge logic
-            _m_let    = re.search(r'[0-9A-Za-z]H61([A-Za-z])', tp_key)
+            # extract revision letter (last char of group key) for R0 merge logic
+            _m_let    = re.search(r'[A-Za-z]\d+([A-Za-z])', tp_key)
             _tp_letter = _m_let.group(1).upper() if _m_let else ''
             _r0_gz    = base_dir / "data" / "NVL816-R0-Data.csv.gz"
             _use_r0   = _tp_letter in ('C', 'D') and _r0_gz.exists() and "119325" in tp_key
@@ -7870,12 +7869,6 @@ def main() -> None:
             _report_save = _reports_dir / f"Yield_Report_{_ts_label}.html"
             _report_save.write_text(_email_body_rpt, encoding="utf-8")
             _log(f"Report saved: {_report_save}")
-            # Regenerate reports/index.html immediately after saving the report
-            try:
-                _idx = build_index(base_dir, product_name=_product_name)
-                _log(f"Index updated → {_idx}")
-            except Exception as _idx_err:
-                _log(f"WARNING: could not update index.html: {_idx_err}")
             # Collapse <details>/<summary> and strip iframes for Outlook compatibility
             _email_body_collapsed = _collapse_report_html(_email_body_rpt)
         except Exception as _be:
@@ -7950,19 +7943,21 @@ def _run_resend_server(base_dir: Path, port: int = 17450, email_to: str = "", pr
     import threading
 
     def _find_latest_tp_dirs(base_dir: Path) -> list[Path]:
-        """Return tp_output dirs from the most-recent run for each program letter."""
+        """Return tp_output dirs from the most-recent run for each program group."""
         out_root = base_dir / "output"
         if not out_root.exists():
             return []
+        _gd3 = re.search(r'(\d+)$', prog_series)
+        _gen3 = _gd3.group(1) if _gd3 else '61'
         run_dirs = sorted(
             (d for d in out_root.iterdir()
-             if d.is_dir() and re.match(rf'NVL_{re.escape(prog_series)}[A-Z]_', d.name)),
+             if d.is_dir() and re.match(rf'NVL_[A-Za-z]{_gen3}[A-Z]_', d.name)),
             key=lambda d: d.name, reverse=True,
         )
-        # One latest run per letter
+        # One latest run per group key
         letter_run: dict[str, Path] = {}
         for rd in run_dirs:
-            m = re.search(rf'NVL_{re.escape(prog_series)}([A-Z])_', rd.name)
+            m = re.search(rf'NVL_([A-Za-z]{_gen3}[A-Z])_', rd.name)
             if m and m.group(1) not in letter_run:
                 letter_run[m.group(1)] = rd
         tp_dirs: list[Path] = []

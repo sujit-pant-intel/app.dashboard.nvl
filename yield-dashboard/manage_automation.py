@@ -1595,7 +1595,7 @@ class AutomationManager(tk.Frame):
         if self.aqua_pull_config:
             lines[-1] += f' --report-config "{self.aqua_pull_config}"'
         lines[-1] += f' --product-name "{self._product_var.get()}"'
-        if self.program_series != "0H61":
+        if self.program_series:
             lines[-1] += f' --program-series "{self.program_series}"'
         bat_path.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
         return bat_path
@@ -1649,6 +1649,8 @@ class AutomationManager(tk.Frame):
             if self.aqua_pull_config:
                 cmd += ["--report-config", self.aqua_pull_config]
             cmd += ["--product-name", self._product_var.get()]
+            if self.program_series:
+                cmd += ["--program-series", self.program_series]
             _sp.Popen(
                 cmd,
                 creationflags=_sp.CREATE_NEW_CONSOLE,
@@ -1787,6 +1789,8 @@ class AutomationManager(tk.Frame):
             if self.aqua_pull_config:
                 cmd += ["--report-config", self.aqua_pull_config]
             cmd += ["--product-name", self._product_var.get()]
+            if self.program_series:
+                cmd += ["--program-series", self.program_series]
             if keys_val:
                 cmd += ["--keys", keys_val]
             if csv_val:
