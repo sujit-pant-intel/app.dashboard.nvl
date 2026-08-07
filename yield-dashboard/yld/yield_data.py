@@ -149,24 +149,29 @@ def read_csv_smart(
     if data is not None:
         # zip path — read from in-memory bytes
         effective_usecols: list[str] | None = None
+        all_cols = list(pd.read_csv(io.BytesIO(data), nrows=0, low_memory=False).columns)
         if usecols is not None:
-            all_cols = list(pd.read_csv(io.BytesIO(data), nrows=0, low_memory=False).columns)
             effective_usecols = [c for c in usecols if c in all_cols] or None
-        return pd.read_csv(io.BytesIO(data), usecols=effective_usecols, low_memory=False)
+        # RAWSTR cols hold DEFLATE32 binary strings (digit-only) — keep as str to avoid float overflow
+        rawstr_dtype = {c: str for c in all_cols if 'RAWSTR' in c}
+        return pd.read_csv(io.BytesIO(data), usecols=effective_usecols, low_memory=False, dtype=rawstr_dtype)
 
     enc = encoding or detect_encoding(resolved)
 
     # Intersect requested columns with those actually in the file
     effective_usecols = None
+    all_cols = sniff_columns(resolved, encoding=enc)
     if usecols is not None:
-        all_cols = sniff_columns(resolved, encoding=enc)
-        effective_usecols = [c for c in usecols if c in all_cols] or None
+        effective_usecols = [c for c in all_cols if c in usecols] or None
+    # RAWSTR cols hold DEFLATE32 binary strings (digit-only) — keep as str to avoid float overflow
+    rawstr_dtype = {c: str for c in all_cols if 'RAWSTR' in c}
 
     return pd.read_csv(
         resolved,
         usecols=effective_usecols,
         encoding=enc,
         low_memory=False,
+        dtype=rawstr_dtype,
     )
 
 
@@ -1281,7 +1286,9 @@ def getWaferCol(df=pandas.DataFrame(), idt=2):
 def getYieldDataFrame(inFile="", productInfo={}, idt=4):
     if not inFile:
         raise FileNotFoundError(f"No input file specified: '{inFile}'.")
-    df = pandas.read_csv(inFile, header=0, low_memory=False)
+    _rawstr_cols = sniff_columns(inFile)
+    _rawstr_dtype = {c: str for c in _rawstr_cols if 'RAWSTR' in c}
+    df = pandas.read_csv(inFile, header=0, low_memory=False, dtype=_rawstr_dtype or None)
     product = getPart(df=df, productInfo=productInfo)
     if product:
         logging.info(f"{' ':{idt}}Opened file '{inFile}' and found product: {product}.")

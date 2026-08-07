@@ -7140,9 +7140,11 @@ def main() -> None:
     else:
         base_dir = _BASE_DIR
 
-    # Also read program_series from config if not explicitly overridden on CLI
-    if args.program_series == "0H61" and _prod_sect.get("program_series"):
+    # Config always wins over the argparse default; CLI explicit value wins over config
+    if _prod_sect.get("program_series"):
         _prog_series = _prod_sect["program_series"]
+    if args.program_series != "H61":   # user explicitly passed --program-series
+        _prog_series = args.program_series
 
     # Load per-product tp_folder from yield_setup_config.json early
     _tp_folder = _prod_sect.get("tp_folder") or _TP_FOLDER

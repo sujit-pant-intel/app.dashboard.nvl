@@ -1878,14 +1878,23 @@ def send_email(
 
 
 def _send_no_new_data_email(base_dir: Path, args) -> None:
-    ecfg: dict = {}
+    _pcfg: dict = {}
     if _EMAIL_CFG.exists():
         try:
-            ecfg = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
+            _d = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
+            for _p in _d.get("products", {}).values():
+                try:
+                    if Path(_p.get("base_dir", "")).resolve() == base_dir.resolve():
+                        _pcfg = _p
+                        break
+                except Exception:
+                    pass
+            if not _pcfg:
+                _pcfg = next(iter(_d.get("products", {}).values()), _d)
         except Exception:
             pass
-    to = (ecfg.get("email_to_report")
-          or ecfg.get("email_to")
+    to = (_pcfg.get("email_to_report")
+          or _pcfg.get("email_to")
           or getattr(args, "email", _EMAIL_TO)
           or _EMAIL_TO)
 
@@ -1987,6 +1996,23 @@ def main() -> None:
     run_log  = base_dir / "run_log.html"
     ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+    # Resolve per-product config by matching base_dir; falls back to top-level for legacy flat configs.
+    def _load_prod_cfg() -> dict:
+        if not _EMAIL_CFG.exists():
+            return {}
+        try:
+            _d = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        for _p in _d.get("products", {}).values():
+            try:
+                if Path(_p.get("base_dir", "")).resolve() == base_dir.resolve():
+                    return _p
+            except Exception:
+                pass
+        _prods = _d.get("products", {})
+        return next(iter(_prods.values()), _d)
+
     _log("=" * 65)
     _log(f"scan run_automation  [{'DRY-RUN' if args.dry_run else 'LIVE'}]")
     _log(f"Base dir  : {base_dir}")
@@ -2041,11 +2067,8 @@ def main() -> None:
         )
         if aqua_file is None:
             _log("AQUA pull failed — aborting.")
-            ecfg = {}
-            if _EMAIL_CFG.exists():
-                try: ecfg = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
-                except Exception: pass
-            err_to = ecfg.get("email_to_alert", ecfg.get("email_to_report", args.email)) or args.email
+            _pcfg  = _load_prod_cfg()
+            err_to = _pcfg.get("email_to_alert", _pcfg.get("email_to_report", args.email)) or args.email
             send_email(
                 to=err_to,
                 subject="NVL816-BLLC Scan Dashboard",
@@ -2113,11 +2136,10 @@ def main() -> None:
     # No persistent per-TP gz files; always run from current AQUA pull
     keys_to_run = sorted(groups.keys())
 
-    # ── Excluded ops (email_config.json → excluded_ops): skip execution entirely ──
+    # ── Excluded ops (scan_setup_config.json → excluded_ops): skip execution entirely ──
     _excl_ops: set[str] = set()
     try:
-        _ec = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
-        _excl_ops = {str(o) for o in _ec.get("excluded_ops", [])}
+        _excl_ops = {str(o) for o in _load_prod_cfg().get("excluded_ops", [])}
     except Exception:
         pass
     if _excl_ops:
@@ -2235,11 +2257,7 @@ def main() -> None:
         )
 
         # ── Per-letter email config + cleanup (no email sent yet) ────────────
-        ecfg: dict = {}
-        if _EMAIL_CFG.exists():
-            try: ecfg = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
-            except Exception: pass
-        _keep_runs = args.keep_runs if args.keep_runs is not None else max(1, int(ecfg.get("keep_runs", 10)))
+        _keep_runs = args.keep_runs if args.keep_runs is not None else max(1, int(_load_prod_cfg().get("keep_runs", 10)))
 
         # ── Auto-cleanup old runs for this letter ──────────────────────────────
         if _keep_runs > 0:
@@ -2247,15 +2265,12 @@ def main() -> None:
             _cleanup_old_runs(base_dir, _letter, keep=_keep_runs, dry_run=args.dry_run)
 
     # ── Send single consolidated email after all letters are processed ─────────
-    ecfg: dict = {}
-    if _EMAIL_CFG.exists():
-        try: ecfg = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
-        except Exception: pass
-    to = ecfg.get("email_to_report") or ecfg.get("email_to") or args.email
+    _pcfg = _load_prod_cfg()
+    to    = _pcfg.get("email_to_report") or _pcfg.get("email_to") or args.email
 
     if not args.dry_run and all_results:
         run_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        excl_keys = list(ecfg.get("excluded_keys", []))
+        excl_keys = list(_pcfg.get("excluded_keys", []))
         body = _build_email_report_html(
             base_dir / "output", run_ts,
             excluded_keys=excl_keys,

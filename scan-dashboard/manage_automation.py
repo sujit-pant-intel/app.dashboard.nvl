@@ -31,7 +31,16 @@ _BASE_DIR  = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snp
 _CFG_NAME  = "scan_setup_config.json"
 _CFG_DIR   = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard"
 _EMAIL_TO  = "sujit.n.pant@intel.com"
-_TASK_NAME = "NVL-BLLC Scan Automation"
+_TASK_NAME = "NVL-BLLC Scan Automation"  # base; actual name is per-product
+
+_DEFAULT_PRODUCT_CFG = lambda: {
+    "base_dir":        str(_BASE_DIR),
+    "program_series":  "0H61",
+    "email_to_report": _EMAIL_TO,
+    "email_to_alert":  _EMAIL_TO,
+    "excluded_ops":    [],
+    "excluded_keys":   [],
+}
 
 # ── colours ───────────────────────────────────────────────────────────────────
 BG         = "#1a252f"
@@ -54,15 +63,23 @@ FONT_GROUP = ("Segoe UI", 10, "bold")
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _load_config(cfg_path: Path) -> dict:
+    """Load full config; migrate flat (legacy) format to per-product structure."""
     if cfg_path.exists():
         try:
             d = json.loads(cfg_path.read_text(encoding="utf-8"))
-            if "email_to" in d and "email_to_report" not in d:
-                d["email_to_report"] = d.pop("email_to")
+            if "products" not in d:
+                if "email_to" in d and "email_to_report" not in d:
+                    d["email_to_report"] = d.pop("email_to")
+                prod_cfg = _DEFAULT_PRODUCT_CFG()
+                for k in ("base_dir", "program_series", "email_to_report", "email_to_alert",
+                          "excluded_ops", "excluded_keys", "keep_runs"):
+                    if k in d:
+                        prod_cfg[k] = d[k]
+                d = {"products": {"NVL816-BLLC": prod_cfg}}
             return d
         except Exception:
             pass
-    return {"email_to_report": _EMAIL_TO, "email_to_alert": _EMAIL_TO, "excluded_keys": []}
+    return {"products": {"NVL816-BLLC": _DEFAULT_PRODUCT_CFG()}}
 
 
 def _save_config(cfg_path: Path, cfg: dict) -> None:
@@ -85,25 +102,29 @@ def _open_html(path) -> None:
     subprocess.Popen(["cmd", "/c", "start", "msedge", uri])
 
 
-def _discover_keys(base_dir: Path) -> list[str]:
-    """Discover TP keys from ALL NVL_0H61_* run folder subfolders."""
+def _discover_keys(base_dir: Path, program_series: str = "0H61") -> list[str]:
+    """Discover TP keys from run folder subfolders for the given program_series."""
     keys: set[str] = set()
     output_dir = base_dir / "output"
     if output_dir.exists():
+        _sd = re.search(r'(\d+)$', program_series)
+        _dstr = _sd.group(1) if _sd else '61'
+        pattern = re.compile(rf'^NVL_[A-Za-z]{re.escape(_dstr)}[A-Za-z]_', re.IGNORECASE)
         for run_dir in output_dir.iterdir():
-            if run_dir.is_dir() and re.match(r'NVL_0H61', run_dir.name):
+            if run_dir.is_dir() and pattern.match(run_dir.name):
                 for sub in run_dir.iterdir():
                     if sub.is_dir():
                         keys.add(sub.name)
     return sorted(keys)
 
 
-def _group_keys(keys: list[str]) -> dict[str, list[str]]:
+def _group_keys(keys: list[str], program_series: str = "0H61") -> dict[str, list[str]]:
+    # group by full variant key e.g. H61G, M61H so H61G and M61G are separate groups
     groups: dict[str, list[str]] = {}
     for k in keys:
-        m = re.search(r'61([A-Za-z])', k)
-        letter = m.group(1).upper() if m else "?"
-        groups.setdefault(letter, []).append(k)
+        m = re.search(r'([A-Za-z]\d{2}[A-Za-z])', k)
+        group_key = m.group(1).upper() if m else "?"
+        groups.setdefault(group_key, []).append(k)
     return dict(sorted(groups.items(), reverse=True))
 
 
@@ -138,21 +159,69 @@ def _mtime_str(p: Path) -> str:
 class AutomationManager(tk.Frame):
     def __init__(self, master, base_dir: Path) -> None:
         super().__init__(master, bg=BG)
-        self.base_dir = base_dir
-        self.cfg_path = _CFG_DIR / _CFG_NAME
-        self.cfg      = _load_config(self.cfg_path)
-        self.excluded     = set(self.cfg.get("excluded_keys", []))
-        self.excluded_ops = set(str(o) for o in self.cfg.get("excluded_ops", []))
+        self.cfg_path  = _CFG_DIR / _CFG_NAME
+        self._all_cfg  = _load_config(self.cfg_path)
+
+        self._products: dict[str, Path] = {
+            k: Path(v.get("base_dir", str(_BASE_DIR)))
+            for k, v in self._all_cfg["products"].items()
+        }
+
+        default_label = next(
+            (k for k, p in self._products.items() if p == base_dir),
+            next(iter(self._products))
+        )
+        self._product_var = tk.StringVar(value=default_label)
+        self._load_product(default_label)
 
         self._apply_styles()
+        self._build_ui()
 
+    @property
+    def _task_name(self) -> str:
+        return f"{self._product_var.get()} Scan Automation"
+
+    def _load_product(self, label: str) -> None:
+        self.cfg            = self._all_cfg["products"][label]
+        self.base_dir       = Path(self.cfg.get("base_dir", str(_BASE_DIR)))
+        self.program_series = self.cfg.get("program_series", "0H61")
+        self.excluded       = set(self.cfg.get("excluded_keys", []))
+        self.excluded_ops   = set(str(o) for o in self.cfg.get("excluded_ops", []))
+
+    def _switch_product(self, label: str) -> None:
+        self._load_product(label)
+        self._base_dir_label.set(str(self.base_dir))
+        self.report_email_var.set(self.cfg.get("email_to_report", _EMAIL_TO))
+        self.alert_email_var.set(self.cfg.get("email_to_alert",
+                                 self.cfg.get("email_to_report", _EMAIL_TO)))
+        self._populate_email()
+        self._refresh_history()
+        self._refresh_data()
+        if hasattr(self, "_sched_task_name_var"):
+            self._sched_task_name_var.set(self._task_name)
+        self._sched_refresh()
+
+    def _build_ui(self) -> None:
         hdr = tk.Frame(self, bg=BG3)
         hdr.pack(fill="x")
         tk.Label(hdr, text="Scan Automation Manager", font=FONT_TITLE,
                  bg=BG3, fg=ACCENT).pack(side="left", padx=14, pady=8)
+
+        if len(self._products) > 1:
+            sw = tk.Frame(hdr, bg=BG3)
+            sw.pack(side="left", padx=10)
+            tk.Label(sw, text="Product:", font=FONT_UI, bg=BG3, fg=FG_DIM).pack(side="left")
+            om = tk.OptionMenu(sw, self._product_var, *self._products.keys(),
+                               command=self._switch_product)
+            om.config(font=FONT_UI, bg=BG3, fg=ACCENT, activebackground=BG2,
+                      activeforeground=ACCENT, relief="flat", highlightthickness=0)
+            om["menu"].config(bg=BG3, fg=FG, activebackground=ACCENT, activeforeground=BG)
+            om.pack(side="left", padx=4)
+
+        self._base_dir_label = tk.StringVar(value=str(self.base_dir))
         info = tk.Frame(hdr, bg=BG3)
         info.pack(side="left", padx=4)
-        tk.Label(info, text=f"base_dir: {self.base_dir}", font=("Segoe UI", 10, "bold"),
+        tk.Label(info, textvariable=self._base_dir_label, font=("Segoe UI", 10, "bold"),
                  bg=BG3, fg="#5BB8FF").pack(anchor="w")
         tk.Label(info, text=f"config: {self.cfg_path}", font=("Segoe UI", 9),
                  bg=BG3, fg="#7ECFFF").pack(anchor="w")
@@ -334,8 +403,8 @@ class AutomationManager(tk.Frame):
             w.destroy()
         self.check_vars.clear()
 
-        keys   = _discover_keys(self.base_dir)
-        groups = _group_keys(keys)
+        keys   = _discover_keys(self.base_dir, self.program_series)
+        groups = _group_keys(keys, self.program_series)
 
         if not keys:
             tk.Label(self.email_inner,
@@ -346,7 +415,7 @@ class AutomationManager(tk.Frame):
         for letter, tp_keys in groups.items():
             hdr = tk.Frame(self.email_inner, bg=BG3)
             hdr.pack(fill="x", pady=(8, 0))
-            tk.Label(hdr, text=f"  0H61{letter}", font=FONT_GROUP,
+            tk.Label(hdr, text=f"  {letter}", font=FONT_GROUP,
                      bg=BG3, fg=ACCENT).pack(side="left", padx=6, pady=4)
             n_excl = sum(1 for k in tp_keys if k in self.excluded)
             if n_excl:
@@ -417,15 +486,16 @@ class AutomationManager(tk.Frame):
         if not report_to:
             messagebox.showerror("Error", "Report recipient cannot be empty.")
             return
-        cfg = {
+        label = self._product_var.get()
+        self._all_cfg["products"][label].update({
             "email_to_report": report_to,
             "email_to_alert":  alert_to,
             "excluded_ops":    sorted(self.excluded_ops),
             "excluded_keys":   sorted(self.excluded),
-        }
+        })
         try:
-            _save_config(self.cfg_path, cfg)
-            self.cfg = cfg
+            _save_config(self.cfg_path, self._all_cfg)
+            self.cfg = self._all_cfg["products"][label]
             n = len(self.excluded)
             self.email_status.set(
                 f"Saved — {n} key(s) excluded." if n else "Saved — all keys included."
@@ -500,8 +570,6 @@ class AutomationManager(tk.Frame):
                   bg="#1a3a5c", fg="#90caf9").pack(side="left", padx=(0, 6))
         self._btn(tb2, "Save Report",    self._hist_save_report,
                   bg="#1a3a3c", fg="#80deea").pack(side="left", padx=(0, 6))
-        self._btn(tb2, "Generate Index", self._hist_generate_index,
-                  bg="#1a3a2c", fg="#80deea").pack(side="left", padx=(0, 6))
         self._btn(tb2, "Delete + Data",  lambda: self._hist_delete(include_data=True),
                   bg="#6b3a00", fg="#ffd180").pack(side="right", padx=(6, 0))
         self._btn(tb2, "Delete Run",     lambda: self._hist_delete(include_data=False),
@@ -571,7 +639,9 @@ class AutomationManager(tk.Frame):
             m = re.search(r'(\d{8})[_T](\d{6})', d.name)
             return (m.group(1) + m.group(2)) if m else d.name
 
-        pattern = re.compile(r'^NVL_0H61', re.IGNORECASE)
+        _sd = re.search(r'(\d+)$', self.program_series)
+        _dstr = _sd.group(1) if _sd else '61'
+        pattern = re.compile(rf'^NVL_[A-Za-z]{re.escape(_dstr)}[A-Za-z]_', re.IGNORECASE)
         folders = sorted(
             [d for d in output_dir.iterdir()
              if d.is_dir() and pattern.match(d.name)],
@@ -753,24 +823,6 @@ class AutomationManager(tk.Frame):
         self._btn(btn_row, "Apply",  _apply,      bg="#1b5e20", fg="#00ff7f").pack(side="left", padx=(0, 6))
         self._btn(btn_row, "Cancel", dlg.destroy, fg=FG_DIM).pack(side="left")
 
-    def _hist_generate_index(self) -> None:
-        """Generate reports/index.html listing all Scan_Report_*.html files."""
-        import sys as _sys
-        _sys.path.insert(0, str(_HERE / "automation"))
-        try:
-            from generate_index import build_index
-            out = build_index(self.base_dir)
-            if out.name == "index_latest.html":
-                self.hist_status.set(
-                    "index.html locked by task — opened index_latest.html instead "
-                    "(index.html updates automatically at next scheduled run)"
-                )
-            else:
-                self.hist_status.set(f"Index written \u2192 {out.name}")
-            _open_html(out)
-        except Exception as e:
-            messagebox.showerror("Generate Index failed", str(e))
-
     def _hist_send_email(self) -> None:
         """Scan all output dirs, build sidebar+history report, send email."""
         out_dir = self.base_dir / "output"
@@ -783,29 +835,28 @@ class AutomationManager(tk.Frame):
 
         # ── Preview: find latest run per prog_key ─────────────────────────────
         prog_preview: dict = {}
+        _sd2 = re.search(r'(\d+)$', self.program_series)
+        _dstr2 = _sd2.group(1) if _sd2 else '61'
         for d in out_dir.iterdir():
             if not d.is_dir():
                 continue
-            m = re.search(r'NVL_0H(\d+)([A-Za-z])_(\d{8}_\d{6})', d.name)
+            m = re.search(rf'NVL_([A-Za-z]{re.escape(_dstr2)}[A-Za-z])_(\d{{8}}_\d{{6}})', d.name)
             if not m:
                 continue
-            prog_key = f"{m.group(1)}{m.group(2).upper()}"
-            ts = m.group(3)
+            prog_key = m.group(1).upper()
+            ts = m.group(2)
             if prog_key not in prog_preview or ts > prog_preview[prog_key][1]:
                 prog_preview[prog_key] = (d, ts)
 
         if not prog_preview:
             messagebox.showinfo("No runs",
-                                "No NVL_0H*_* run folders found in output/.")
+                                "No NVL_*61* run folders found in output/.")
             return
 
-        sorted_keys = sorted(
-            prog_preview.keys(),
-            key=lambda k: (int(k[:-1]), k[-1]),
-        )
+        sorted_keys = sorted(prog_preview.keys())
         latest_ts = max(v[1] for v in prog_preview.values())
         preview_lines = "\n".join(
-            f"  0H{k}: {prog_preview[k][0].name}"
+            f"  {k}: {prog_preview[k][0].name}"
             for k in sorted_keys
         )
         if not messagebox.askyesno(
@@ -853,12 +904,6 @@ class AutomationManager(tk.Frame):
                     _reports_dir.mkdir(parents=True, exist_ok=True)
                     _saved = _reports_dir / f"Scan_Report_{latest_ts}.html"
                     _saved.write_text(body_html, encoding="utf-8")
-                    # regenerate index.html
-                    try:
-                        from generate_index import build_index as _bi
-                        _bi(self.base_dir)
-                    except Exception:
-                        pass
                     n = len(sorted_keys)
                     self.after(0, lambda: self.hist_status.set(
                         f"Sent to {to}  ({'+'.join(sorted_keys)} — {n} program(s))  •  Saved → {_saved.name}"))
@@ -896,12 +941,6 @@ class AutomationManager(tk.Frame):
                 body    = _build_email_report_html(out_dir, run_ts, excluded_keys=_excl)
                 out_path = reports_dir / f"Scan_Report_{ts_file}.html"
                 out_path.write_text(body, encoding="utf-8")
-                # regenerate index.html
-                try:
-                    from generate_index import build_index as _bi
-                    _bi(self.base_dir)
-                except Exception:
-                    pass
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_path.name}")
                     _open_html(out_path)
@@ -924,13 +963,15 @@ class AutomationManager(tk.Frame):
             messagebox.showinfo("Cleanup", "No output/ folder found.")
             return
 
-        pattern = re.compile(r'^NVL_0H61([A-Za-z])_', re.IGNORECASE)
+        _sd3 = re.search(r'(\d+)$', self.program_series)
+        _dstr3 = _sd3.group(1) if _sd3 else '61'
+        pattern = re.compile(rf'^NVL_([A-Za-z]{re.escape(_dstr3)}[A-Za-z])_', re.IGNORECASE)
         letter_groups: dict[str, list] = {}
         for d in output_dir.iterdir():
             if d.is_dir():
                 m = pattern.match(d.name)
                 if m:
-                    letter = m.group(1).upper()
+                    letter = m.group(1).upper()  # full group key e.g. H61G
                     letter_groups.setdefault(letter, []).append(d)
 
         # Build candidates list
@@ -1038,14 +1079,14 @@ class AutomationManager(tk.Frame):
             run_dir    = Path(iid)
             data_files: list[Path] = []
             if include_data:
-                km = re.search(r'(0H61[A-Za-z])', run_dir.name, re.IGNORECASE)
+                km = re.search(r'([A-Za-z]\d{2}[A-Za-z])', run_dir.name, re.IGNORECASE)
                 if km:
-                    letter   = km.group(1).upper()
+                    letter   = km.group(1).upper()  # full group key e.g. H61G
                     prog_dir = programs_dir / letter
                     remaining = [
                         d for d in output_dir.iterdir()
                         if d.is_dir()
-                        and re.search(rf'0H61{letter}', d.name, re.IGNORECASE)
+                        and re.search(re.escape(letter), d.name, re.IGNORECASE)
                         and str(d) not in sel_set
                     ] if output_dir.exists() else []
                     if prog_dir.is_dir() and not remaining:
@@ -1294,16 +1335,22 @@ class AutomationManager(tk.Frame):
                                 bg=BG, fg=ACCENT, bd=1, relief="groove")
         frm_cfg.pack(fill="x", **pad)
 
-        for row, lbl, val in [
-            (0, "Task name:", _TASK_NAME),
+        self._sched_task_name_var = tk.StringVar(value=self._task_name)
+        for row, lbl, var_or_val in [
+            (0, "Task name:", self._sched_task_name_var),
             (1, "Script:",    _script),
             (2, "Python:",    _python),
         ]:
             tk.Label(frm_cfg, text=lbl, font=FONT_UI, bg=BG, fg=FG_DIM
                      ).grid(row=row, column=0, sticky="w", padx=(10, 4), pady=3)
-            tk.Label(frm_cfg, text=val, font=FONT_MONO, bg=BG, fg=FG,
-                     anchor="w", wraplength=520
-                     ).grid(row=row, column=1, sticky="w", padx=(0, 10), pady=3)
+            if isinstance(var_or_val, tk.StringVar):
+                tk.Label(frm_cfg, textvariable=var_or_val, font=FONT_MONO, bg=BG, fg=ACCENT,
+                         anchor="w", wraplength=520
+                         ).grid(row=row, column=1, sticky="w", padx=(0, 10), pady=3)
+            else:
+                tk.Label(frm_cfg, text=var_or_val, font=FONT_MONO, bg=BG, fg=FG,
+                         anchor="w", wraplength=520
+                         ).grid(row=row, column=1, sticky="w", padx=(0, 10), pady=3)
         frm_cfg.columnconfigure(1, weight=1)
 
         time_row = tk.Frame(frm_cfg, bg=BG)
@@ -1345,7 +1392,7 @@ class AutomationManager(tk.Frame):
         import subprocess as _sp, csv as _csv, io as _io
         try:
             r = _sp.run(
-                ["schtasks", "/query", "/tn", _TASK_NAME, "/fo", "csv", "/v"],
+                ["schtasks", "/query", "/tn", self._task_name, "/fo", "csv", "/v"],
                 capture_output=True, text=True, timeout=10,
             )
             if r.returncode != 0:
@@ -1393,13 +1440,14 @@ class AutomationManager(tk.Frame):
                 or not (0 <= int(mm) <= 59)):
             messagebox.showerror("Invalid time", f"Invalid time value: {hh}:{mm}")
             return
-        tr  = f'"{_sys.executable}" "{_HERE / "automation" / "run_automation.py"}"'
-        cmd = ["schtasks", "/create", "/tn", _TASK_NAME,
+        tr  = (f'"{_sys.executable}" "{_HERE / "automation" / "run_automation.py"}"'
+               f' --base-dir "{self.base_dir}"')
+        cmd = ["schtasks", "/create", "/tn", self._task_name,
                "/tr", tr, "/sc", "daily", "/st", f"{hh}:{mm}", "/f"]
         try:
             r = _sp.run(cmd, capture_output=True, text=True, timeout=15)
             if r.returncode == 0:
-                self._sched_status.set(f"Task created — runs daily at {hh}:{mm}.")
+                self._sched_status.set(f"Task '{self._task_name}' created — runs daily at {hh}:{mm}.")
             else:
                 messagebox.showerror("schtasks failed",
                                      r.stderr.strip() or r.stdout.strip() or "Unknown error")
@@ -1410,14 +1458,14 @@ class AutomationManager(tk.Frame):
     def _sched_run_now(self) -> None:
         import sys as _sys, subprocess as _sp
         if not messagebox.askyesno("Run Now",
-                                   f'Start "{_TASK_NAME}" immediately?\n\n'
+                                   f'Start "{self._task_name}" immediately?\n\n'
                                    "This kicks off a full AQUA pull + pipeline run.\n"
                                    "A console window will open showing live progress."):
             return
         script = str(_HERE / "automation" / "run_automation.py")
         try:
             _sp.Popen(
-                [_sys.executable, script],
+                [_sys.executable, script, "--base-dir", str(self.base_dir)],
                 creationflags=_sp.CREATE_NEW_CONSOLE,
             )
             self._sched_status.set("Started in new console window.")
@@ -1450,7 +1498,7 @@ class AutomationManager(tk.Frame):
         tk.Entry(opts, textvariable=keys_var, font=FONT_MONO,
                  bg=BG2, fg=FG, insertbackground=FG, relief="flat", width=30
                  ).grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=4)
-        tk.Label(opts, text="e.g. 119325 or 0H61C  (blank = all)",
+        tk.Label(opts, text="e.g. 119325 or 61C or XH61H  (blank = all)",
                  font=("Segoe UI", 8), bg=BG, fg=FG_DIM
                  ).grid(row=0, column=2, sticky="w", pady=4)
 
@@ -1512,7 +1560,8 @@ class AutomationManager(tk.Frame):
         def _do_run():
             keys_val = keys_var.get().strip()
             csv_val  = csv_var.get().strip()
-            cmd = [_sys.executable, str(_HERE / "automation" / "run_automation.py"), "--force"]
+            cmd = [_sys.executable, str(_HERE / "automation" / "run_automation.py"), "--force",
+                   "--base-dir", str(self.base_dir)]
             if keys_val:
                 cmd += ["--keys", keys_val]
             if csv_val:
@@ -1560,17 +1609,17 @@ class AutomationManager(tk.Frame):
     def _sched_remove(self) -> None:
         import subprocess as _sp
         if not messagebox.askyesno("Remove Task",
-                                   f'Delete scheduled task "{_TASK_NAME}"?'):
+                                   f'Delete scheduled task "{self._task_name}"?'):
             return
         try:
-            r = _sp.run(["schtasks", "/delete", "/tn", _TASK_NAME, "/f"],
+            r = _sp.run(["schtasks", "/delete", "/tn", self._task_name, "/f"],
                         capture_output=True, text=True, timeout=10)
             if r.returncode == 0:
-                self._sched_status.set("Task removed.")
+                self._sched_status.set(f"Task '{self._task_name}' removed.")
             else:
                 msg = r.stderr.strip() or r.stdout.strip()
                 if "cannot find" in msg.lower():
-                    self._sched_status.set("Task was not scheduled.")
+                    self._sched_status.set(f"Task '{self._task_name}' was not scheduled.")
                 else:
                     messagebox.showerror("schtasks /delete failed",
                                          msg or "Unknown error")
@@ -1587,7 +1636,8 @@ def main() -> None:
                     help="Automation base directory (overrides config)")
     args = ap.parse_args()
     cfg = _load_config(_CFG_DIR / _CFG_NAME)
-    base_dir = Path(args.base_dir) if args.base_dir else Path(cfg.get("base_dir", str(_BASE_DIR)))
+    first_product = next(iter(cfg["products"].values()), {})
+    base_dir = Path(args.base_dir) if args.base_dir else Path(first_product.get("base_dir", str(_BASE_DIR)))
     root = tk.Tk()
     root.title("Scan Dashboard Automation Manager")
     root.configure(bg=BG)

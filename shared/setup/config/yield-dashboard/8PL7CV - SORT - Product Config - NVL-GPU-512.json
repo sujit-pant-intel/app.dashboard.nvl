@@ -321,13 +321,13 @@
      [
       "ULVT FULLDIE 950mV (%) - SDS",
       "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*950*",
-      7734,
+      7694,
       ""
     ],
     [
       "ULVT FULLDIE 650mV (%) - SDS",
       "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*650*",
-      7734,
+      5150,
       ""
     ]
   ],
@@ -416,40 +416,7 @@
     
   ], 
   
-  
-   "_comment_upmList": "upmList: [wildcard_pattern, friendly_display_name] \u2014 one entry per individual test, matches raw CSV column names (case-insensitive ordered tokens)",
-  "upmList": [
-        [
-      "ULVT FULLDIE 650mV (%) - SDS",
-      "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*650*",
-      7734,
-      ""
-    ],
-   [
-      "ULVT FULLDIE 950mV (%) - SDS",
-      "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*950*",
-      7734,
-      ""
-    ]
-  ],
-  "_comment_upmTableConfig": "1st column = Category Group, 2nd column = Display name in Dashboard, 3rd column = matching test name in the list, 4th column = UPM column",
-  "upmTableConfig": [
-    	[
-      "ULVT FULLDIE 650mV (%) - SDS",
-      "ULVT FULLDIE 650mV (%) - SDS",
-	  "ULVT FULLDIE 650mV (%) - SDS",
-      "ULVT FULLDIE 650mV (%) - SDS"
-    ],
-	[
-      "ULVT FULLDIE 950mV (%) - SDS",
-      "ULVT FULLDIE 950mV (%) - SDS",
-	  "ULVT FULLDIE 950mV (%) - SDS",
-      "ULVT FULLDIE 950mV (%) - SDS"
-    ]
-  ],
-   "upm_targets": [
-    
-  ],
+
   "_comment_testprogram_folder": "Default TestProgram folder for this product \u2014 auto-loaded into the pipeline from Product Config (not shown in GUI).",
   "testprogram_folder": "\\\\al4file1.ra.intel.com\\sdx\\program\\1001\\prod\\hdmtprogs\\nvl_ngx_sds"
 }

@@ -411,11 +411,11 @@
     },
     "201": {
       "cat": "FF Yield",
-      "desc": "FF - Vmax Repair"
+      "desc": "FF - Defect/VNom Repair"
     },
     "202": {
       "cat": "FF Yield",
-      "desc": "FF - Defect Repair"
+      "desc": "FF - Vmax Repair"
     },
     "226": {
       "cat": "FF Yield",
@@ -981,15 +981,6 @@
       "UPM ULVT 0107 950mV (%) - SDS"
     ]
   ],
-  "_comment_pcm_param_groups": "Default-selected PCM parameter groups when this Product Config is loaded in the yield dashboard GUI. List group names exactly as defined in the code. User can still check/uncheck any group at runtime. Press \u21ba to restore this default selection.",
-  "pcm_param_groups": [
-    "Propagation Delay",
-    "Power (Off)"
-  ],
-  "_comment_pcm_spec_csv": "PDK WAT spec CSV \u2014 auto-loaded into the pipeline (not shown in GUI). Path is relative to this JSON file.",
-  "pcm_spec_csv": "../wat/N2P_NVL816_WAT_PDK1.0_target.csv",
   "_comment_testprogram_folder": "Default TestProgram folder for this product \u2014 auto-loaded into the pipeline from Product Config (not shown in GUI).",
-  "testprogram_folder": "\\\\al4file1.ra.intel.com\\sdx\\program\\1001\\prod\\hdmtprogs\\nvl_ncx_sds",
-  "_comment_pcm_panels_file": "Plot setup JSON to use for PCM panels (distribution + xy). Path relative to this file. Overrides the default fallback.",
-  "pcm_panels_file": "default - sort - yield-dashboard-plot-setup.json"
+  "testprogram_folder": "\\\\al4file1.ra.intel.com\\sdx\\program\\1001\\prod\\hdmtprogs\\nvl_ncx_sds"
 }

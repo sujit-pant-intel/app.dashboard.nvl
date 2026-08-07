@@ -177,7 +177,7 @@ class AutomationManager(tk.Frame):
 
     @property
     def _task_name(self) -> str:
-        return f"{self._product_var.get()} Yield Automation"
+        return f"Yield Automation [{self._product_var.get()}]"
 
     def _load_product(self, label: str) -> None:
         """Set self.cfg / base_dir / excluded* from the given product label."""
@@ -1571,7 +1571,7 @@ class AutomationManager(tk.Frame):
         bat_path   = _HERE / f"_launch_{safe_label}.bat"
         lines = [
             "@echo off",
-            f'"{sys.executable}" "{_HERE / "yld" / "yield_automation.py"}"',
+            f'"{sys.executable}" "{_HERE / "yld" / "run_automation.py"}"',
         ]
         if self.aqua_pull_config:
             lines[-1] += f' --report-config "{self.aqua_pull_config}"'
@@ -1590,14 +1590,23 @@ class AutomationManager(tk.Frame):
                 or not (0 <= int(mm) <= 59)):
             messagebox.showerror("Invalid time", f"Invalid time value: {hh}:{mm}")
             return
-        bat  = self._write_launcher_bat()
-        # use cmd /c so the .bat runs in a hidden window; stays well under 261
-        tr   = f'cmd /c "{bat}"'
+        # Build direct python command (shows console like scan automation)
+        _script = str(_HERE / "yld" / "run_automation.py")
+        tr = f'"{sys.executable}" "{_script}"'
+        if self.aqua_pull_config:
+            tr += f' --report-config "{self.aqua_pull_config}"'
+        tr += f' --product-name "{self._product_var.get()}"'
+        if self.program_series:
+            tr += f' --program-series "{self.program_series}"'
+        if len(tr) > 261:
+            # fall back to bat wrapper if path is too long
+            bat = self._write_launcher_bat()
+            tr  = f'cmd /c "{bat}"'
         if len(tr) > 261:
             messagebox.showerror(
                 "Path too long",
-                f"Launcher path is still too long ({len(tr)} chars).\n"
-                f"Move the project to a shorter path.\n\n{bat}")
+                f"Command is still too long ({len(tr)} chars).\n"
+                f"Move the project to a shorter path.")
             return
         cmd = ["schtasks", "/create",
                "/tn", self._task_name,
@@ -1632,8 +1641,9 @@ class AutomationManager(tk.Frame):
             cmd += ["--product-name", self._product_var.get()]
             if self.program_series:
                 cmd += ["--program-series", self.program_series]
+            # cmd /k keeps the console open after the script exits
             _sp.Popen(
-                cmd,
+                ["cmd", "/k"] + cmd,
                 creationflags=_sp.CREATE_NEW_CONSOLE,
             )
             self._sched_status.set("Started in new console window.")

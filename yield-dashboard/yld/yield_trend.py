@@ -2503,7 +2503,10 @@ h3{{font-size:23px;color:#555;margin:10px 0 4px}}
 .run-card-ts{{font-size:18px;color:#95a5a6;margin-bottom:6px}}
 .run-card-stat{{font-size:21px;margin-bottom:2px}}
 .run-card-src{{font-size:17px;color:#aaa;margin-top:6px;word-break:break-all}}
-.chart{{max-width:100%;height:auto;display:block;margin:8px 0}}
+.chart{{width:100%;height:100%;display:block;object-fit:contain}}
+.chart-img-wrap{{display:inline-block;width:100%;min-width:300px;min-height:120px;
+  resize:both;overflow:hidden;box-sizing:border-box;
+  border:1px solid #dde;border-radius:4px;margin:8px 0;cursor:se-resize}}
 .cmp-tbl{{border-collapse:collapse;font-size:20px;width:auto}}
 .cmp-tbl th{{background:#34495e;color:#ecf0f1;padding:6px 10px;text-align:left;
   white-space:nowrap;font-size:18px}}
@@ -2525,6 +2528,16 @@ th.delta-hdr{{background:#4a235a;color:#e8daef;text-align:center}}
 </div>
 <div class="cards">{card_html}</div>
 {charts_html}
+<script>
+// wrap each static PNG chart in a user-resizable div
+document.querySelectorAll('img.chart').forEach(function(img){{
+  var w=document.createElement('div');
+  w.className='chart-img-wrap';
+  w.style.height=(img.naturalHeight||img.height||400)+'px';
+  img.parentNode.insertBefore(w,img);
+  w.appendChild(img);
+}});
+</script>
 </body>
 </html>'''
 
@@ -3328,7 +3341,7 @@ def _find_auto_config(devrevstep: str = '') -> Path | None:
     Falls back to 'default' file, then first .json found.
     """
     here = Path(__file__).resolve().parent
-    d = here.parents[4] / 'shared' / 'setup' / 'config' / 'yield-dashboard'
+    d = here.parents[1] / 'shared' / 'setup' / 'config' / 'yield-dashboard'
     if not d.exists():
         return None
     jsons = sorted(d.glob('*.json'))
@@ -3462,9 +3475,9 @@ def _resolve_cols(header: list[str]) -> dict[str, int]:
             if alias in lower_hdr:
                 out[canon] = lower_hdr.index(alias)
                 break
-    # Detect UPM_0107*FULLDIE_0950* column (may have job-number suffix already stripped)
+    # Detect UPM_*_FULLDIE_*0950* column (any product prefix, e.g. UPM_0107 or UPM_2007)
     import fnmatch as _fnmatch
-    _upm950_pat = 'upm_0107*fulldie*0950*'
+    _upm950_pat = 'upm_*fulldie*0950*'
     for i, h in enumerate(header):
         if _fnmatch.fnmatch(_re.sub(r'_\d+$', '', h.strip()).strip().lower(), _upm950_pat):
             out['upm_950'] = i
@@ -3597,7 +3610,7 @@ def load_csv(path: Path, log=None, grouping_mode: str = 'wafer') -> list[dict]:
             return default
         return row[idx].strip()
 
-    _upm950_divisor = 9154.0  # MHz → % divisor for UPM_0107*0950*
+    _upm950_divisor = 9154.0  # default MHz → % divisor (NVL816); overridden per product config
     
     # Load material data from collateral (one-time, before processing rows)
     product_prefix = ''
@@ -3609,6 +3622,25 @@ def load_csv(path: Path, log=None, grouping_mode: str = 'wafer') -> list[dict]:
             break
     if product_prefix:
         material_map = load_material_data(product_prefix)
+        # Derive UPM divisor from product config upmInfo base (e.g. 7734 for NVLG-512)
+        try:
+            _auto_cfg_path = _find_auto_config(product_prefix)
+            if _auto_cfg_path:
+                import json as _json_lc
+                _cfg_lc = _json_lc.loads(_auto_cfg_path.read_text(encoding='utf-8'))
+                _upm_info = _cfg_lc.get('upmInfo', [])
+                if _upm_info and len(_upm_info[0]) > 2 and _upm_info[0][2]:
+                    _upm950_divisor = float(_upm_info[0][2])
+                # Re-resolve upm_950 column using the config's exact pattern (beats generic fallback)
+                if _upm_info and len(_upm_info[0]) > 1:
+                    import fnmatch as _fn_upm
+                    _upm_cfg_pat = _upm_info[0][1].strip().lower()
+                    for _ci, _ch in enumerate(header):
+                        if _fn_upm.fnmatch(_ch.strip().lower(), _upm_cfg_pat):
+                            col['upm_950'] = _ci
+                            break
+        except Exception:
+            pass
     
     groups: dict[tuple, dict] = OrderedDict()
     for row in raw_rows:

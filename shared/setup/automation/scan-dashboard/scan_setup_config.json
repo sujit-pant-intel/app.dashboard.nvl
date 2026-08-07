@@ -1,8 +1,22 @@
 {
-  "email_to_report": "sujit.n.pant@intel.com",
-  "email_to_alert": "sujit.n.pant@intel.com",
-  "excluded_ops": [
-    "132322"
-  ],
-  "excluded_keys": []
+  "products": {
+    "NVL816-BLLC": {
+      "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\scan\\NVL816-BLLC",
+      "program_series": "0H61",
+      "email_to_report": "sujit.n.pant@intel.com",
+      "email_to_alert": "sujit.n.pant@intel.com",
+      "excluded_ops": [
+        "132322"
+      ],
+      "excluded_keys": []
+    },
+    "NVLG-512": {
+      "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\scan\\NVLG-512",
+      "program_series": "0H80",
+      "email_to_report": "sujit.n.pant@intel.com",
+      "email_to_alert": "sujit.n.pant@intel.com",
+      "excluded_ops": [],
+      "excluded_keys": []
+    }
+  }
 }

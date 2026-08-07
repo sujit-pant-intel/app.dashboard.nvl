@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NVL Reports</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh;
+      padding: 40px 20px;
+      color: #e0e0e0;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2.2rem;
+      margin-bottom: 40px;
+      color: #fff;
+      text-shadow: 0 0 20px rgba(100, 180, 255, 0.6);
+      letter-spacing: 2px;
+    }
+
+    .section { margin-bottom: 36px; }
+
+    .section-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      padding: 10px 18px;
+      border-radius: 8px 8px 0 0;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* CDie — blue theme */
+    .cdie .section-title  { background: linear-gradient(90deg, #1565c0, #42a5f5); color: #fff; }
+    .cdie table thead     { background: #1e3a5f; }
+    .cdie table tbody tr:hover { background: #1a2f4a; }
+
+    /* GDie — teal theme */
+    .gdie .section-title  { background: linear-gradient(90deg, #00695c, #26c6da); color: #fff; }
+    .gdie table thead     { background: #1a3c38; }
+    .gdie table tbody tr:hover { background: #163330; }
+
+    /* Trend — purple theme */
+    .trend .section-title { background: linear-gradient(90deg, #6a1b9a, #ab47bc); color: #fff; }
+    .trend table thead    { background: #3a1a4a; }
+    .trend table tbody tr:hover { background: #2e1540; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255,255,255,0.05);
+      border-radius: 0 0 8px 8px;
+      overflow: hidden;
+    }
+
+    thead th {
+      padding: 12px 18px;
+      text-align: left;
+      font-size: 0.85rem;
+      color: #cfd8dc;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    tbody td {
+      padding: 14px 18px;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      font-size: 0.95rem;
+      vertical-align: middle;
+    }
+
+    .report-name { color: #e0e0e0; font-weight: 600; }
+    .report-link { color: #e0e0e0; font-weight: 600; text-decoration: none; }
+    .report-link:hover { color: #4fc3f7; text-decoration: underline; }
+
+    a.samba-path {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 0.82rem;
+      color: #90caf9;
+      word-break: break-all;
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(144,202,249,0.4);
+      transition: color 0.2s;
+    }
+    a.samba-path:hover { color: #fff; border-bottom-color: #fff; }
+
+    .gdie  a.samba-path { color: #80cbc4; border-bottom-color: rgba(128,203,196,0.4); }
+    .gdie  a.samba-path:hover { color: #fff; }
+    .trend a.samba-path { color: #ce93d8; border-bottom-color: rgba(206,147,216,0.4); }
+    .trend a.samba-path:hover { color: #fff; }
+
+    a.open-btn {
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity 0.2s, transform 0.15s;
+      white-space: nowrap;
+    }
+    a.open-btn:hover { opacity: 0.85; transform: scale(1.04); }
+
+    .cdie  a.open-btn { background: #42a5f5; color: #0d1b2a; }
+    .gdie  a.open-btn { background: #26c6da; color: #0d1b2a; }
+    .trend a.open-btn { background: #ab47bc; color: #fff; }
+
+    .tip-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255, 213, 79, 0.08);
+      border: 1px solid rgba(255, 213, 79, 0.3);
+      border-radius: 10px;
+      padding: 12px 20px;
+      margin-bottom: 36px;
+      font-size: 0.88rem;
+      color: #ffe082;
+    }
+    .tip-banner .tip-icon { font-size: 1.3rem; flex-shrink: 0; }
+
+    a.badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-left: 8px;
+      vertical-align: middle;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    a.badge:hover { opacity: 0.75; }
+    .badge-yield { background: #1565c0; color: #bbdefb; }
+    .badge-scan  { background: #bf360c; color: #ffe0b2; }
+    .badge-trend { background: #4a148c; color: #e1bee7; }
+
+    footer {
+      text-align: center;
+      margin-top: 50px;
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.3);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>&#128202; NVL Reports Portal</h1>
+
+  <div class="tip-banner">
+    <span class="tip-icon">&#128161;</span>
+    <span>To open the <strong>latest report</strong>, click <em>Open Folder</em>, then sort by <strong>Date modified</strong> (descending) to find the newest file.</span>
+  </div>
+
+  <!-- ───── NVL CDie ───── -->
+  <div class="section cdie">
+    <div class="section-title">&#9679; NVL CDie Reports</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Report</th>
+          <th>Path</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="report-name">
+            <a class="report-link" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVL816-BLLC\reports">NVL816-BLLC Yield Report</a>
+            <a class="badge badge-yield"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVL816-BLLC\reports">YIELD</a>
+          </td>
+          <td>
+            <a class="samba-path"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVL816-BLLC\reports">
+              \\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVL816-BLLC\reports
+            </a>
+          </td>
+          <td>
+            <a class="open-btn"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVL816-BLLC\reports">
+              &#128193; Open Folder
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td class="report-name">
+            <a class="report-link" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan\NVL816-BLLC\reports">NVL816-BLLC Scan Report</a>
+            <a class="badge badge-scan"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan\NVL816-BLLC\reports">SCAN</a>
+          </td>
+          <td>
+            <a class="samba-path"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan\NVL816-BLLC\reports">
+              \\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan\NVL816-BLLC\reports
+            </a>
+          </td>
+          <td>
+            <a class="open-btn"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan\NVL816-BLLC\reports">
+              &#128193; Open Folder
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ───── NVL GDie ───── -->
+  <div class="section gdie">
+    <div class="section-title">&#9679; NVL GDie Reports</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Report</th>
+          <th>Path</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="report-name">
+            <a class="report-link" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVLG-512\reports">NVL GDie Yield Report</a>
+            <a class="badge badge-yield"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVLG-512\reports">YIELD</a>
+          </td>
+          <td>
+            <a class="samba-path"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVLG-512\reports">
+              \\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVLG-512\reports
+            </a>
+          </td>
+          <td>
+            <a class="open-btn"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield\NVLG-512\reports">
+              &#128193; Open Folder
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ───── NVL Trend ───── -->
+  <div class="section trend">
+    <div class="section-title">&#9679; NVL Trend Reports</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Report</th>
+          <th>Path</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="report-name">
+            <a class="report-link" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend\reports">NVL Trend Report — All Products</a>
+            <a class="badge badge-trend"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend\reports">TREND</a>
+          </td>
+          <td>
+            <a class="samba-path"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend\reports">
+              \\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend\reports
+            </a>
+          </td>
+          <td>
+            <a class="open-btn"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend\reports">
+              &#128193; Open Folder
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>NVL Reports Portal &mdash; Auto-generated &mdash; 2026</footer>
+
+</body>
+</html>

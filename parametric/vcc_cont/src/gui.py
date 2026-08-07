@@ -3,7 +3,7 @@
 VccCont BIN8 Dashboard — GUI Launcher
 Run: python gui.py
 """
-import os, sys, subprocess, threading, zipfile, tempfile, shutil, json
+import os, sys, subprocess, threading, zipfile, gzip, tempfile, shutil, json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -74,7 +74,7 @@ class App(tk.Tk):
         self._csv_var = tk.StringVar()
         self._make_file_row(card, 'CSV / ZIP file', self._csv_var,
                             self._browse_csv,
-                            tip='Yield CSV export (e.g. 61A-61B-Yield.CSV) or a ZIP containing it')
+                            tip='Yield CSV export (e.g. 61A-61B-Yield.CSV), a ZIP containing it, or a .csv.gz / .gz file')
 
         # Test program — hidden, used as fallback when prog_root not set
         self._prog_var = tk.StringVar()
@@ -208,8 +208,8 @@ class App(tk.Tk):
     # ── file dialogs ────────────────────────────────────────────────────────
     def _browse_csv(self):
         p = filedialog.askopenfilename(
-            title='Select yield CSV or ZIP',
-            filetypes=[('CSV / ZIP', '*.csv *.zip'), ('CSV', '*.csv'), ('ZIP', '*.zip'), ('All', '*.*')])
+            title='Select yield CSV, ZIP, or GZ',
+            filetypes=[('CSV / ZIP / GZ', '*.csv *.zip *.gz'), ('CSV', '*.csv'), ('ZIP', '*.zip'), ('GZ', '*.gz'), ('All', '*.*')])
         if p:
             self._csv_var.set(p)
 
@@ -301,8 +301,9 @@ class App(tk.Tk):
 
     # ── extract CSV from ZIP ─────────────────────────────────────────────────
     def _resolve_csv(self, path):
-        """If path is a ZIP, extract the first .csv inside to a temp dir and return its path."""
-        if path.lower().endswith('.zip'):
+        """If path is a ZIP or GZ, extract/decompress the CSV to a temp dir and return its path."""
+        low = path.lower()
+        if low.endswith('.zip'):
             self._log_line(f'Extracting CSV from ZIP: {os.path.basename(path)}', 'dim')
             tmp = tempfile.mkdtemp(prefix='vcccont_')
             with zipfile.ZipFile(path, 'r') as z:
@@ -319,6 +320,17 @@ class App(tk.Tk):
                 self._log_line(f'  Using: {chosen}', 'dim')
                 self._tmp_dir = tmp
                 return os.path.join(tmp, chosen)
+        if low.endswith('.gz'):
+            self._log_line(f'Decompressing GZ: {os.path.basename(path)}', 'dim')
+            tmp = tempfile.mkdtemp(prefix='vcccont_')
+            # strip .gz to get output filename (e.g. foo.csv.gz -> foo.csv)
+            base = os.path.basename(path[:-3]) if low.endswith('.csv.gz') else os.path.splitext(os.path.basename(path))[0] + '.csv'
+            out_path = os.path.join(tmp, base)
+            with gzip.open(path, 'rb') as gz_in, open(out_path, 'wb') as f_out:
+                shutil.copyfileobj(gz_in, f_out)
+            self._log_line(f'  Decompressed to: {base}', 'dim')
+            self._tmp_dir = tmp
+            return out_path
         return path
 
     # ── generate ─────────────────────────────────────────────────────────────

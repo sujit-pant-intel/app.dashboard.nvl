@@ -230,55 +230,105 @@ def _parse_devrevstep(devrevstep: str):
     return s, ""
 
 
+def _search_etest_zips(search_dir: str, sort_lot: str) -> "tuple[str, bool]":
+    """Walk *search_dir* recursively (handles devrevstep subdirs via os.walk),
+    open every .zip, read the 'Lot' column of each CSV member, and return the
+    zip::member path of the best-matching CSV.
+
+    Match priority:
+      1. Exact: any row where Lot == sort_lot
+      2. 7-char prefix: any row where Lot[:7] == sort_lot[:7]
+
+    Returns (path, found).  Only the 'Lot' column is read so large CSVs are cheap.
+    """
+    import zipfile as _zf_mod
+    if not os.path.isdir(search_dir) or not sort_lot:
+        return "", False
+    lot7 = sort_lot[:7]
+    exact_matches: list = []
+    prefix_matches: list = []
+    for dirpath, _dirs, files in os.walk(search_dir):
+        for fname in sorted(files):
+            if not fname.lower().endswith(".zip"):
+                continue
+            zip_path = os.path.join(dirpath, fname)
+            try:
+                with _zf_mod.ZipFile(zip_path, "r") as zf:
+                    for member in sorted(zf.namelist()):
+                        if member.endswith("/") or not member.lower().endswith(".csv"):
+                            continue
+                        try:
+                            with zf.open(member) as fh:
+                                df_scan = pd.read_csv(fh, usecols=["Lot"], dtype=str)
+                            lots_in_csv = df_scan["Lot"].dropna().unique()
+                            if sort_lot in lots_in_csv:
+                                exact_matches.append(zip_path + "::" + member)
+                            elif any(l[:7] == lot7 for l in lots_in_csv):
+                                prefix_matches.append(zip_path + "::" + member)
+                        except Exception:
+                            pass  # Lot column absent or unreadable — skip
+            except Exception:
+                pass
+    if exact_matches:
+        return exact_matches[0], True
+    if prefix_matches:
+        return prefix_matches[0], True
+    return "", False
+
+
 def _guess_etest_path(devrevstep: str, sort_lot: str):
     """
-    Return (path, found) for the 9-site PCM CSV.
+    Return (path, found, is_full_site) for the PCM CSV for a specific lot.
 
-    Priority:
-      1. Exact match: <prefix6>-<char7>-<sort_lot>-PCM.csv
-      2. Fuzzy match: any <prefix6>-<char7>-*-PCM.csv in the 9-sites dir
-      3. Any <prefix6>-*-PCM.csv as last resort
+    Search order:
+      1. full-sites/ — os.walk finds the devrevstep subdir automatically;
+         exact lot match preferred, then 7-char prefix.  No IDW needed.
+      2. 9-sites/    — same walk + lot matching.  IDW will be applied.
+      3. Fallback: walk all of 9-sites for flat / legacy layouts.
 
     'found' is True only when the file actually exists.
+    'is_full_site' is True when the file came from full-sites/.
     """
     prefix6, char7 = _parse_devrevstep(devrevstep)
     tech_prefix = f"{prefix6}-{char7}-" if char7 else f"{prefix6}-"
 
-    # Candidate exact stems to try (lot as-is, and with trailing '0' suffix)
-    _lot_variants = [sort_lot] + ([sort_lot + "0"] if sort_lot else [])
-    for _lv in _lot_variants:
-        stem = f"{prefix6}-{char7}-{_lv}-PCM.csv" if char7 else f"{prefix6}-{_lv}-PCM.csv"
-        p = os.path.join(_NINE_SITE_DIR, stem)
-        if os.path.isfile(p):
-            return p, True
+    # ── 1. full-sites/ (os.walk handles devrevstep subdir) ─────────────────
+    _path, _found = _search_etest_zips(_FULL_SITE_DIR, sort_lot)
+    if _found:
+        return _path, True, True
 
+    # ── 2. 9-sites/ (os.walk handles devrevstep subdir) ──────────────────
+    _path, _found = _search_etest_zips(_NINE_SITE_DIR, sort_lot)
+    if _found:
+        return _path, True, False
+
+    # ── 3. Fallback: flat / legacy layout (no zip subdirs) ─────────────────
+    lot7 = sort_lot[:7] if sort_lot else ""
     stem_exact = (
         f"{prefix6}-{char7}-{sort_lot}-PCM.csv" if char7
         else f"{prefix6}-{sort_lot}-PCM.csv"
     )
     exact_path = os.path.join(_NINE_SITE_DIR, stem_exact)
-
-    # Fuzzy: walk 9-sites recursively (including inside .zip files); prefer files containing sort_lot
     if os.path.isdir(_NINE_SITE_DIR):
         lot_matches, tech_matches, wide_matches = [], [], []
         for f, full in _walk_dir_and_zips(_NINE_SITE_DIR):
             if not f.endswith("-PCM.csv"):
                 continue
-            if f.startswith(tech_prefix) and sort_lot and sort_lot in f:
+            if f.startswith(tech_prefix) and lot7 and lot7 in f:
                 lot_matches.append(full)
             elif f.startswith(tech_prefix):
                 tech_matches.append(full)
             elif f.startswith(prefix6):
                 wide_matches.append(full)
         if lot_matches:
-            return sorted(lot_matches)[0], True
+            return sorted(lot_matches)[0], True, False
         if tech_matches:
-            return sorted(tech_matches)[0], True
+            return sorted(tech_matches)[0], True, False
         if wide_matches:
-            return sorted(wide_matches)[0], True
+            return sorted(wide_matches)[0], True, False
 
     # Nothing found — return the expected path so the user sees what's missing
-    return exact_path, False
+    return exact_path, False, False
 
 
 def _guess_material_file(devrevstep: str, sort_lot: str = "") -> str:
@@ -342,14 +392,14 @@ def _guess_reticle_map(devrevstep: str) -> str:
 
 
 def _list_available_etest_files():
-    """Return sorted list of PCM CSV filenames in the 9-sites directory (recursive, including inside .zip files)."""
-    if not os.path.isdir(_NINE_SITE_DIR):
-        return []
+    """Return sorted list of PCM CSV filenames in full-sites then 9-sites (recursive, including inside .zip)."""
     result = []
-    for f, _full in _walk_dir_and_zips(_NINE_SITE_DIR):
-        if f.endswith(".csv"):
-            result.append(f)
-    return sorted(result)
+    for _dir in (_FULL_SITE_DIR, _NINE_SITE_DIR):
+        if os.path.isdir(_dir):
+            for f, _full in _walk_dir_and_zips(_dir):
+                if f.endswith(".csv"):
+                    result.append(f)
+    return sorted(set(result))
 
 
 def _guess_full_site_files(devrevstep: str) -> list:
@@ -438,14 +488,15 @@ def run_pipeline(
     reticle_map_csv: str,
     output_csv: str,
     log,
-    wafer_filter=None,      # list of str wafer IDs, or None for all wafers
-    full_site_csvs=None,    # list of full-site CSV paths (shape reference), or None
-    alpha: float = 0.5,     # blending weight: 1.0 = pure IDW, 0.0 = pure shape
+    wafer_filter=None,           # list of str wafer IDs, or None for all wafers
+    full_site_csvs=None,         # list of full-site CSV paths (shape reference), or None
+    alpha: float = 0.5,          # blending weight: 1.0 = pure IDW, 0.0 = pure shape
     idw_power: int = 2,
-    material_csv: str = "",  # optional lot-definition CSV for material info merge
-    df_yield_cache=None,    # pre-loaded yield DataFrame (avoids re-reading CSV each lot)
-    pcm_filter: str = "",   # wildcard(s) to select PCM columns, e.g. "*Con*" or "*Vts*,*Isat*"
-    write_csv: bool = True,  # set False to skip disk write (caller uses returned DataFrame)
+    material_csv: str = "",      # optional lot-definition CSV for material info merge
+    df_yield_cache=None,         # pre-loaded yield DataFrame (avoids re-reading CSV each lot)
+    pcm_filter: str = "",        # wildcard(s) to select PCM columns, e.g. "*Con*" or "*Vts*,*Isat*"
+    write_csv: bool = True,      # set False to skip disk write (caller uses returned DataFrame)
+    etest_is_full_site: bool = False,  # True → etest has all-reticle data; skip IDW, use direct merge
 ):
     """
     Full merge pipeline implementing the Hybrid Wafer Map Reconstruction spec.
@@ -528,17 +579,27 @@ def run_pipeline(
     lot_reticle_pcm: dict = {}   # lot_str (or None) → {(LayoutX, LayoutY): {param: val}}
     if etest_csv and _zip_isfile(etest_csv):
         _t2 = _time.perf_counter()
-        log(f"[Load ] 9-site etest: {_zip_basename(etest_csv)}")
+        log(f"[Load ] {'Full-site' if etest_is_full_site else '9-site'} etest: {_zip_basename(etest_csv)}")
         df_9 = _read_csv(etest_csv)
         log(f"        {len(df_9):,} rows  ({_time.perf_counter()-_t2:.1f}s)")
 
-        # Identify primary lot and warn if etest filename doesn't match
+        # ── Filter to the primary lot (exact match, then 7-char prefix) ─────────
         _primary_lot = _lots[0] if _lots else None
-        if _primary_lot:
-            etest_stem = _zip_basename(etest_csv)
-            if _primary_lot not in etest_stem:
-                log(f"[Warn ] SORT_LOT={_primary_lot!r} not found in etest filename "
-                    f"{etest_stem!r} — PCM values may be from a different lot!")
+        _lot_col_etest = next((c for c in df_9.columns if c == "Lot"), None)
+        if _lot_col_etest and _primary_lot:
+            _lots_csv = df_9[_lot_col_etest].astype(str)
+            _mask_exact = _lots_csv == _primary_lot
+            if _mask_exact.any():
+                df_9 = df_9[_mask_exact].reset_index(drop=True)
+                log(f"[Lot  ] Exact Lot match {_primary_lot!r} → {len(df_9):,} rows")
+            else:
+                _lot7_filter = _primary_lot[:7]
+                _mask_7 = _lots_csv.str[:7] == _lot7_filter
+                if _mask_7.any():
+                    df_9 = df_9[_mask_7].reset_index(drop=True)
+                    log(f"[Lot  ] 7-char Lot match {_lot7_filter!r} → {len(df_9):,} rows")
+                else:
+                    log(f"[Warn ] Lot {_primary_lot!r} not found in 'Lot' column — using all rows", "err")
 
         wafer_col = next((c for c in ["Wafer", "WAFER", "wafer"] if c in df_9.columns), None)
         if wafer_col and wafer_filter:
@@ -588,19 +649,33 @@ def run_pipeline(
         site_xy_9 = site_mean_9[["LayoutX", "LayoutY"]].values.astype(float)
         vals_9    = site_mean_9[pcm_cols].values.astype(float)
         real_median = np.nanmedian(vals_9, axis=0)
-        log(f"[IDW  ] {n_sites} measured site positions (magnitude anchor)")
+        log(f"[{'Full' if etest_is_full_site else 'IDW  '}] {n_sites} measured site positions")
 
-        # ── 6. IDW from 9 sites to all reticles ──────────────────────────────
-        diff_9  = all_xy[:, np.newaxis, :] - site_xy_9[np.newaxis, :, :]
-        dist_9  = np.sqrt((diff_9 ** 2).sum(axis=2))
-        exact_9 = dist_9 == 0
-        w_9     = 1.0 / (dist_9 ** idw_power + EPS)
-        nw_9    = w_9 / (w_9.sum(axis=1, keepdims=True) + EPS)
-        V_IDW   = nw_9 @ vals_9
-        for i in range(len(all_xy)):
-            hits = np.where(exact_9[i])[0]
-            if len(hits):
-                V_IDW[i] = vals_9[hits[0]]
+        # ── 6. IDW from sites to all reticles (or direct merge for full-site) ─
+        if etest_is_full_site:
+            # Full-site etest already covers every reticle — nearest-neighbour
+            # direct lookup; no interpolation needed.
+            dist_nn = np.sqrt(
+                ((all_xy[:, np.newaxis, :] - site_xy_9[np.newaxis, :, :]) ** 2).sum(axis=2)
+            )
+            nn_idx = dist_nn.argmin(axis=1)
+            V_IDW  = vals_9[nn_idx]
+            # Overwrite exact matches (zero distance) with the precise measured value
+            exact_nn = dist_nn[np.arange(len(all_xy)), nn_idx] == 0
+            for i in np.where(exact_nn)[0]:
+                V_IDW[i] = vals_9[nn_idx[i]]
+            log(f"[Full ] Direct nearest-neighbour merge — IDW skipped")
+        else:
+            diff_9  = all_xy[:, np.newaxis, :] - site_xy_9[np.newaxis, :, :]
+            dist_9  = np.sqrt((diff_9 ** 2).sum(axis=2))
+            exact_9 = dist_9 == 0
+            w_9     = 1.0 / (dist_9 ** idw_power + EPS)
+            nw_9    = w_9 / (w_9.sum(axis=1, keepdims=True) + EPS)
+            V_IDW   = nw_9 @ vals_9
+            for i in range(len(all_xy)):
+                hits = np.where(exact_9[i])[0]
+                if len(hits):
+                    V_IDW[i] = vals_9[hits[0]]
 
         # ── 7. Hybrid reconstruction ──────────────────────────────────────────
         if full_site_csvs:
@@ -661,6 +736,9 @@ def run_pipeline(
             log(f"[Hybrid] Complete  (α={alpha},  median-enforced,  "
                 f"{len(full_mean)} shape positions → {len(all_reticles)} reticles)")
             mode_str = f"Hybrid α={alpha}"
+        elif etest_is_full_site:
+            log(f"[Full ] Direct full-site merge — {len(all_reticles)} reticles × {len(pcm_cols)} params")
+            mode_str = "Full-site direct"
         else:
             log(f"[IDW  ] Pure 9-site IDW — {len(all_reticles)} reticles × {len(pcm_cols)} params")
             mode_str = "9-site IDW"
@@ -692,7 +770,7 @@ def run_pipeline(
             if not _extra_prefix or _gui_prefix == _extra_prefix:
                 _extra_et = etest_csv
             else:
-                _auto_et, _found_et = _guess_etest_path(_extra_drs, _extra_lot)
+                _auto_et, _found_et, _is_full_et = _guess_etest_path(_extra_drs, _extra_lot)
                 if not _found_et:
                     log(f"[Warn ] Lot {_extra_lot!r}: no etest CSV found — PCM skipped for this lot")
                     continue
@@ -1446,16 +1524,17 @@ class PCMMergeFrame(tk.Frame):
             self._lot_var.set(lot or "—")
 
             if drs and lot:
-                etest_path, found = _guess_etest_path(drs, lot)
+                etest_path, found, is_full = _guess_etest_path(drs, lot)
                 if found:
                     self._etest_var.set(etest_path)
-                    self._log(f"[Auto] Etest file: {_zip_basename(etest_path)}")
+                    _src = "full-site" if is_full else "9-site"
+                    self._log(f"[Auto] Etest file ({_src}): {_zip_basename(etest_path)}")
                     self._refresh_wafers(wafer_source)  # scan ZIP or CSV for full wafer list
                 else:
                     self._log(
                         f"[Auto] Exact etest file not found for lot {lot!r}.\n"
                         f"       Expected: {os.path.basename(etest_path)}\n"
-                        f"       Available in 9-sites/:\n"
+                        f"       Available (full-sites + 9-sites):\n"
                         + "\n".join(f"         {f}" for f in _list_available_etest_files()[:12]),
                         "err",
                     )
@@ -1836,6 +1915,7 @@ class PCMMergeFrame(tk.Frame):
                     # ── Per-file auto-detect: material, etest, rmap ───────────
                     _file_material_csv = material_csv
                     _file_etest_csv    = etest_csv
+                    _file_etest_is_full = False
                     _file_rmap_csv     = rmap_csv
 
                     if _drs:
@@ -1859,18 +1939,20 @@ class PCMMergeFrame(tk.Frame):
                         if etest_csv and _zip_isfile(etest_csv):
                             _gui_et_prefix = _zip_basename(etest_csv)[:6]
                             if _gui_et_prefix != _prefix6:
-                                _auto_et, _found = _guess_etest_path(_drs, _lot)
+                                _auto_et, _found, _is_full = _guess_etest_path(_drs, _lot)
                                 if _found:
                                     _file_etest_csv = _auto_et
+                                    _file_etest_is_full = _is_full
                                     _log_capture(
                                         f"[Auto ] Etest switched to "
                                         f"{_zip_basename(_auto_et)} "
                                         f"(tech {_prefix6} ≠ GUI {_gui_et_prefix})"
                                     )
                         elif not etest_csv and _lot:
-                            _auto_et, _found = _guess_etest_path(_drs, _lot)
+                            _auto_et, _found, _is_full = _guess_etest_path(_drs, _lot)
                             if _found:
                                 _file_etest_csv = _auto_et
+                                _file_etest_is_full = _is_full
                                 _log_capture(f"[Auto ] Etest auto-detected: "
                                              f"{_zip_basename(_auto_et)}")
 
@@ -1904,6 +1986,7 @@ class PCMMergeFrame(tk.Frame):
                         alpha=alpha,
                         material_csv=_file_material_csv,
                         pcm_filter=pcm_filter,
+                        etest_is_full_site=_file_etest_is_full,
                     )
                     last_df_out   = df_out
                     last_pcm_cols = pcm_cols

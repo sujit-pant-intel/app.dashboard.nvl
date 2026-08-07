@@ -155,10 +155,13 @@ class HRYFrame(tk.Frame):
         self._out_var = tk.StringVar()
         _field(frm_out, 'Output folder:', self._out_var, self._browse_outdir)
 
-        # -- Collateral & Enrichment ------------------------------------------
-        # Reticle and Material CSV dirs are resolved automatically from the
-        # shared/ folder next to this repo (shared/reticle/ and shared/material/).
-        # No user input needed.
+        # -- HRY Config CSV ---------------------------------------------------
+        frm_cfg = _lf('HRY Config CSV  (leave blank to auto-detect from shared/setup/config/scan-dashboard/)', ABLU)
+        frm_cfg.pack(fill='x', padx=10, pady=(0, 4))
+        self._cfg_var = tk.StringVar()
+        _field(frm_cfg, 'Config CSV:', self._cfg_var,
+               lambda: self._browse_file(self._cfg_var,
+                   [('CSV files', '*.csv *.CSV'), ('All files', '*.*')]))
 
         # -- Options ----------------------------------------------------------
         frm_opts = _lf('Options', ABLU)
@@ -254,6 +257,7 @@ class HRYFrame(tk.Frame):
                 if f:
                     self._input_listbox.insert(tk.END, f)
             self._out_var.set(data.get('output_dir', data.get('output', '')))
+            self._cfg_var.set(data.get('config', ''))
             self._standalone_var.set(bool(data.get('standalone', False)))
             dp = data.get('dashboard_path', '')
             if dp and os.path.isfile(dp):
@@ -284,6 +288,7 @@ class HRYFrame(tk.Frame):
             data = {
                 'input_files':    _files,
                 'output_dir':     self._out_var.get().strip(),
+                'config':         self._cfg_var.get().strip(),
                 'standalone':     self._standalone_var.get(),
                 'dashboard_path': self._dashboard_path,
             }
@@ -388,6 +393,9 @@ class HRYFrame(tk.Frame):
                 cmd = [sys.executable, '-u', _PIPELINE, '--output', str(out_path)]
             for p in csv_paths:
                 cmd += ['--input', p]
+            cfg_path = self._cfg_var.get().strip()
+            if cfg_path:
+                cmd += ['--config', cfg_path]
             if self._standalone_var.get():
                 cmd.append('--standalone')
 

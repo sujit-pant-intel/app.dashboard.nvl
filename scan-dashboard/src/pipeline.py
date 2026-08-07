@@ -200,20 +200,46 @@ def _deflate32_decode(val: str) -> str:
 # ---------------------------------------------------------------------------
 def load_config(cfg_path: str) -> pd.DataFrame:
     df = pd.read_csv(cfg_path)
+    df.columns = df.columns.str.strip().str.upper()
+    # normalize IP_Ln (underscore) → IP-Ln (hyphen) for consistency
+    df.columns = [re.sub(r"^IP_L(\d+)$", r"IP-L\1", c) for c in df.columns]
     df["INDEX"] = df["INDEX"].astype(int)
-    return df[["MODULE", "TEST", "IP", "REGION", "PARTITION", "INDEX"]]
+    if "PARTITION" not in df.columns:
+        df["PARTITION"] = ""
+    # new-format decoders use IP-L0/L1/L2/… hierarchy; old format uses a flat IP column
+    ip_level_cols = sorted([c for c in df.columns if re.match(r"^IP-L\d+$", c)],
+                           key=lambda c: int(c[4:]))
+    if ip_level_cols:
+        for col in ip_level_cols:
+            df[col] = df[col].fillna("")
+        df["IP"] = df[ip_level_cols].apply(
+            lambda r: next((v for v in reversed(r.tolist()) if v), r.iloc[0]), axis=1
+        )
+    else:
+        ip_level_cols = ["IP-L0"]
+        df["IP-L0"] = df["IP"]
+    fault_cols = [c for c in ("STUCKAT_FAULTS", "ATSPEED_FAULTS") if c in df.columns]
+    for fc in fault_cols:
+        df[fc] = pd.to_numeric(df[fc], errors="coerce").fillna(0).astype(int)
+    return df[["MODULE", "TEST", "IP"] + ip_level_cols + ["REGION", "PARTITION", "INDEX"] + fault_cols]
 
 
 # ---------------------------------------------------------------------------
 # Column name parser
 # ---------------------------------------------------------------------------
-_COL_RE = re.compile(
-    r"^(SCN_\w+)::(CHAIN|STUCKAT|ATSPEED|DIAG)_(\w+?)_HRY_([KE])_(\w+?)_\w+?_\w+?_(\w+?)_(\w+?)_\w+?_POR_HRY_RAWSTR_(\d+)$",
+# old: TESTTYPE_BLOCK_HRY_K_SUBFLOW_DFT_VRAIL_VCORNER_FREQ_STEP_POR_HRY_RAWSTR_ID
+_COL_RE_OLD = re.compile(
+    r"^(SCN_\w+)::(CHAIN|STUCKAT|ATSPEED|DIAG)_(\w+)_HRY_([KE])_(\w+)_\w+_\w+_(\w+)_(\w+)_\w+_POR_HRY_RAWSTR_(\d+)$",
+    re.IGNORECASE,
+)
+# new: TESTTYPE_ALL_BLOCK_K_SUBFLOW_DFT_VRAIL_VCORNER_FREQ[_STEP]_HRY_RAWSTR_ID
+_COL_RE_NEW = re.compile(
+    r"^(SCN_\w+)::(CHAIN|STUCKAT|ATSPEED|DIAG)_\w+_(\w+)_([KE])_(\w+)_\w+_\w+_(\w+)_(\w+)(?:_\w+)?_HRY_RAWSTR_(\d+)$",
     re.IGNORECASE,
 )
 
 def _parse_col(col: str) -> dict | None:
-    m = _COL_RE.match(col)
+    m = _COL_RE_OLD.match(col) or _COL_RE_NEW.match(col)
     if not m:
         return None
     return {
@@ -383,7 +409,7 @@ def build_die_map(records: list) -> list:
         lot = r.get("LOT", "")
         wfr = r.get("WAFER")
         vid = r.get("VISUAL_ID", "")
-        key = f"{lot}|{wfr}|{vid}"
+        key = f"{lot}|{wfr}|{r.get('X','')}_{r.get('Y','')}"
         if key not in dm:
             dm[key] = {
                 "LOT": lot,
@@ -391,7 +417,7 @@ def build_die_map(records: list) -> list:
                 "X": r.get("X"),
                 "Y": r.get("Y"),
                 "VISUAL_ID": vid,
-                "Layout": str(lot)[:6].upper(),
+                "Layout": r.get("LAYOUT") or str(lot)[:6].upper(),
                 "IB": None,
                 "FB": None,
                 "CHAIN": 0, "STUCKAT": 0, "ATSPEED": 0, "DIAG": 0,
@@ -480,6 +506,7 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
     cfg = load_config(cfg_path)
     print(f"[pipeline] Config: {len(cfg)} IP entries across {cfg['MODULE'].nunique()} modules")
 
+
     # identity columns
     available_id = {k: v for k, v in _ID_COLS_MAP.items() if k in df.columns}
     id_df = df[list(available_id.keys())].rename(columns=available_id).reset_index(drop=True)
@@ -507,6 +534,12 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
     if _fb_src:
         id_df['FB'] = df[_fb_src].values
         print(f"[pipeline] FB column: {_fb_src}")
+
+    # Pass fault-count columns through so the dashboard can aggregate by testtype
+    for _fc_col in ('STUCKAT_FAULTS', 'ATSPEED_FAULTS'):
+        if _fc_col in df.columns:
+            id_df[_fc_col] = pd.to_numeric(df[_fc_col], errors='coerce')
+            print(f"[pipeline] Fault column: {_fc_col}")
 
     # Detect material column directly in the scan CSV (TRACE Sort exports often include it).
     # Strategy 1: a column with 'material' in the name (e.g. 'Material')
@@ -579,8 +612,39 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
             id_df.drop(columns=['_DR_TMP', '_PN_TMP'], errors='ignore', inplace=True)
             print(f"[pipeline] DevRevStep column '{_devrev_col}': {len(_csv_mat_by_wk)} wafer(s)")
 
+    # Derive Layout key from DevRevStep (first 6 chars) so reticle lookup uses process code not lot
+    if _devrev_col:
+        id_df['LAYOUT'] = df[_devrev_col].astype(str).str[:6].str.upper()
+
     # Build reticle layouts early — needed for the correct total-die denominator
     reticle_layout = build_reticle_layouts()
+
+    # Re-align reticle ret_map keys to the actual scan die coordinate range.
+    # The midpoint centering in build_reticle_layouts() may be off by ±1 per axis
+    # when the tester uses an asymmetric zero convention (e.g. X: -10..+11, Y: -11..+10
+    # for a 22-column grid).  We correct per-axis by shifting to match scan_min.
+    if "X" in id_df.columns and "Y" in id_df.columns:
+        try:
+            _sx_min = int(id_df["X"].dropna().astype(float).min())
+            _sy_min = int(id_df["Y"].dropna().astype(float).min())
+            for _pfx_r, _lay in reticle_layout.items():
+                if not _lay.get("x"):
+                    continue
+                _dx = _sx_min - min(_lay["x"])
+                _dy = _sy_min - min(_lay["y"])
+                if _dx == 0 and _dy == 0:
+                    continue
+                _lay["x"] = [v + _dx for v in _lay["x"]]
+                _lay["y"] = [v + _dy for v in _lay["y"]]
+                if "ret_map" in _lay:
+                    _lay["ret_map"] = {
+                        f"{int(k.split(',')[0])+_dx},{int(k.split(',')[1])+_dy}": v
+                        for k, v in _lay["ret_map"].items()
+                    }
+                print(f"[pipeline] Reticle {_pfx_r}: re-aligned by dx={_dx:+d}, dy={_dy:+d} "
+                      f"to match scan range")
+        except Exception as _re:
+            print(f"[pipeline] WARN: reticle re-alignment failed: {_re}")
 
     # total dies per wafer: use reticle row count (e.g. 393 for 8PF5CV) as denominator;
     # fall back to CSV row count only if no matching reticle found.
@@ -682,10 +746,36 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
         "subflows":  sorted({c["subflow"]  for c in scn_cols}),
         "vcorners":  sorted({c["vcorner"]  for c in scn_cols}),
         "freqs":     sorted({c["freq"]     for c in scn_cols}),
+        "cfg_partitions": sorted({p for p in cfg["PARTITION"].unique() if p}),
         "total_dies_per_wafer": total_dies_per_wafer,
         "col_names":    col_names,
         "lot_material":  lot_material,
         "has_material_files": n_mat_files > 0 or bool(_csv_mat_by_wk),
+        # per-IP fault counts from config: {block|region|ip: N}
+        "cfg_fault_counts": {
+            "stuckat": {
+                f"{row['REGION']}|{row['IP']}": int(row["STUCKAT_FAULTS"])
+                for _, row in cfg.iterrows() if "STUCKAT_FAULTS" in cfg.columns and pd.notna(row["STUCKAT_FAULTS"])
+            },
+            "atspeed": {
+                f"{row['REGION']}|{row['IP']}": int(row["ATSPEED_FAULTS"])
+                for _, row in cfg.iterrows() if "ATSPEED_FAULTS" in cfg.columns and pd.notna(row["ATSPEED_FAULTS"])
+            },
+        },
+        # all decoder entries so the UI can show regions even with zero failures
+        "cfg_entries": [
+            {
+                "MODULE":    row["MODULE"].replace("SCN_", "", 1),
+                "BLOCK":     next((c["block"] for c in scn_cols
+                                   if c["module"].replace("SCN_","",1) == row["MODULE"]
+                                   or c["module"] == row["MODULE"]), ""),
+                "PARTITION": row.get("PARTITION", ""),
+                "REGION":    row["REGION"],
+                "IP":        row["IP"],
+                **{c: row[c] for c in cfg.columns if re.match(r"^IP-L\d+$", c)},
+            }
+            for _, row in cfg.iterrows()
+        ],
     }
 
     # decode + aggregate
@@ -695,9 +785,19 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
         block    = col_info["block"]
         col_name = col_info["col"]
 
-        cfg_sub = cfg[(cfg["MODULE"] == module) & (cfg["TEST"] == block)]
+        module_key = module.replace("SCN_", "", 1)
+        subflow    = col_info["subflow"]
+        cfg_sub = cfg[(cfg["MODULE"] == module_key) & (cfg["TEST"] == block)]
         if cfg_sub.empty:
-            print(f"[pipeline]   WARN: no config for ({module}, {block}) — skipping")
+            cfg_sub = cfg[(cfg["MODULE"] == module) & (cfg["TEST"] == block)]
+        if cfg_sub.empty:  # new-format: subflow as TEST key
+            cfg_sub = cfg[(cfg["MODULE"] == module_key) & (cfg["TEST"] == subflow)]
+        if cfg_sub.empty:
+            cfg_sub = cfg[(cfg["MODULE"] == module) & (cfg["TEST"] == subflow)]
+        if cfg_sub.empty:  # single-IP products: TEST is IP name, not in column — match module only
+            cfg_sub = cfg[cfg["MODULE"].isin([module_key, module])]
+        if cfg_sub.empty:
+            print(f"[pipeline]   WARN: no config for ({module_key}, block={block}, subflow={subflow}) — skipping")
             continue
 
         decoded = df[col_name].apply(_deflate32_decode)
@@ -706,6 +806,7 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
             idx       = int(cfg_row["INDEX"])
             partition = cfg_row["PARTITION"]
             ip        = cfg_row["IP"]
+            ip_levels = {c: cfg_row[c] for c in cfg_sub.columns if re.match(r"^IP-L\d+$", c)}
             region    = cfg_row["REGION"]
 
             statuses = decoded.apply(lambda s, i=idx: _get_status(s, i))
@@ -727,6 +828,7 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
                     "FREQ":      col_info["freq"],
                     "PARTITION": partition,
                     "IP":        ip,
+                    **ip_levels,
                     "REGION":    region,
                     "STATUS":    sub_st[j],
                 })
@@ -917,11 +1019,6 @@ def write_dashboard(result: dict, output_dir: Path, standalone: bool = False):
     js_content += f"const SCAN_DATA = {json.dumps(result, separators=(',', ':'))};\n"
     data_js.write_text(js_content, encoding="utf-8")
 
-    # Inject <script src="data.js"> into index.html so SCAN_DATA is defined
-    _html = dst_html.read_text(encoding="utf-8")
-    _html = _html.replace("</head>", '<script src="data.js"></script>\n</head>', 1)
-    dst_html.write_text(_html, encoding="utf-8")
-
     # ------------------------------------------------------------------
     # Standalone mode: embed data.js (and Plotly) inline so the HTML
     # can be opened directly without a web server or sibling files.
@@ -929,9 +1026,11 @@ def write_dashboard(result: dict, output_dir: Path, standalone: bool = False):
     if standalone:
         _html = dst_html.read_text(encoding="utf-8")
         # Replace <script src="data.js"></script> with inline data
+        # Escape </script> inside JS content so it doesn't prematurely close the tag
+        _safe_js = js_content.replace('</script>', r'<\/script>')
         _html = _html.replace(
             '<script src="data.js"></script>',
-            f'<script>\n{js_content}</script>',
+            f'<script>\n{_safe_js}</script>',
         )
         # Replace <script src="plotly-*.min.js"> with inline Plotly if available
         import re as _re
@@ -940,7 +1039,8 @@ def write_dashboard(result: dict, output_dir: Path, standalone: bool = False):
             pjs = dash_dir / src
             if pjs.exists():
                 print(f"[pipeline] Inlining Plotly ({pjs.stat().st_size:,} bytes)")
-                return f'<script>\n{pjs.read_text(encoding="utf-8")}\n</script>'
+                _pjs = pjs.read_text(encoding="utf-8").replace('</script>', r'<\/script>')
+                return f'<script>\n{_pjs}\n</script>'
             return m.group(0)
         _html = _re.sub(r'<script src="(plotly[^"]+)"></script>', _inline_plotly, _html)
         dst_html.write_text(_html, encoding="utf-8")

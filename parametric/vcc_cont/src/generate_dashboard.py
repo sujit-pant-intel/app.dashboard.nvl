@@ -424,56 +424,114 @@ def load_xeus_bin_summary(lots, operation='119325'):
         return {}
 
 
-def _parse_lvl_force(lvl_path):
-    """Parse LevelsSequences.lvl → {level_name: {cs_type: force_val_string}} for all dc_spex blocks."""
-    all_levels = {}
-    with open(lvl_path, encoding='utf-8', errors='replace') as _f:
-        txt = _f.read()
-    pat = re.compile(r'\bLevels\s+(\S+)\s*\{')
-    pos = 0
-    while True:
-        _m = pat.search(txt, pos)
-        if not _m: break
-        nm = _m.group(1); si = _m.end(); depth = 1; i = si
+def _parse_mtpl_test_setup(mtpl_path):
+    """Parse TPI_VCC.mtpl → {instance_name: {config_file, config_set, levels_tc}}
+    for all SPEXVccContinuity blocks. No fallback — returns {} if file missing."""
+    if not os.path.isfile(mtpl_path):
+        return {}
+    result = {}
+    try:
+        with open(mtpl_path, 'r', encoding='utf-8', errors='ignore') as f:
+            txt = f.read()
+        pat = re.compile(r'CSharpTest\s+SPEXVccContinuity\s+(\S+)\s*\{([^}]+)\}', re.DOTALL)
+        for m in pat.finditer(txt):
+            name = m.group(1).strip()
+            body = m.group(2)
+            def _get(key, _body=body):
+                km = re.search(r'\b' + key + r'\s*=\s*([^;]+);', _body)
+                return km.group(1).strip().strip('"') if km else ''
+            config_file_raw = _get('ConfigFile')
+            # Extract just the filename — ConfigFile may be an expression like
+            # GetEnvironmentVariable(...) + "/path/to/File.json"; strip('"') on
+            # the raw value removes the closing quote, so match the filename directly.
+            cf_m = re.search(r'([\w][\w.\-]*\.json)', config_file_raw)
+            config_file_clean = cf_m.group(1) if cf_m else ''
+            levels_tc_raw = _get('LevelsTc')
+            levels_tc = levels_tc_raw.split('::')[-1] if '::' in levels_tc_raw else levels_tc_raw
+            result[name] = {
+                'config_file': config_file_clean,
+                'config_set':  _get('ConfigSet'),
+                'levels_tc':   levels_tc,
+            }
+    except Exception as e:
+        print(f'  [mtpl] parse error: {e}')
+    return result
+
+
+def _parse_lvl_force_per_pin(lvl_path, level_name):
+    """Parse a specific named Levels block from LevelsSequences.lvl.
+    Returns {pin_name: vforce_str} for entries with StartMeasurement = TRUE only.
+    No fallback — returns {} if level not found or file missing."""
+    if not os.path.isfile(lvl_path) or not level_name:
+        return {}
+    try:
+        with open(lvl_path, encoding='utf-8', errors='replace') as f:
+            txt = f.read()
+        # MTPL LevelsTc values often carry a trailing _lvl suffix not present in the file
+        _candidates = [level_name]
+        if level_name.endswith('_lvl'):
+            _candidates.append(level_name[:-4])
+        m = None
+        for _ln in _candidates:
+            pat = re.compile(r'\bLevels\s+' + re.escape(_ln) + r'\s*\{')
+            m = pat.search(txt)
+            if m:
+                break
+        if not m:
+            return {}
+        si = m.end(); depth = 1; i = si
         while i < len(txt) and depth:
             if txt[i] == '{': depth += 1
             elif txt[i] == '}': depth -= 1
             i += 1
         body = txt[si:i-1]
-        if 'dc_spex' in nm:
-            lvl_cs = {}
-            for pm in re.finditer(r'(VLC|HC|HV|LC)\w*\s*\{([^}]+)\}', body):
-                cs_t = next((t for t in ('VLC','HC','HV','LC') if pm.group(1).upper().startswith(t)), None)
-                if not cs_t or cs_t in lvl_cs: continue
-                params = dict(re.findall(r'(\w+)\s*=\s*([^;\n]+)', pm.group(2)))
-                if params.get('OPMode','').strip().strip('"') == 'VSIM':
-                    lvl_cs[cs_t] = params.get('VForce','').strip()
-                elif params.get('OPMode','').strip().strip('"') == 'ISVM':
-                    lvl_cs[cs_t] = params.get('IForce','').strip()
-            if lvl_cs:
-                all_levels[nm] = lvl_cs
-        pos = i
-    return all_levels
+        result = {}
+        for pm in re.finditer(r'(\w+)\s*\{([^}]+)\}', body):
+            pin_name = pm.group(1)
+            pin_body = pm.group(2)
+            sm = re.search(r'StartMeasurement\s*=\s*(\w+)', pin_body)
+            if not sm or sm.group(1).upper() != 'TRUE':
+                continue
+            vf = re.search(r'VForce\s*=\s*([^;]+);', pin_body)
+            if vf:
+                result[pin_name] = vf.group(1).strip()
+        return result
+    except Exception as e:
+        print(f'  [lvl] parse error for {level_name}: {e}')
+        return {}
 
 
-def _lvl_force_flat(all_levels):
-    """Collapse {level_name: {cs: val}} → flat {cs: val}.
-    Prefers dc_spex_VSIM_SDS_ over dc_spex_VSIM_ over dc_spex_ISVM_."""
-    out = {}
-    for priority in ('dc_spex_VSIM_SDS_', 'dc_spex_VSIM_', 'dc_spex_ISVM_', ''):
-        for nm, cs_map in all_levels.items():
-            if priority in nm:
-                for cs, val in cs_map.items():
-                    if cs not in out:
-                        out[cs] = val
-        if out:
-            return out
-    return out
+def _parse_json_config_set(json_path, config_set):
+    """Parse ConfigSets[config_set] from a VCC JSON limits file.
+    Returns (force_overrides, pin_limits) where:
+      force_overrides: {pin: force_val}              — only pins with a 'Force' field
+      pin_limits:      {pin: (lsl, usl, type_str)}   — LowerLimit/UpperLimit (raw float) + Type
+    No fallback — returns ({}, {}) if file missing."""
+    if not os.path.isfile(json_path):
+        return {}, {}
+    try:
+        import json as _json
+        with open(json_path, encoding='utf-8') as f:
+            data = _json.load(f)
+        pins = data.get('ConfigSets', {}).get(config_set, [])
+        force_ov = {e['Pin']: e['Force'] for e in pins if 'Force' in e and 'Pin' in e}
+        pin_lim  = {e['Pin']: (e.get('LowerLimit'), e.get('UpperLimit'), e.get('Type', ''))
+                    for e in pins if 'Pin' in e
+                    and (e.get('LowerLimit') is not None or e.get('UpperLimit') is not None)}
+        return force_ov, pin_lim
+    except Exception as e:
+        print(f'  [json] config set parse error for {config_set}: {e}')
+        return {}, {}
+
+
+def _parse_json_force_override(json_path, config_set):
+    """Backward-compat wrapper — returns only force overrides dict."""
+    return _parse_json_config_set(json_path, config_set)[0]
 
 
 def _resolve_prog_dir(prog_name, prog_root, fallback_prog):
     """Map a program name → its directory.
-    Uses prog_root/prog_name only — NO fallback to another program.
+    Uses prog_root/prog_name only — no fallback to any other program.
     Each program MUST have its own directory for correct limit loading."""
     if prog_root:
         candidate = os.path.join(prog_root, prog_name)
@@ -486,7 +544,7 @@ def _resolve_prog_dir(prog_name, prog_root, fallback_prog):
         if os.path.basename(fallback_prog) == prog_name:
             return fallback_prog
         print(f'  [prog] WARNING: --prog set to {os.path.basename(fallback_prog)} but analyzing {prog_name}.')
-        print(f'  [prog] Limits will be EMPTY. Use --prog-root to load per-program limits correctly.')
+        print(f'  [prog] No fallback — limits will be EMPTY for {prog_name}. Use --prog-root instead.')
     else:
         print(f'  [prog] WARNING: No program directory configured for {prog_name} — limits will be EMPTY.')
         print(f'  [prog] Use --prog-root pointing to the parent folder containing all program subdirectories.')
@@ -704,36 +762,30 @@ def analyze_program(df_prog, prog_dir, args_json=None, focus_mode=False):
     lot_list  = sorted(set(d['lot']  for d in dies))
     prog_list = sorted(set(d['prog'] for d in dies))
 
-    # ── Force voltages ───────────────────────────────────────────────────────
-    _force_by_cs   = {}   # flat {cs: val} — used for die annotation & rail list
-    _force_all_lvl = {}   # {level_name: {cs: val}} — used for per-phase flow display
-    _lvl_path = os.path.join(prog_dir, 'LevelsSequences.lvl') if prog_dir else ''
-    if os.path.isfile(_lvl_path):
-        try:
-            _force_all_lvl = _parse_lvl_force(_lvl_path)
-            _force_by_cs   = _lvl_force_flat(_force_all_lvl)
-            if _force_by_cs: print(f'  [lvl] force: {_force_by_cs}')
-        except Exception as _e:
-            print(f'  [lvl] {_e}')
-    if not _force_by_cs:
-        try:
-            sys.path.insert(0, _TRACE_DIR)
-            import trace_bridge as _tb
-            for _lot in lots_all[:3]:
-                try:
-                    for _d2 in _tb.xeus_get(str(_lot), operation='119325'):
-                        _sdir = _d2.get('stplDirectory') or ''
-                        if not _sdir or not os.path.isdir(_sdir): continue
-                        _lp = os.path.join(_sdir, 'LevelsSequences.lvl')
-                        if os.path.isfile(_lp):
-                            _force_all_lvl = _parse_lvl_force(_lp)
-                            _force_by_cs   = _lvl_force_flat(_force_all_lvl)
-                            if _force_by_cs:
-                                print(f'  [lvl/trace] force: {_force_by_cs}'); break
-                except Exception: continue
-                if _force_by_cs: break
-        except Exception as _e:
-            print(f'  [lvl/trace] {_e}')
+    # ── Force voltages — per-pin from mtpl+lvl, no fallback ──────────────────
+    _lvl_path   = os.path.join(prog_dir, 'LevelsSequences.lvl') if prog_dir else ''
+    _mtpl_path  = os.path.join(prog_dir, 'Modules', 'TPI_VCC', 'TPI_VCC.mtpl') if prog_dir else ''
+    _mtpl_setup = _parse_mtpl_test_setup(_mtpl_path)
+    if _mtpl_setup:
+        print(f'  [mtpl] {len(_mtpl_setup)} SPEXVccContinuity instances parsed')
+    # Build flat force_by_cs {cs: force_str} from POSTSURGE_SERIAL_V2 level blocks
+    _cs_to_setup = {}
+    for _inst_name, _inst in _mtpl_setup.items():
+        if 'POSTSURGE_SERIAL_V2' in _inst_name and _inst.get('levels_tc'):
+            for _cs in ('VLC', 'LC', 'HC', 'HV'):
+                if f'CONT_{_cs}DPS' in _inst_name and _cs not in _cs_to_setup:
+                    _cs_to_setup[_cs] = _inst
+                    break
+    _force_by_cs  = {}
+    _force_all_lvl = {}  # kept for build_flow_data compat; populated below
+    for _cs, _setup in _cs_to_setup.items():
+        _pin_forces = _parse_lvl_force_per_pin(_lvl_path, _setup['levels_tc'])
+        if _pin_forces:
+            _force_by_cs[_cs] = next(iter(_pin_forces.values()))
+    if _force_by_cs:
+        print(f'  [lvl] force by CS: {_force_by_cs}')
+    else:
+        print(f'  [lvl] force: N/A (no program directory or dc_spex levels found)')
 
     for d in dies:
         for p in d['pins']:
@@ -2085,36 +2137,66 @@ def build_flow_data(dies, force_by_cs=None, lim=None, lim_by_flow=None, prog_dir
     if force_all_levels is None:
         force_all_levels = {}
 
-    # Per-group level name pattern: used to look up the correct force for each phase
-    # ISVM_EDC uses ISVM levels; all VSIM phases use VSIM SDS levels
-    _GROUP_LVL_PATTERN = {
-        'ISVM_EDC':               'dc_spex_ISVM_',
-        'VSIM_PRESURGE_600MV_V2': 'dc_spex_VSIM_',
-        'VSIM_POSTSURGE_NOM_V2':  'dc_spex_VSIM_SDS_',
-        'VSIM_STRESS_V2':         'dc_spex_VSIM_SDS_',
-        'VSIM_FINAL_V2':          'dc_spex_VSIM_SDS_',
-        'VSIM_SDTSTART_V2':       'dc_spex_VSIM_SDS_',
-        'VSIM_SDTFINAL_V2':       'dc_spex_VSIM_SDS_',
-    }
+    PROG = prog_dir or ''
+    flw_path  = os.path.join(PROG, 'Modules', 'TPI_VCC', 'TPI_VCC.flw')  if PROG else ''
+    mtpl_path = os.path.join(PROG, 'Modules', 'TPI_VCC', 'TPI_VCC.mtpl') if PROG else ''
+    lvl_path  = os.path.join(PROG, 'LevelsSequences.lvl')                 if PROG else ''
+    json_dir  = os.path.join(PROG, 'Modules', 'TPI_VCC', 'InputFiles')    if PROG else ''
+
+    # Parse mtpl → per-instance test setup (no fallback)
+    _all_inst = _parse_mtpl_test_setup(mtpl_path)
+
+    # Build per-group test_setup:
+    # {grp_id: {cs: {levels_tc, config_file, config_set, pin_forces, json_override}}}
+    # Uses the FLW group_tests list for direct instance lookup — no keyword guessing.
+
+    def _build_group_test_setup(grp_id):
+        """Return {cs: {levels_tc, config_file, config_set, pin_forces, json_override}}
+        by looking up the FLW group's test list directly in the parsed MTPL instances."""
+        if not _all_inst:
+            return {}
+        tests_in_group = group_tests.get(grp_id, [])
+        if not tests_in_group:
+            return {}
+        result = {}
+        for inst_name in tests_in_group:
+            inst = _all_inst.get(inst_name)
+            if not inst:
+                continue
+            cs = next((c for c in ('VLC', 'LC', 'HC', 'HV') if f'CONT_{c}DPS' in inst_name), None)
+            if not cs or cs in result:
+                continue
+            lvl_name    = inst.get('levels_tc', '')
+            cfg_file    = inst.get('config_file', '')
+            cfg_set     = inst.get('config_set', '')
+            pin_forces  = _parse_lvl_force_per_pin(lvl_path, lvl_name) if lvl_name else {}
+            json_path   = os.path.join(json_dir, cfg_file) if cfg_file else ''
+            json_over, pin_lim = _parse_json_config_set(json_path, cfg_set) if json_path else ({}, {})
+            # Merge forces: JSON overrides lvl
+            merged = dict(pin_forces)
+            merged.update(json_over)
+            result[cs] = {
+                'levels_tc':      lvl_name,
+                'config_file':    cfg_file,
+                'config_set':     cfg_set,
+                'pin_forces':     merged,       # {pin: force_str}
+                'pin_limits':     pin_lim,       # {pin: (lsl_v, usl_v)}
+                'json_override':  bool(json_over),
+                'json_override_pins': list(json_over.keys()),
+            }
+        return result
 
     def _force_for_group(grp_id):
-        """Return {cs: val} for the level(s) matching this group's pattern."""
-        if not force_all_levels:
-            return force_by_cs
-        pattern = _GROUP_LVL_PATTERN.get(grp_id, '')
-        if not pattern:
-            return force_by_cs
-        grp_force = {}
-        for nm, cs_map in force_all_levels.items():
-            if pattern in nm:
-                for cs, val in cs_map.items():
-                    if cs not in grp_force:
-                        grp_force[cs] = val
-        return grp_force if grp_force else force_by_cs
-
-    PROG = prog_dir or PROG_61C
-    flw_path  = os.path.join(PROG, 'Modules', 'TPI_VCC', 'TPI_VCC.flw')
-    mtpl_path = os.path.join(PROG, 'Modules', 'TPI_VCC', 'TPI_VCC.mtpl')
+        """Return flat {cs: representative_force_str} for backward-compat display."""
+        setup = _build_group_test_setup(grp_id)
+        if setup:
+            out = {}
+            for cs, sd in setup.items():
+                pf = sd.get('pin_forces', {})
+                if pf:
+                    out[cs] = next(iter(pf.values()))
+            return out if out else force_by_cs
+        return force_by_cs
 
     # Ordered flow: matches actual program execution order
     # Reference: vcccont_mimcap flow comment:
@@ -2283,6 +2365,7 @@ def build_flow_data(dies, force_by_cs=None, lim=None, lim_by_flow=None, prog_dir
             'color':           phase_color,
             'n_tests':         len(cont_tests),
             'force':           _force_for_group(grp_id),
+            'test_setup':      _build_group_test_setup(grp_id),
             'edc':             grp_id in EDC_GROUPS,
             'edc_limits':      edc_limits,
             'bin8_kills':      pk['n'],
@@ -3403,6 +3486,9 @@ __PROG_TABS__
     <div style="color:#445566;font-size:0.8rem;padding:8px 0">Click a test group above to see force conditions and BIN8 kill stats.</div>
   </div>
 </div>
+
+<!-- TEST SETUP STICKY POPUPS CONTAINER -->
+<div id="ts-popup-container" style="position:fixed;bottom:16px;right:16px;z-index:9500;display:flex;flex-direction:column-reverse;gap:10px;pointer-events:none"></div>
 
 <!-- PIN DISTRIBUTION MODAL -->
 <div id="pin-dist-modal" style="display:none;position:fixed;inset:0;z-index:9000;pointer-events:none">
@@ -8947,6 +9033,115 @@ function _fpSwitchTab(fpId, allMode){
   if(btnA){btnA.style.background=allMode?'#1e3050':'#0d1520';btnA.style.color=allMode?'#4a9fd4':'#445566';}
 }
 
+// ── Test Setup Sticky Popup ───────────────────────────────────────────────────
+function showTestSetupPopup(groupId, groupLabel){
+  var container = document.getElementById('ts-popup-container');
+  if(!container) return;
+  // Find the group data
+  var grpData = null;
+  (FLOW_DATA.phases||[]).forEach(function(ph){
+    ph.groups.forEach(function(g){ if(g.id===groupId) grpData=g; });
+  });
+  if(!grpData) return;
+  // Remove existing popup for same group (toggle)
+  var existing = document.getElementById('ts-popup-'+groupId);
+  if(existing){ existing.remove(); return; }
+  var setup = grpData.test_setup || {};
+  var hasSetup = Object.keys(setup).length > 0;
+  // Build content
+  var content = '';
+  if(!hasSetup){
+    content = '<div style="color:#445566;font-size:0.79rem;padding:4px 0">Test setup not available<br><span style="font-size:0.71rem">(no program directory or mtpl not found)</span></div>';
+  } else {
+    var cssOrder = ['VLC','LC','HC','HV'];
+    cssOrder.forEach(function(cs){
+      var sd = setup[cs];
+      if(!sd) return;
+      var forces = sd.pin_forces || {};
+      var pinLims = sd.pin_limits || {};
+      var allPins = Array.from(new Set(Object.keys(forces).concat(Object.keys(pinLims))));
+      var pinRows = allPins.map(function(pin){
+        var forceVal = forces[pin] || '';
+        var lim = pinLims[pin] || [null, null, ''];
+        var lsl = lim[0]; var usl = lim[1]; var ltype = (lim[2]||'').toLowerCase();
+        function _fmtLim(v){
+          if(v==null) return '\u2014';
+          if(ltype==='voltage') return (v*1000).toFixed(1)+' mV';
+          var ua=v*1e6;
+          return (Math.abs(ua)>=0.1 ? ua.toFixed(2)+' \u00b5A' : (v*1e9).toFixed(1)+' nA');
+        }
+        var tag = (sd.json_override_pins && sd.json_override_pins.indexOf(pin)>=0)
+          ? ' <span style="color:#ffd166;font-size:0.67rem">(JSON)</span>'
+          : (forceVal ? ' <span style="color:#556677;font-size:0.67rem">(lvl)</span>' : '');
+        var limCell = (lsl!=null||usl!=null)
+          ? '<span style="color:#445566;font-size:0.67rem">LSL:</span><span style="color:#a0b8cc;font-family:monospace;font-size:0.72rem"> '+_fmtLim(lsl)+'</span>'
+            +'<span style="color:#445566;font-size:0.67rem;margin-left:6px">USL:</span><span style="color:#a0b8cc;font-family:monospace;font-size:0.72rem"> '+_fmtLim(usl)+'</span>'
+          : '';
+        return '<tr>'
+          +'<td style="padding:1px 10px 1px 8px;color:#8ab4d4;font-family:monospace;font-size:0.75rem;white-space:nowrap">'+pin+'</td>'
+          +(forceVal ? '<td style="padding:1px 6px 1px 0;color:#69f0ae;font-family:monospace;font-size:0.78rem;font-weight:700">'+forceVal+'</td><td style="padding:1px 6px 1px 0">'+tag+'</td>' : '<td colspan="2"></td>')
+          +'<td style="padding:1px 0 1px 6px">'+limCell+'</td>'
+          +'</tr>';
+      }).join('');
+      content +=
+        '<div style="margin-bottom:10px">'+
+          '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">'+
+            '<div style="font-size:0.74rem;font-weight:700;color:#8ab4d4;text-transform:uppercase;letter-spacing:.05em">Rail: '+cs+'</div>'+
+            '<div style="font-size:0.68rem;color:#556677">← under test at cont. force &nbsp;·&nbsp; other rails at nominal</div>'+
+          '</div>'+
+          '<div style="font-size:0.71rem;color:#556677;margin-bottom:2px">Levels: <span style="color:#a0b8cc;font-family:monospace">'+( sd.levels_tc||'N/A')+'</span></div>'+
+          '<div style="font-size:0.71rem;color:#556677;margin-bottom:4px">Config: <span style="color:#a0b8cc;font-family:monospace">'+(sd.config_file||'N/A')+'</span> / <span style="color:#a0b8cc;font-family:monospace">'+(sd.config_set||'N/A')+'</span>'+
+            (sd.json_override?' <span style="color:#ffd166;font-size:0.68rem">\u26a0 JSON force override active</span>':'')+
+          '</div>'+
+          (pinRows
+            ? '<table style="border-collapse:collapse">'
+                +'<tr style="font-size:0.67rem;color:#445566"><th style="padding:0 10px 3px 8px;text-align:left">Pin</th><th style="padding:0 6px 3px 0;text-align:left" title="Continuity test force (forced low to check connection)">Cont. Force</th><th></th><th style="padding:0 0 3px 6px;text-align:left">Limits (from JSON)</th></tr>'
+                +pinRows+'</table>'
+            : '<div style="font-size:0.71rem;color:#445566">No pin data found</div>')+
+        '</div>';
+    });
+    content += '<div style="font-size:0.69rem;color:#3a5a3a;background:#0a1a0a;border:1px solid #1e3a1e;border-radius:4px;margin-top:4px;padding:5px 8px">'
+      +'<b style="color:#4ecdc4">ℹ</b> During each rail measurement: that rail\u2019s pins are forced to the continuity test voltage (shown above). '
+      +'All other rails remain at their prior nominal operating voltage.</div>';
+  }
+  // Create popup
+  var popup = document.createElement('div');
+  popup.id = 'ts-popup-'+groupId;
+  popup.style.cssText = 'pointer-events:all;background:#0d1828;border:1.5px solid #2a4060;border-radius:8px;'+
+    'min-width:320px;max-width:420px;max-height:70vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.7);';
+  // Title bar (draggable)
+  var titleBar = document.createElement('div');
+  titleBar.style.cssText = 'cursor:move;user-select:none;background:#131c30;border-bottom:1px solid #1e3050;padding:8px 10px;'+
+    'display:flex;align-items:center;gap:8px;border-radius:8px 8px 0 0;';
+  titleBar.innerHTML =
+    '<span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.07em;color:#5aabff;font-weight:700">\u2139 Test Setup</span>'+
+    '<span style="font-size:0.8rem;font-weight:700;color:#c0ccd8;flex:1">'+groupLabel+'</span>'+
+    '<button id="ts-close-'+groupId+'" style="background:#1e2a3c;border:1px solid #2a4060;color:#8ab4d4;cursor:pointer;'+
+      'font-size:0.75rem;font-weight:700;padding:2px 9px;border-radius:4px;flex-shrink:0" title="Close">\u2715</button>';
+  popup.appendChild(titleBar);
+  // Body
+  var body = document.createElement('div');
+  body.style.cssText = 'padding:10px 12px 10px;';
+  body.innerHTML = content;
+  popup.appendChild(body);
+  container.appendChild(popup);
+  // Close button
+  document.getElementById('ts-close-'+groupId).addEventListener('click', function(){ popup.remove(); });
+  // Drag
+  var isDrag=false, ox=0, oy=0;
+  titleBar.addEventListener('mousedown', function(e){
+    isDrag=true; ox=e.clientX-popup.getBoundingClientRect().left; oy=e.clientY-popup.getBoundingClientRect().top;
+    popup.style.position='fixed'; popup.style.bottom='auto'; popup.style.right='auto';
+    container.style.display='block';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e){
+    if(!isDrag) return;
+    popup.style.left=(e.clientX-ox)+'px'; popup.style.top=(e.clientY-oy)+'px';
+  });
+  document.addEventListener('mouseup', function(){ isDrag=false; });
+}
+
 function drawFlowDiagram(){
   var wrap = document.getElementById('flow-diagram');
   var det  = document.getElementById('flow-detail');
@@ -8978,8 +9173,9 @@ function drawFlowDiagram(){
     box.style.cssText='cursor:pointer;border:2px solid '+(isSel?group.color:'#2a3a5a')+';background:'+(isSel?'#1e2a4a':'#171e2e')+';border-radius:7px;padding:9px 11px;transition:.12s;';
     var forceStr=Object.entries(group.force||{}).map(function(e){ return e[0]+':'+e[1]; }).join(' ');
     box.innerHTML=
-      '<div style="font-size:0.81rem;font-weight:700;color:'+(isSel?group.color:'#c0d0e0')+';margin-bottom:3px">'+group.label+
-        (group.edc?'<span style="margin-left:6px;font-size:0.66rem;background:#5aabff22;color:#5aabff;border:1px solid #5aabff44;border-radius:3px;padding:1px 5px;vertical-align:middle">EDC</span>':'')+
+      '<div style="font-size:0.81rem;font-weight:700;color:'+(isSel?group.color:'#c0d0e0')+';margin-bottom:3px;display:flex;align-items:center;justify-content:space-between">'+
+        '<span>'+group.label+(group.edc?'<span style="margin-left:6px;font-size:0.66rem;background:#5aabff22;color:#5aabff;border:1px solid #5aabff44;border-radius:3px;padding:1px 5px;vertical-align:middle">EDC</span>':'')+'</span>'+
+        '<button onclick="event.stopPropagation();showTestSetupPopup(\''+group.id+'\',\''+group.label+'\')" title="Test setup details" style="background:#1e2a3c;border:1px solid #3a5080;color:#7ab4d4;cursor:pointer;font-size:0.72rem;font-weight:700;padding:1px 6px;border-radius:4px;line-height:1.4;flex-shrink:0">&#8505;</button>'+
       '</div>'+
       (forceStr?'<div style="font-size:0.68rem;color:#7a9aba;font-family:monospace;margin-bottom:3px">'+forceStr+'</div>':'')+
       '<div style="font-size:0.67rem;color:#6a8aaa;margin-top:2px">'+group.n_tests+' CONT_ tests</div>'+

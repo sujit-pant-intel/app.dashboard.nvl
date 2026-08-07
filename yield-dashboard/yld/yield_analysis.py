@@ -754,10 +754,10 @@ def generate(data_path, out_dir=None, tbl_path=None):
             if _filtered:
                 _ret_candidates = _filtered
                 if os.getenv('YLD_DEBUG'):
-                    print(f'Reticle: DevRevStep prefix {_drs_prefix6!r} → {len(_filtered)} candidate(s)')
+                    print(f'Reticle: DevRevStep prefix {_drs_prefix6!r} -> {len(_filtered)} candidate(s)')
             else:
                 if os.getenv('YLD_DEBUG'):
-                    print(f'Reticle: no candidates match DevRevStep prefix {_drs_prefix6!r}, using all {len(_ret_candidates)}')
+                    print(f'Reticle: no candidates match DevRevStep prefix {_drs_prefix6!r}, using all {len(_ret_candidates)} candidates')
         if _ret_candidates:
             _ret_csv_path = Path(_ret_candidates[0])
             _ret_df = pd.read_csv(_ret_csv_path)

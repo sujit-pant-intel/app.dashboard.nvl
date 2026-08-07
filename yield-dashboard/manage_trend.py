@@ -62,6 +62,13 @@ FONT_UI    = ("Segoe UI", 10)
 FONT_TITLE = ("Segoe UI", 13, "bold")
 FONT_GROUP = ("Segoe UI", 10, "bold")
 
+# devrevstep prefix → product folder name under reports/
+_PREFIX_TO_PRODUCT = {
+    "8PF6CV": "NVL816",
+    "8PF5CV": "NVL816-BLLC",
+    "8PL7CV": "NVLG-512",
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -434,9 +441,7 @@ class AutomationManager(tk.Frame):
                   bg="#1a3a1a", fg="#a5d6a7").pack(side="left", padx=(0, 6))
         self._btn(tb, "📂 Open Report",  self._hist_open_report,
                   bg="#1a3a3c", fg="#80deea").pack(side="left", padx=(0, 6))
-        self._btn(tb, "🔄 Rebuild Index", self._hist_generate_index,
-                  bg="#2d3b1a", fg="#c5e1a5").pack(side="left", padx=(0, 6))
-        self._btn(tb, "🗑 Delete",       self._hist_delete,
+        self._btn(tb, " Delete",       self._hist_delete,
                   bg="#5d1a1a", fg="#ffcdd2").pack(side="right")
 
         cols = ("date", "size", "status")
@@ -490,9 +495,15 @@ class AutomationManager(tk.Frame):
         if not reports_dir.exists():
             self.hist_status.set(f"No reports/ folder found under {self.base_dir}")
             return
-        files = sorted(reports_dir.glob("*.html"), reverse=True)[:50]
+        # gather from flat root + per-product subfolders
+        files = sorted(
+            list(reports_dir.glob("*.html")) +
+            [f for sub in reports_dir.iterdir() if sub.is_dir() for f in sub.glob("*.html")],
+            key=lambda f: f.stat().st_mtime, reverse=True,
+        )[:50]
         for f in files:
-            self.hist_tree.insert("", "end", iid=str(f), text=f.name,
+            label = f"{f.parent.name}/{f.name}" if f.parent != reports_dir else f.name
+            self.hist_tree.insert("", "end", iid=str(f), text=label,
                                   values=(_mtime_str(f), _fmt_size(f.stat().st_size), "Ready"))
         self.hist_status.set(f"{len(files)} report(s)")
 
@@ -538,18 +549,6 @@ class AutomationManager(tk.Frame):
             webbrowser.open(url)
             self.hist_status.set(f"Opened: {html.name}")
 
-    def _hist_generate_index(self) -> None:
-        """Scan reports/ on samba and rewrite index.html with only files that exist."""
-        try:
-            import importlib.util as _ilu
-            _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "run_trend.py")
-            _gi   = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-            _gi.build_index(self.base_dir)
-            out = self.base_dir / "reports" / "index.html"
-            self.hist_status.set(f"Index rebuilt \u2192 {out}")
-        except Exception as e:
-            messagebox.showerror("Rebuild Index failed", str(e))
-
     def _hist_delete(self) -> None:
         sel = self.hist_tree.selection()
         if not sel:
@@ -574,38 +573,14 @@ class AutomationManager(tk.Frame):
         )
 
     def _hist_send_email(self) -> None:
-        """Send the selected HTML report via email with a full historical table."""
-        sel = self.hist_tree.selection()
-        if not sel:
-            messagebox.showinfo("No report selected", "Select a report to send.")
-            return
-        if len(sel) > 1:
-            messagebox.showinfo("One at a time", "Select a single report to send.")
-            return
-
-        html_path = Path(sel[0])
-        if not html_path.exists():
-            messagebox.showerror("Not found", f"File not found:\n{html_path}")
-            return
-
-        email_to    = self.ecfg.get("email_to", _EMAIL_TO)
-        interval    = self.interval_var.get()
-        date_tag    = datetime.now().strftime("%Y-%m-%d")
-        # Subject auto-built from product name via devrevstep in CSV → shared JSON
-        _prod_name2 = _product_name_from_csv(str(html_path))  # won't work on HTML
-        if not _prod_name2:
-            _cfg_p = _find_auto_config_json()
-            if _cfg_p:
-                try:
-                    _prod_name2 = json.loads(_cfg_p.read_text(encoding="utf-8")).get("name", "").strip()
-                except Exception:
-                    pass
-        subject     = f"{_prod_name2 or 'Yield Trend Chart'} - Yield Trend Report - {date_tag}"
+        """Send one email with a link to the reports index."""
+        email_to = self.ecfg.get("email_to", _EMAIL_TO)
+        date_tag = datetime.now().strftime("%Y-%m-%d")
+        subject  = f"NVL Trend Report — {date_tag}"
 
         if not messagebox.askyesno("Send Email",
-                                   f"Send report to:\n  {email_to}\n\n"
-                                   f"Subject:\n  {subject}\n\n"
-                                   f"Attachment:\n  {html_path.name}"):
+                                   f"Send report index to:\n  {email_to}\n\n"
+                                   f"Subject:\n  {subject}"):
             return
 
         self.hist_status.set("Sending email…")
@@ -613,9 +588,8 @@ class AutomationManager(tk.Frame):
 
         def _run():
             try:
-                self._send_report_email(html_path=html_path, interval=interval, ok=True)
-                self.after(0, self.hist_status.set,
-                           f"✓ Email sent to {email_to}: {html_path.name}")
+                self._send_index_email()
+                self.after(0, self.hist_status.set, f"✓ Email sent to {email_to}")
             except Exception as e:
                 self.after(0, messagebox.showerror, "Send failed", str(e))
                 self.after(0, self.hist_status.set, "Email send failed.")
@@ -656,7 +630,7 @@ class AutomationManager(tk.Frame):
             try:
                 trend_script = str(
                     _REPO_ROOT / "yield-dashboard"
-                    / "yld" / "src" / "trend_chart.py"
+                    / "yld" / "trend_chart.py"
                 )
                 from datetime import datetime as _dt
                 ts_file  = _dt.now().strftime("%Y%m%d_%H%M%S")
@@ -669,11 +643,6 @@ class AutomationManager(tk.Frame):
                 if r.returncode != 0:
                     err = r.stderr.strip()[:400] or r.stdout.strip()[:400] or f"exit {r.returncode}"
                     raise RuntimeError(err)
-                # regenerate index.html
-                import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "run_trend.py")
-                _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-                _gi.build_index(self.base_dir)
                 def _done():
                     self.hist_status.set(f"Saved \u2192 {out_html.name}")
                     self._refresh_history()
@@ -796,9 +765,14 @@ class AutomationManager(tk.Frame):
         reports_dir = self.base_dir / "reports"
         rpt_count = 0
         if reports_dir.exists():
-            files = sorted(reports_dir.glob("*.html"), key=lambda f: f.stat().st_mtime, reverse=True)
+            files = sorted(
+                list(reports_dir.glob("*.html")) +
+                [f for sub in reports_dir.iterdir() if sub.is_dir() for f in sub.glob("*.html")],
+                key=lambda f: f.stat().st_mtime, reverse=True,
+            )
             for f in files:
-                self.rpt_tree.insert("", "end", iid=str(f), text=f.name,
+                label = f"{f.parent.name}/{f.name}" if f.parent != reports_dir else f.name
+                self.rpt_tree.insert("", "end", iid=str(f), text=label,
                                      values=(_fmt_size(f.stat().st_size), _mtime_str(f)))
                 rpt_count += 1
 
@@ -1257,14 +1231,14 @@ class AutomationManager(tk.Frame):
 
                 # ── Step 2: Split CSV by devrevstep ──────────────────────
                 _append("═" * 60 + "\n")
-                _append("STEP 2 — Split CSV by devrevstep (8PF6CV / 8PF5CV)\n")
+                _append("STEP 2 — Split CSV by devrevstep (8PF6CV / 8PF5CV / 8PL7CV)\n")
                 _append("═" * 60 + "\n")
                 ts_split = datetime.now().strftime("%Y%m%d_%H%M%S")
                 split_map = AutomationManager._split_csv_by_devrevstep(
                     dest_csv, data_dir, ts_split
                 )
                 if not split_map:
-                    _append("ERROR: No matching devrevstep rows found (8PF6CV / 8PF5CV).\n")
+                    _append("ERROR: No matching devrevstep rows found (8PF6CV / 8PF5CV / 8PL7CV).\n")
                     status_var.set("✖ No matching devrevstep rows")
                     return
                 for _pfx, _sp in split_map.items():
@@ -1282,13 +1256,15 @@ class AutomationManager(tk.Frame):
                 _append("═" * 60 + "\n")
                 trend_script = str(
                     _REPO_ROOT / "yield-dashboard"
-                    / "yld" / "src" / "trend_chart.py"
+                    / "yld" / "trend_chart.py"
                 )
                 reports_dir = self.base_dir / "reports"
                 reports_dir.mkdir(parents=True, exist_ok=True)
                 generated: list = []  # list of (html_path, returncode)
                 for _pfx, _csv_file in split_map.items():
-                    _out_html = reports_dir / f"{_csv_file.stem}.html"
+                    _prod_folder = reports_dir / _PREFIX_TO_PRODUCT.get(_pfx, _pfx)
+                    _prod_folder.mkdir(parents=True, exist_ok=True)
+                    _out_html = _prod_folder / f"{_csv_file.stem}.html"
                     _cmd = [sys.executable, trend_script,
                             str(_csv_file), "--out", str(_out_html)]
                     _append(f"\n--- {_pfx} ---\n")
@@ -1323,16 +1299,14 @@ class AutomationManager(tk.Frame):
                     except Exception as _ex:
                         _append(f"  WARNING: Could not compress {_csv_file.name}: {_ex}\n")
 
-                # ── Step 5: Send combined email ────────────────────────────
+                # ── Step 5: Send email with link to index.html ─────────────
                 if generated:
                     _append("\n" + "═" * 60 + "\n")
                     _append("STEP 5 — Sending email\n")
                     _append("═" * 60 + "\n")
                     status_var.set("Sending email…")
                     try:
-                        self._send_combined_report_email(
-                            reports=generated, interval=interval
-                        )
+                        self._send_index_email()
                         _append("✔ Email sent.\n")
                     except Exception as _e:
                         _append(f"WARNING: Email failed: {_e}\n")
@@ -1345,16 +1319,6 @@ class AutomationManager(tk.Frame):
                     _failed = sum(1 for _, rc in generated if rc != 0)
                     _append(f"\n✖ {_failed} chart(s) failed.\n")
                     status_var.set(f"✖ {_failed} chart(s) failed")
-
-                # regenerate index.html
-                try:
-                    import importlib.util as _ilu
-                    _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "run_trend.py")
-                    _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-                    _gi.build_index(self.base_dir)
-                    _append("Index updated → reports/index.html\n")
-                except Exception as _idx_e:
-                    _append(f"WARNING: index update failed: {_idx_e}\n")
 
                 self._refresh_task()
                 self._refresh_data()
@@ -1590,7 +1554,7 @@ class AutomationManager(tk.Frame):
 
             # ── Step 2: Split by devrevstep ───────────────────────────────────
             dlg.after(0, _append, "═" * 60)
-            dlg.after(0, _append, "STEP 2 — Splitting by devrevstep (8PF6CV / 8PF5CV)")
+            dlg.after(0, _append, "STEP 2 — Splitting by devrevstep (8PF6CV / 8PF5CV / 8PL7CV)")
             dlg.after(0, _append, "═" * 60)
             try:
                 split_map = AutomationManager._split_csv_by_devrevstep(
@@ -1606,7 +1570,7 @@ class AutomationManager(tk.Frame):
 
             if not split_map:
                 dlg.after(0, _append,
-                          "ERROR: No rows matched 8PF6CV or 8PF5CV — check devrevstep column.")
+                          "ERROR: No rows matched 8PF6CV, 8PF5CV, or 8PL7CV — check devrevstep column.")
                 dlg.after(0, status_var.set, "✖ No matching rows")
                 _running[0] = False
                 dlg.after(0, lambda: start_btn_ref[0].config(
@@ -1622,11 +1586,13 @@ class AutomationManager(tk.Frame):
             dlg.after(0, _append, "═" * 60)
             trend_script = str(
                 _REPO_ROOT / "yield-dashboard"
-                / "yld" / "src" / "trend_chart.py"
+                / "yld" / "trend_chart.py"
             )
             generated: list = []  # (html_path, returncode)
             for pfx, csv_file in split_map.items():
-                out_html = reports_dir / f"{csv_file.stem}.html"
+                _prod_folder = reports_dir / _PREFIX_TO_PRODUCT.get(pfx, pfx)
+                _prod_folder.mkdir(parents=True, exist_ok=True)
+                out_html = _prod_folder / f"{csv_file.stem}.html"
                 cmd = [sys.executable, trend_script,
                        str(csv_file), "--out", str(out_html)]
                 dlg.after(0, _append, f"\n--- {pfx} ---")
@@ -1661,15 +1627,13 @@ class AutomationManager(tk.Frame):
                     except Exception as ex:
                         dlg.after(0, _append, f"  WARNING: compress failed: {ex}")
 
-            # ── Step 5: Send combined email ───────────────────────────────────
+            # ── Step 5: Send email with link to index.html ────────────────────
             dlg.after(0, _append, "═" * 60)
             dlg.after(0, _append, "STEP 5 — Sending email")
             dlg.after(0, _append, "═" * 60)
             def _send_after_run():
                 try:
-                    self._send_combined_report_email(
-                        reports=generated, interval=interval
-                    )
+                    self._send_index_email()
                     dlg.after(0, _append, "✔ Email sent.")
                     dlg.after(0, status_var.set, "Done — email sent.")
                 except Exception as _e:
@@ -1677,15 +1641,6 @@ class AutomationManager(tk.Frame):
             threading.Thread(target=_send_after_run, daemon=True).start()
 
             all_ok = all(rc == 0 for _, rc in generated)
-            # regenerate index.html
-            try:
-                import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("_gi", _HERE / "trend" / "run_trend.py")
-                _gi = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gi)
-                _gi.build_index(self.base_dir)
-                dlg.after(0, _append, "Index updated → reports/index.html")
-            except Exception as _idx_e:
-                dlg.after(0, _append, f"WARNING: index update failed: {_idx_e}")
             dlg.after(0, self._refresh_history)
             dlg.after(0, self._refresh_data)
             dlg.after(0, status_var.set,
@@ -1883,7 +1838,7 @@ class AutomationManager(tk.Frame):
         """Split src_csv rows by devrevstep prefix into named output CSVs.
 
         Returns a dict mapping prefix → Path for each file that received rows.
-        Only 8PF6CV and 8PF5CV rows are written; all other devrevstep values
+        Only 8PF6CV, 8PF5CV, and 8PL7CV rows are written; all other devrevstep values
         are silently discarded.
         """
         import csv as _csv
@@ -1891,6 +1846,7 @@ class AutomationManager(tk.Frame):
         SPLITS = {
             "8PF6CV": f"NVL816-Yield-Trend-Report-{ts}.csv",
             "8PF5CV": f"NVL816-BLLC-Yield-Trend-Report-{ts}.csv",
+            "8PL7CV": f"NVLG-512-Yield-Trend-Report-{ts}.csv",
         }
         out_dir.mkdir(parents=True, exist_ok=True)
         writers: dict = {}
@@ -1925,13 +1881,8 @@ class AutomationManager(tk.Frame):
 
     # ── Combined email helper ─────────────────────────────────────────────────
 
-    def _send_combined_report_email(
-        self, reports: list, interval: str
-    ) -> None:
-        """Send one email listing every generated report with its status.
-
-        reports — list of (html_path: Path, returncode: int)
-        """
+    def _send_index_email(self) -> None:
+        """Send one email with a link to the reports index.html."""
         import smtplib
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
@@ -1944,63 +1895,16 @@ class AutomationManager(tk.Frame):
 
         now_str  = datetime.now().strftime("%Y-%m-%d %H:%M")
         date_tag = datetime.now().strftime("%Y-%m-%d")
-        subject  = f"NVL816 Yield Trend Reports — {date_tag}"
-
-        topn   = self.topn_var.get()
-        thresh = self.thresh_var.get()
-
-        rows = ""
-        for html_path, rc in reports:
-            ok          = rc == 0
-            status_txt  = "✔ OK" if ok else "✖ FAILED"
-            status_clr  = "#66bb6a" if ok else "#ef5350"
-            prod_name   = _product_name_from_html(html_path)
-            try:
-                mtime = datetime.fromtimestamp(
-                    html_path.stat().st_mtime
-                ).strftime("%Y-%m-%d %H:%M")
-            except Exception:
-                mtime = "?"
-            rows += (
-                f"<tr style='background:#1a2d4a;'>"
-                f"<td style='color:#d4d4d4;font-weight:bold'>{prod_name or html_path.stem}</td>"
-                f"<td style='color:#d4d4d4'>"
-                f"<a href='{html_path.as_uri()}' style='color:#4fc3f7'>{html_path.name}</a></td>"
-                f"<td style='color:{status_clr};font-weight:bold'>{status_txt}</td>"
-                f"<td style='color:#9e9e9e'>{mtime}</td>"
-                f"</tr>\n"
-            )
+        subject  = f"NVL Trend Report — {date_tag}"
+        index_unc = str(self.base_dir / "reports" / "index.html").replace("/", "\\")
+        index_uri = (self.base_dir / "reports" / "index.html").as_uri()
 
         body = f"""
-<html>
-<head><meta name="color-scheme" content="dark light">
-<style>
-  @media (prefers-color-scheme: dark) {{
-    body {{ background:#1e1e1e!important; color:#d4d4d4!important; }}
-    h2   {{ color:#4fc3f7!important; }}
-    th   {{ background:#1565c0!important; color:#fff!important; }}
-    a    {{ color:#4fc3f7!important; }}
-  }}
-</style></head>
-<body style="font-family:Segoe UI,Arial;background:#1e1e1e;color:#d4d4d4;max-width:780px">
-<h2 style="color:#4fc3f7;margin-bottom:4px">NVL816 — Yield Trend Reports</h2>
-<p style="color:#9e9e9e;font-size:0.9em;margin-top:0">
-  {now_str} &nbsp;|&nbsp; interval={interval} &nbsp; top-N={topn} &nbsp; thresh={thresh}%
-</p>
-<table border="1" cellpadding="6" cellspacing="0"
-       style="border-collapse:collapse;width:100%;font-size:0.9em;border-color:#444">
-  <tr style="background:#1565c0;color:#fff">
-    <th align="left">Product</th>
-    <th align="left">Report</th>
-    <th align="left">Status</th>
-    <th align="left">Generated</th>
-  </tr>
-  {rows}
-</table>
-<p style="color:#757575;font-size:0.8em;margin-top:12px">
-  Open any <code>.html</code> in a browser — fully self-contained.
-</p>
-<p style="color:#616161;font-size:0.75em">NVL BLLC Trend Automation &bull; {now_str}</p>
+<html><body style="font-family:Segoe UI,Arial;background:#1e1e1e;color:#d4d4d4;max-width:600px">
+<h2 style="color:#4fc3f7">NVL Trend Report</h2>
+<p style="color:#9e9e9e">{now_str}</p>
+<p><a href="{index_uri}" style="color:#4fc3f7;font-size:1.1em">{index_unc}</a></p>
+<p style="color:#616161;font-size:0.8em">Open link in Edge/Chrome with VPN connected.</p>
 </body></html>
 """
         msg = MIMEMultipart("mixed")

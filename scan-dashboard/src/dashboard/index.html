@@ -33,7 +33,7 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:9.7
 .wfr-hdr .collapse-btn:hover{background:#2e86c1;color:#fff;border-color:#2e86c1}
 .row-info{color:#5dade2;margin-left:8px;font-weight:normal}
 /* ---- Filter chips / hierarchy tree ---- */
-#xf-bar{background:#f5f7fa;border-bottom:1px solid #dde;padding:4px 6px 4px 6px;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;height:220px;min-height:60px}
+#xf-bar{background:#f5f7fa;border-bottom:1px solid #dde;padding:4px 6px 4px 6px;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;height:280px;min-height:80px;resize:vertical}
 #grp-bar{background:#e8edf5;border-bottom:1px solid #b3c6de;padding:2px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:3px 0;flex-shrink:0}
 .grp-lbl{font-size:8.25px;font-weight:bold;color:#1a5276;margin-right:6px}
 .grp-opt{font-size:8.25px;cursor:pointer;color:#1a252f;display:flex;align-items:center;gap:2px;padding:1px 6px;border-radius:10px;margin-right:2px;transition:background .1s}
@@ -53,10 +53,7 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:9.7
 .xft-col-handle:hover,.xft-col-handle.dragging{background:#2e86c1}
 /* Module panel */
 .xft-mod{border:1px solid #4a8acc;border-radius:4px;overflow:hidden;flex:1;display:flex;flex-direction:column}
-.xft-mod>summary{display:flex;align-items:center;gap:4px;padding:3px 5px;background:#1f3a50;cursor:pointer;font-weight:bold;color:#e8f4ff;font-size:8.5px;list-style:none;user-select:none}
-.xft-mod>summary::-webkit-details-marker{display:none}
-.xft-mod>summary::before{content:'\25B6';font-size:7px;color:#5dade2;transition:transform .15s;flex-shrink:0}
-.xft-mod[open]>summary::before{transform:rotate(90deg)}
+.xft-mod-sum{display:flex;align-items:center;gap:4px;padding:3px 5px;background:#1f3a50;font-weight:bold;color:#e8f4ff;font-size:8.5px;user-select:none;flex-shrink:0}
 .xft-mod-acts{margin-left:auto;display:flex;gap:2px;flex-shrink:0}
 .xft-mod-acts button{font-size:7.5px;padding:0px 5px;border:1px solid #5dade2;border-radius:3px;background:none;color:#aed6f1;cursor:pointer;line-height:1.6}
 .xft-mod-acts button:hover{background:#2e86c1;color:#fff;border-color:#2e86c1}
@@ -73,7 +70,7 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:9.7
 #xft-modal-close:hover{background:#c0392b;border-color:#c0392b;color:#fff}
 #xft-modal-body{overflow-y:auto;flex:1;padding:8px 10px}
 #xft-modal-body .xft-mod{max-height:none;border:none;border-radius:0}
-#xft-modal-body .xft-col-body{max-height:none;overflow:visible}
+#xft-modal-body .xft-mod{overflow:visible;flex:none}#xft-modal-body .xft-col-body{overflow:visible;flex:none}
 #xft-modal-footer{padding:6px 12px;background:#f0f4f8;border-top:1px solid #dde;display:flex;gap:6px;flex-shrink:0;justify-content:flex-end}
 #xft-modal-footer button{font-size:8.5px;padding:2px 10px;border:1px solid #aed6f1;border-radius:4px;background:none;color:#1a5276;cursor:pointer}
 #xft-modal-footer button:hover{background:#0071C5;color:#fff;border-color:#0071C5}
@@ -98,9 +95,10 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:9.7
 .xft-ip-dd{border:1px solid #b3c6de;border-radius:3px;margin-bottom:3px;overflow:hidden}
 .xft-ip-inline{border:1px solid #b3c6de;border-radius:3px;margin-bottom:3px;overflow:hidden}
 .xft-ip-inline-hdr{display:flex;align-items:center;gap:4px;padding:2px 5px;background:#e8f0fa;font-size:8px;color:#1a3a52;border-bottom:1px solid #b3c6de}
-.xft-ip-dd>summary{display:flex;align-items:center;gap:4px;padding:2px 5px;background:#e8f0fa;cursor:pointer;font-size:8px;list-style:none;color:#1a3a52;border-bottom:1px solid #b3c6de}.xft-ip-dd>summary::-webkit-details-marker{display:none}
-.xft-ip-dd>summary::before{content:'\25B6';font-size:6px;color:#0071C5;transition:transform .15s;flex-shrink:0}
-.xft-ip-dd[open]>summary::before{transform:rotate(90deg)}
+.xft-ip-dd-sum{display:flex;align-items:center;gap:4px;padding:2px 5px;background:#e8f0fa;cursor:pointer;font-size:8px;list-style:none;color:#1a3a52;user-select:none;border-bottom:1px solid #b3c6de}.xft-ip-dd-sum::-webkit-details-marker{display:none}
+.xft-ip-dd-sum::before{content:'\25B6';font-size:6px;color:#0071C5;transition:transform .15s;flex-shrink:0}
+.xft-ip-dd[open]>.xft-ip-dd-sum::before{transform:rotate(90deg)}
+.xft-reg-leaf{display:flex;align-items:center;gap:3px;padding:1px 3px;background:#f0f6ff;border-radius:3px;color:#1a3a52;font-size:7.75px;border:1px solid #cce0f0;margin-bottom:1px}
 .xft-mip-list{padding:3px 5px;display:flex;flex-direction:row;flex-wrap:wrap;gap:2px 4px;background:#f5f8ff}
 .xft-mip-item{display:inline-flex;align-items:center;gap:3px;padding:1px 5px;border:1px solid #85c1e9;border-radius:10px;background:#fff;font-size:7.75px;cursor:pointer;color:#1a3a52;user-select:none;transition:background .1s}
 .xft-mip-item:hover{background:#d0e8ff;border-color:#0071C5}
@@ -110,6 +108,7 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:9.7
 .wm-fi{font-size:8px;padding:2px 5px;border:1px solid #2a4060;border-radius:3px;background:#0d1a2a;color:#8ab4d4;width:65px;outline:none}.wm-fi:focus{border-color:#0071C5}
 .wm-fdd-wrap{position:relative;display:inline-block}
 .wm-fdd-btn{font-size:8px;padding:1px 8px;border:1px solid #2a4060;border-radius:3px;background:#0d1a2a;color:#8ab4d4;cursor:pointer;white-space:nowrap}.wm-fdd-btn:hover,.wm-fdd-btn.act{border-color:#0071C5;color:#5dade2}
+.wm-dtab{font-size:8px;padding:1px 10px;border:1px solid #1a3050;border-bottom:none;background:#0a1520;color:#6a8a9a;cursor:pointer;border-radius:3px 3px 0 0;margin-right:2px}.wm-dtab.active{background:#0d1a2a;color:#5dade2;border-color:#2a5080}.dt-srch-row th{background:#040d16;padding:1px}.dt-srch{width:100%;font-size:7px;background:#0a1520;border:1px solid #1a3050;color:#8ab4d4;padding:1px 3px;border-radius:2px;outline:none;box-sizing:border-box}
 .wm-fdd-panel{display:none;position:absolute;left:0;top:calc(100% + 3px);z-index:300;background:#111b2a;border:1px solid #2a4060;border-radius:4px;padding:4px;min-width:110px;max-height:170px;overflow-y:auto}.wm-fdd-panel.open{display:block}
 .wm-fdd-item{display:flex;align-items:center;gap:4px;padding:2px 3px;font-size:8px;color:#8ab4d4;cursor:pointer;white-space:nowrap}
 .wm-fdd-item:hover{background:#1a2e42}.wm-fdd-item input{accent-color:#0071C5;width:10px;height:10px;cursor:pointer;flex-shrink:0}
@@ -264,15 +263,26 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
       <div class="card-panel plot-card">
         <div class="card-hdr">FailPerTestType
           <small style="font-weight:400;color:#aed6f1">&nbsp;unique fail dies by TestType per IP</small>
-          <label class="chk-tgt" style="margin-left:auto;color:#f9e04b;border:1px solid #f9e04b;border-radius:3px;padding:1px 7px;cursor:pointer">
-            <input type="checkbox" id="chk-tt-reg" onchange="setTTGrp(this.checked)" style="accent-color:#f9e04b;cursor:pointer"> Block + Region
-          </label>
-          <label class="chk-tgt"><input type="checkbox" checked onchange="toggleTable('tbl-pnl-1')"> Table</label>
+          <label class="chk-tgt" style="margin-left:auto"><input type="checkbox" checked onchange="toggleTable('tbl-pnl-1')"> Table</label>
         </div>
-        <div class="card-body"><div id="plot-testtype" class="pldiv"></div></div>
+        <div class="card-body" style="overflow-x:auto"><div id="plot-testtype" class="pldiv"></div></div>
       </div>
       <div class="card-panel tbl-card" id="tbl-pnl-1">
         <div class="card-hdr">Data &mdash; FailPerTestType <span class="rcnt" id="cnt-testtype"></span>
+          <div style="position:relative;display:inline-flex;align-items:center;margin-left:6px" id="tt-blk-dd-wrap">
+            <button onclick="_ttOpenDD(event,'blk')" style="font-size:9px;padding:1px 6px;border-radius:3px;border:1px solid #f9e04b;background:#0d1a2a;color:#f9e04b;cursor:pointer;white-space:nowrap">Block: <span id="tt-blk-lbl">All</span> &#9660;</button>
+            <div id="tt-blk-dd" style="display:none;position:absolute;top:calc(100% + 3px);left:0;z-index:500;background:#111b2a;border:1px solid #2a4060;border-radius:4px;padding:4px;min-width:100px;max-height:180px;overflow-y:auto">
+              <div style="display:flex;justify-content:space-between;font-size:8px;color:#667788;padding:2px 3px 4px;border-bottom:1px solid #1a2a40;margin-bottom:3px">Block <span><span onclick="_ttAllBlk()" style="cursor:pointer;color:#5dade2">All</span><span style="color:#334455"> | </span><span onclick="_ttNoneBlk()" style="cursor:pointer;color:#5dade2">None</span></span></div>
+              <div id="tt-blk-filters"></div>
+            </div>
+          </div>
+          <div style="position:relative;display:inline-flex;align-items:center;margin-left:4px" id="tt-reg-dd-wrap">
+            <button onclick="_ttOpenDD(event,'reg')" style="font-size:9px;padding:1px 6px;border-radius:3px;border:1px solid #f9e04b;background:#0d1a2a;color:#f9e04b;cursor:pointer;white-space:nowrap">Region: <span id="tt-reg-lbl">All</span> &#9660;</button>
+            <div id="tt-reg-dd" style="display:none;position:absolute;top:calc(100% + 3px);left:0;z-index:500;background:#111b2a;border:1px solid #2a4060;border-radius:4px;padding:4px;min-width:120px;max-height:180px;overflow-y:auto">
+              <div style="display:flex;justify-content:space-between;font-size:8px;color:#667788;padding:2px 3px 4px;border-bottom:1px solid #1a2a40;margin-bottom:3px">Region <span><span onclick="_ttAllReg()" style="cursor:pointer;color:#5dade2">All</span><span style="color:#334455"> | </span><span onclick="_ttNoneReg()" style="cursor:pointer;color:#5dade2">None</span></span></div>
+              <div id="tt-reg-filters"></div>
+            </div>
+          </div>
           <button class="cb" style="margin-left:auto" onclick="exportCsv('tbl-testtype','fail-per-testtype')">&#8595; CSV</button>
         </div>
         <div style="background:#1e2e3e;padding:3px 10px;display:flex;align-items:center;gap:6px;flex-shrink:0">
@@ -323,11 +333,11 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
             </div>
           </div>
           <span style="color:#2a4060;margin:0 2px">|</span>
-          <span style="font-size:8px;color:#6a8a9a;flex-shrink:0">Die Loc:</span>
+          <span style="font-size:8px;color:#6a8a9a;flex-shrink:0">Sites:</span>
           <div id="rv-ret-filters" style="display:flex;align-items:center;gap:3px;flex-wrap:wrap"></div>
           <span style="color:#2a4060;margin:0 2px">|</span>
           <label style="font-size:10px;color:#c77dff;background:#1a1a2a;padding:2px 7px;border-radius:4px;border:1px solid #6a3aaa;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
-            <input type="checkbox" id="rv-site-chk" checked onchange="rvToggleSection('rv-site-section',this.checked)" style="accent-color:#c77dff;cursor:pointer"> Sites</label>
+            <input type="checkbox" id="rv-site-chk" checked onchange="rvToggleSection('rv-site-section',this.checked)" style="accent-color:#c77dff;cursor:pointer"> ReticleDetails</label>
           <label style="font-size:10px;color:#f39c12;background:#1a160a;padding:2px 7px;border-radius:4px;border:1px solid #7a5a00;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
             <input type="checkbox" id="rv-pat-chk" checked onchange="rvToggleSection('rv-pattern-section',this.checked)" style="accent-color:#f39c12;cursor:pointer"> Pattern</label>
           <span style="color:#2a4060;margin:0 2px">|</span>
@@ -385,12 +395,19 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
       </div>
       <!-- Data table below wafer map -->
       <div class="card-panel tbl-card" id="tbl-pnl-2" style="flex-shrink:0">
-        <div class="card-hdr">Data &mdash; Wafer Map <span class="rcnt" id="cnt-wmap"></span>
-          <button class="cb" style="margin-left:auto" onclick="exportCsv('tbl-wmap','wafer-map')">&#8595; CSV</button>
+        <div class="card-hdr" style="padding-bottom:0">
+          <span style="font-size:9px;font-weight:600;color:#8ab4d4">Data</span>
+          <div class="wm-data-tabs" style="display:flex;gap:0;margin-left:8px">
+            <button id="wm-dtab-wfr" class="wm-dtab" onclick="_wmSetDataTab('wfr')">Wafer Fail Details</button>
+            <button id="wm-dtab-ip" class="wm-dtab active" onclick="_wmSetDataTab('ip')">IP Fail Details</button>
+            <label id="wm-ip-levels-lbl" style="font-size:9px;color:#8ab4d4;margin-left:8px;cursor:pointer;display:inline-flex;align-items:center;gap:3px" title="Checked: show full IP-L0/L1/… hierarchy. Unchecked: group by IP name only."><input type="checkbox" id="wm-ip-levels-chk" checked onchange="_wmIpShowLevels=this.checked;_wmDrawIpTable()" style="accent-color:#5dade2;cursor:pointer"> IP Levels</label>
+          </div>
+          <button class="cb" style="margin-left:auto" onclick="_wmExportActiveTab()">&#8595; CSV</button>
           <label class="chk-tgt"><input type="checkbox" checked onchange="toggleTable('tbl-pnl-2')"> Show</label>
         </div>
         <div class="card-body" style="height:140px;resize:vertical;overflow:hidden">
-          <div class="tscroll"><div id="tbl-wmap"></div></div>
+          <div id="tbl-wmap-pane" class="tscroll" style="display:none"><div id="tbl-wmap"></div></div>
+          <div id="tbl-ip-pane" class="tscroll"><div id="tbl-wmap-ip"></div></div>
         </div>
       </div>
     </div>
@@ -412,15 +429,26 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
       <div class="card-panel plot-card">
         <div class="card-hdr">FailPerFault
           <small style="font-weight:400;color:#aed6f1">&nbsp;YieldLoss% vs Fault Count per IP</small>
-          <label class="chk-tgt" style="margin-left:auto;color:#f9e04b;border:1px solid #f9e04b;border-radius:3px;padding:1px 7px;cursor:pointer">
-            <input type="checkbox" id="chk-fpf-reg" onchange="setFPFGrp(this.checked)" style="accent-color:#f9e04b;cursor:pointer"> Block + Region
-          </label>
-          <label class="chk-tgt"><input type="checkbox" checked onchange="toggleTable('tbl-pnl-4')"> Table</label>
+          <label class="chk-tgt" style="margin-left:auto"><input type="checkbox" checked onchange="toggleTable('tbl-pnl-4')"> Table</label>
         </div>
         <div class="card-body"><div id="plot-fpf" class="pldiv"></div></div>
       </div>
       <div class="card-panel tbl-card" id="tbl-pnl-4">
         <div class="card-hdr">Data &mdash; FailPerFault <span class="rcnt" id="cnt-fpf"></span>
+          <div style="position:relative;display:inline-flex;align-items:center;margin-left:6px" id="fpf-blk-dd-wrap">
+            <button onclick="_fpfOpenDD(event,'blk')" style="font-size:9px;padding:1px 6px;border-radius:3px;border:1px solid #f9e04b;background:#0d1a2a;color:#f9e04b;cursor:pointer;white-space:nowrap">Block: <span id="fpf-blk-lbl">All</span> &#9660;</button>
+            <div id="fpf-blk-dd" style="display:none;position:absolute;top:calc(100% + 3px);left:0;z-index:500;background:#111b2a;border:1px solid #2a4060;border-radius:4px;padding:4px;min-width:100px;max-height:180px;overflow-y:auto">
+              <div style="display:flex;justify-content:space-between;font-size:8px;color:#667788;padding:2px 3px 4px;border-bottom:1px solid #1a2a40;margin-bottom:3px">Block <span><span onclick="_fpfAllBlk()" style="cursor:pointer;color:#5dade2">All</span><span style="color:#334455"> | </span><span onclick="_fpfNoneBlk()" style="cursor:pointer;color:#5dade2">None</span></span></div>
+              <div id="fpf-blk-filters"></div>
+            </div>
+          </div>
+          <div style="position:relative;display:inline-flex;align-items:center;margin-left:4px" id="fpf-reg-dd-wrap">
+            <button onclick="_fpfOpenDD(event,'reg')" style="font-size:9px;padding:1px 6px;border-radius:3px;border:1px solid #f9e04b;background:#0d1a2a;color:#f9e04b;cursor:pointer;white-space:nowrap">Region: <span id="fpf-reg-lbl">All</span> &#9660;</button>
+            <div id="fpf-reg-dd" style="display:none;position:absolute;top:calc(100% + 3px);left:0;z-index:500;background:#111b2a;border:1px solid #2a4060;border-radius:4px;padding:4px;min-width:120px;max-height:180px;overflow-y:auto">
+              <div style="display:flex;justify-content:space-between;font-size:8px;color:#667788;padding:2px 3px 4px;border-bottom:1px solid #1a2a40;margin-bottom:3px">Region <span><span onclick="_fpfAllReg()" style="cursor:pointer;color:#5dade2">All</span><span style="color:#334455"> | </span><span onclick="_fpfNoneReg()" style="cursor:pointer;color:#5dade2">None</span></span></div>
+              <div id="fpf-reg-filters"></div>
+            </div>
+          </div>
           <button class="cb" style="margin-left:auto" onclick="exportCsv('tbl-fpf','fail-per-fault')">&#8595; CSV</button>
         </div>
         <div style="background:#1e2e3e;padding:3px 10px;display:flex;align-items:center;gap:6px;flex-shrink:0">
@@ -447,6 +475,9 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
 const D=(typeof SCAN_DATA!=="undefined")?SCAN_DATA:{meta:{},per_ip:[],die_map:[],reticle_layout:{}};
 const M=D.meta||{};
 const MPLT=["#0071C5","#E8421C","#1CA44A","#8B5CF6","#F59E0B","#06B6D4","#EC4899","#10B981","#64748B","#F97316","#A78BFA","#34D399"];
+const _cfc=(M.cfg_fault_counts)||{};
+const _cfcST=_cfc.stuckat||{};
+const _cfcAT=_cfc.atspeed||{};
 const HRY_CFG={"CORE0|ICORE0|EXE":17081660,"CORE0|ICORE0|FE":16595622,"CORE0|ICORE0|FMAV0":17336748,"CORE0|ICORE0|FMAV1":17370612,"CORE0|ICORE0|MEU":37701105,"CORE0|ICORE0|MSID":25618672,"CORE0|ICORE0|OOO_INT":32574553,"CORE0|ICORE0|OOO_VEC":24084834,"CORE0|ICORE0|PMH":2947652,"CORE0|ICORE1|EXE":17081660,"CORE0|ICORE1|FE":16595622,"CORE0|ICORE1|FMAV0":17336748,"CORE0|ICORE1|FMAV1":17370612,"CORE0|ICORE1|MEU":37701105,"CORE0|ICORE1|MSID":25618672,"CORE0|ICORE1|OOO_INT":32574553,"CORE0|ICORE1|OOO_VEC":24084834,"CORE0|ICORE1|PMH":2947652,"CORE0|MLC|MLC":28244301,"CORE0|PM|PM":11318028,"CORE0|FLATCORE|FLATCORE":422185245,"CORE1|ICORE0|EXE":17081660,"CORE1|ICORE0|FE":16595622,"CORE1|ICORE0|FMAV0":17336748,"CORE1|ICORE0|FMAV1":17370612,"CORE1|ICORE0|MEU":37701105,"CORE1|ICORE0|MSID":25618672,"CORE1|ICORE0|OOO_INT":32574553,"CORE1|ICORE0|OOO_VEC":24084834,"CORE1|ICORE0|PMH":2947652,"CORE1|ICORE1|EXE":17081660,"CORE1|ICORE1|FE":16595622,"CORE1|ICORE1|FMAV0":17336748,"CORE1|ICORE1|FMAV1":17370612,"CORE1|ICORE1|MEU":37701105,"CORE1|ICORE1|MSID":25618672,"CORE1|ICORE1|OOO_INT":32574553,"CORE1|ICORE1|OOO_VEC":24084834,"CORE1|ICORE1|PMH":2947652,"CORE1|MLC|MLC":28244301,"CORE1|PM|PM":11318028,"CORE1|FLATCORE|FLATCORE":422185245,"CORE2|ICORE0|EXE":17081660,"CORE2|ICORE0|FE":16595622,"CORE2|ICORE0|FMAV0":17336748,"CORE2|ICORE0|FMAV1":17370612,"CORE2|ICORE0|MEU":37701105,"CORE2|ICORE0|MSID":25618672,"CORE2|ICORE0|OOO_INT":32574553,"CORE2|ICORE0|OOO_VEC":24084834,"CORE2|ICORE0|PMH":2947652,"CORE2|ICORE1|EXE":17081660,"CORE2|ICORE1|FE":16595622,"CORE2|ICORE1|FMAV0":17336748,"CORE2|ICORE1|FMAV1":17370612,"CORE2|ICORE1|MEU":37701105,"CORE2|ICORE1|MSID":25618672,"CORE2|ICORE1|OOO_INT":32574553,"CORE2|ICORE1|OOO_VEC":24084834,"CORE2|ICORE1|PMH":2947652,"CORE2|MLC|MLC":28244301,"CORE2|PM|PM":11318028,"CORE2|FLATCORE|FLATCORE":422185245,"CORE3|ICORE0|EXE":17081660,"CORE3|ICORE0|FE":16595622,"CORE3|ICORE0|FMAV0":17336748,"CORE3|ICORE0|FMAV1":17370612,"CORE3|ICORE0|MEU":37701105,"CORE3|ICORE0|MSID":25618672,"CORE3|ICORE0|OOO_INT":32574553,"CORE3|ICORE0|OOO_VEC":24084834,"CORE3|ICORE0|PMH":2947652,"CORE3|ICORE1|EXE":17081660,"CORE3|ICORE1|FE":16595622,"CORE3|ICORE1|FMAV0":17336748,"CORE3|ICORE1|FMAV1":17370612,"CORE3|ICORE1|MEU":37701105,"CORE3|ICORE1|MSID":25618672,"CORE3|ICORE1|OOO_INT":32574553,"CORE3|ICORE1|OOO_VEC":24084834,"CORE3|ICORE1|PMH":2947652,"CORE3|MLC|MLC":28244301,"CORE3|PM|PM":11318028,"CORE3|FLATCORE|FLATCORE":422185245,"UNCORE|ATOM0|ASL":693036,"UNCORE|ATOM2|ASL":693036,"UNCORE|ATOM1|ASR":1548910,"UNCORE|ATOM3|ASR":1548910,"UNCORE|ATOM01|CBOPAIRAS":21663455,"UNCORE|ATOM23|CBOPAIRAS":21663455,"UNCORE|ATOM01|CHANAS":1465285,"UNCORE|ATOM23|CHANAS":1465285,"UNCORE|CORE0|BSL":1279655,"UNCORE|CORE2|BSL":1279655,"UNCORE|CORE1|BSR":2081593,"UNCORE|CORE3|BSR":2081593,"UNCORE|CORE0|CBOPAIRBS0":21005672,"UNCORE|CORE1|CBOPAIRBS1":21005672,"UNCORE|CORE2|CBOPAIRBS0":21005672,"UNCORE|CORE3|CBOPAIRBS1":21005672,"UNCORE|CORE01|CHANBS":2144050,"UNCORE|CORE23|CHANBS":2144050,"UNCORE|D2D|CCU":3075280,"UNCORE|D2D|DMU":12383395,"UNCORE|D2D|FOV0":7103002,"UNCORE|D2D|FOV1":6545974,"UNCORE|D2D|FUSE":1879420,"UNCORE|D2D|MISC":4934241,"UNCORE|D2D|SANTA":14537266,"UNCORE|ATOM0|BLLC_CB0AS":704601,"UNCORE|ATOM0|BLLC_CB1AS":701336,"UNCORE|ATOM1|BLLC_CB0AS":704601,"UNCORE|ATOM1|BLLC_CB1AS":701336,"UNCORE|ATOM2|BLLC_CB0AS":704601,"UNCORE|ATOM2|BLLC_CB1AS":701336,"UNCORE|ATOM3|BLLC_CB0AS":704601,"UNCORE|ATOM3|BLLC_CB1AS":701336,"UNCORE|ATOM0|BLLC_TAGAS":2580087,"UNCORE|ATOM1|BLLC_TAGAS":2580087,"UNCORE|ATOM2|BLLC_TAGAS":2580087,"UNCORE|ATOM3|BLLC_TAGAS":2580087,"UNCORE|CORE0|BLLC_CB0BS0":805264,"UNCORE|CORE0|BLLC_CB1BS0":758827,"UNCORE|CORE0|BLLC_CB0BS1":805264,"UNCORE|CORE0|BLLC_CB1BS1":758827,"UNCORE|CORE1|BLLC_CB0BS0":805264,"UNCORE|CORE1|BLLC_CB1BS0":758827,"UNCORE|CORE1|BLLC_CB0BS1":805264,"UNCORE|CORE1|BLLC_CB1BS1":758827,"UNCORE|CORE2|BLLC_CB0BS0":805264,"UNCORE|CORE2|BLLC_CB1BS0":758827,"UNCORE|CORE2|BLLC_CB0BS1":805264,"UNCORE|CORE2|BLLC_CB1BS1":758827,"UNCORE|CORE3|BLLC_CB0BS0":805264,"UNCORE|CORE3|BLLC_CB1BS0":758827,"UNCORE|CORE3|BLLC_CB0BS1":805264,"UNCORE|CORE3|BLLC_CB1BS1":758827,"UNCORE|CORE0|BLLC_TAGBS0":2548929,"UNCORE|CORE0|BLLC_TAGBS1":2548929,"UNCORE|CORE1|BLLC_TAGBS0":2548929,"UNCORE|CORE1|BLLC_TAGBS1":2548929,"UNCORE|CORE2|BLLC_TAGBS0":2548929,"UNCORE|CORE2|BLLC_TAGBS1":2548929,"UNCORE|CORE3|BLLC_TAGBS0":2548929,"UNCORE|CORE3|BLLC_TAGBS1":2548929,"UNCORE|CORE0|DLVR_RING":876423,"UNCORE|CORE2|DLVR_RING":876423,"UNCORE|CORE1|DLVR_RING":876423,"UNCORE|CORE3|DLVR_RING":876423,"UNCORE|CORE0|DLVR_ICORE1":871542,"UNCORE|CORE0|DLVR_ICORE0":871542,"UNCORE|CORE2|DLVR_ICORE1":871542,"UNCORE|CORE2|DLVR_ICORE0":871542,"UNCORE|CORE1|DLVR_ICORE1":871542,"UNCORE|CORE1|DLVR_ICORE0":871542,"UNCORE|CORE3|DLVR_ICORE1":871542,"UNCORE|CORE3|DLVR_ICORE0":871542,"UNCORE|ATOM0|DLVR_ATOM":1010275,"UNCORE|ATOM2|DLVR_ATOM":1010275,"UNCORE|ATOM1|DLVR_ATOM":1010275,"UNCORE|ATOM3|DLVR_ATOM":1010275,"ATOM0|CORE0|ARR":8455436,"ATOM0|CORE0|IEC":12683156,"ATOM0|CORE0|FEC":10531928,"ATOM0|CORE0|FPC":43273340,"ATOM0|CORE0|MEC":15170654,"ATOM0|CORE1|ARR":8455436,"ATOM0|CORE1|IEC":12683156,"ATOM0|CORE1|FEC":10531928,"ATOM0|CORE1|FPC":43273340,"ATOM0|CORE1|MEC":15170654,"ATOM0|CORE2|ARR":8455436,"ATOM0|CORE2|IEC":12683156,"ATOM0|CORE2|FEC":10531928,"ATOM0|CORE2|FPC":43273340,"ATOM0|CORE2|MEC":15170654,"ATOM0|CORE3|ARR":8455436,"ATOM0|CORE3|IEC":12683156,"ATOM0|CORE3|FEC":10531928,"ATOM0|CORE3|FPC":43273340,"ATOM0|CORE3|MEC":15170654,"ATOM0|BUS|BUS_UTC":14273278,"ATOM0|BUS|BUS_SSC":9355432,"ATOM1|CORE0|ARR":8455436,"ATOM1|CORE0|IEC":12683156,"ATOM1|CORE0|FEC":10531928,"ATOM1|CORE0|FPC":43273340,"ATOM1|CORE0|MEC":15170654,"ATOM1|CORE1|ARR":8455436,"ATOM1|CORE1|IEC":12683156,"ATOM1|CORE1|FEC":10531928,"ATOM1|CORE1|FPC":43273340,"ATOM1|CORE1|MEC":15170654,"ATOM1|CORE2|ARR":8455436,"ATOM1|CORE2|IEC":12683156,"ATOM1|CORE2|FEC":10531928,"ATOM1|CORE2|FPC":43273340,"ATOM1|CORE2|MEC":15170654,"ATOM1|CORE3|ARR":8455436,"ATOM1|CORE3|IEC":12683156,"ATOM1|CORE3|FEC":10531928,"ATOM1|CORE3|FPC":43273340,"ATOM1|CORE3|MEC":15170654,"ATOM1|BUS|BUS_UTC":14273278,"ATOM1|BUS|BUS_SSC":9355432,"ATOM2|CORE0|ARR":8455436,"ATOM2|CORE0|IEC":12683156,"ATOM2|CORE0|FEC":10531928,"ATOM2|CORE0|FPC":43273340,"ATOM2|CORE0|MEC":15170654,"ATOM2|CORE1|ARR":8455436,"ATOM2|CORE1|IEC":12683156,"ATOM2|CORE1|FEC":10531928,"ATOM2|CORE1|FPC":43273340,"ATOM2|CORE1|MEC":15170654,"ATOM2|CORE2|ARR":8455436,"ATOM2|CORE2|IEC":12683156,"ATOM2|CORE2|FEC":10531928,"ATOM2|CORE2|FPC":43273340,"ATOM2|CORE2|MEC":15170654,"ATOM2|CORE3|ARR":8455436,"ATOM2|CORE3|IEC":12683156,"ATOM2|CORE3|FEC":10531928,"ATOM2|CORE3|FPC":43273340,"ATOM2|CORE3|MEC":15170654,"ATOM2|BUS|BUS_UTC":14273278,"ATOM2|BUS|BUS_SSC":9355432,"ATOM3|CORE0|ARR":8455436,"ATOM3|CORE0|IEC":12683156,"ATOM3|CORE0|FEC":10531928,"ATOM3|CORE0|FPC":43273340,"ATOM3|CORE0|MEC":15170654,"ATOM3|CORE1|ARR":8455436,"ATOM3|CORE1|IEC":12683156,"ATOM3|CORE1|FEC":10531928,"ATOM3|CORE1|FPC":43273340,"ATOM3|CORE1|MEC":15170654,"ATOM3|CORE2|ARR":8455436,"ATOM3|CORE2|IEC":12683156,"ATOM3|CORE2|FEC":10531928,"ATOM3|CORE2|FPC":43273340,"ATOM3|CORE2|MEC":15170654,"ATOM3|CORE3|ARR":8455436,"ATOM3|CORE3|IEC":12683156,"ATOM3|CORE3|FEC":10531928,"ATOM3|CORE3|FPC":43273340,"ATOM3|CORE3|MEC":15170654,"ATOM3|BUS|BUS_UTC":14273278,"ATOM3|BUS|BUS_SSC":9355432};
 const YIELD_TARGET=(D.yield_target&&D.yield_target.length)?D.yield_target:[];
 const _mc={};let _mci=0;
@@ -472,7 +503,7 @@ var GRP_BY=[],BLK_BY_MOD=false,TT_GRP_REGION=false,SHOW_PCT=false;
 var TT_SHOW=new Set(M.testtypes||TT_ALL);
 var WM_TT_SHOW=new Set(TT_ALL);
 var WM_COLOR_MODE='fail';
-var WM_F_DLOC='';var WM_F_SHOTS=null;var WM_F_BLOCKS=null;var WM_F_SITES=null;var WM_IP_SEARCH='';var WM_OPEN_DD=null;
+var WM_F_DLOC='';var WM_F_SHOTS=null;var WM_F_BLOCKS=null;var WM_F_SITES=null;var WM_F_EXCL_DLOCS=null;var WM_IP_SEARCH='';var WM_OPEN_DD=null;
 var _xftIpRegMap={}; /* mod → ip → Set('blk|reg') for IP visibility */
 /* IB/FB + pattern score filter state */
 var _rvFiltersInited=false;
@@ -484,13 +515,31 @@ var SEL_TESTS=new Set(); var _allTestKeys=[];
 var UNIQ_WFR=[];var SEL_WFR=new Set();var _FSRCH={lot:'',wafer:'',program:''};var _lastWfr=-1;
 var _WFR_SORT={col:'lot',dir:1};
 var _blkIpToReg={};  /* 'blk|ip' → region (built from D.per_ip) */
+var _blkRegToPart={};/* 'blk|reg' → partition */
+var _singularLevels={blk:false,part:false};  /* true = only 1 unique value → omit from path */
+function _failPath(blk,part,reg,ip){
+  /* Build colored path string, skipping singular/empty levels, expanding IP sub-levels */
+  var s='';
+  if(!_singularLevels.blk)s+='<span style="color:#8ab4d4">'+blk+'</span>\u2192';
+  if(part&&!_singularLevels.part)s+='<span style="color:#a8c5a0">'+part+'</span>\u2192';
+  s+='<span style="color:#c0ccd8">'+reg+'</span>';
+  if(ip&&ip!=='?'){
+    var lvls=_blkIpLevels[blk+'|'+ip]||[ip];
+    lvls.forEach(function(l){s+='\u2192<span style="color:#f59e0b">'+l+'</span>';});
+  }
+  return s;
+}
 /* Color mode descriptions */
 var _wmColorTips={fail:'Fail — intensity = number of distinct failing partition-IP pairs at this die, summed across all wafers.',freq:'Freq % — fraction of selected wafers on which this die position fails at least once.',site:'Site # — colored by reticle site index. Useful for spotting reticle-systematic failures.',tt:'TT (Test Type) — Blue = CHAIN · Red = STUCKAT · Green = ATSPEED · Purple = DIAG · Mixed = multiple types.',ip:'IP — each die colored by its most-frequently failing IP across selected wafers.',ib:'IB (Interface Bin) — each failing die colored by its interface bin value.',fb:'FB (Functional Bin) — each failing die colored by its functional bin value.'};
 function _wmColorDesc(m){var d=document.getElementById('wm-color-desc');if(d)d.textContent=_wmColorTips[m]||'';}
 function _wmColorDescReset(){var d=document.getElementById('wm-color-desc');if(d)d.textContent='';}
 var tblSearch='',_sortCol='total',_sortAsc=false;
 var _fcSortState=null,_wmSortState=null,_wmFailDiesCache=null,_wmCompCache=null,_wmResizeReady=false;
-var _fpfSortState=null,_fpfGrpRegion=false;
+var _fpfSortState=null,_fpfColSearch={},_fpfIpFocusCol=null,_fpfSelected=null;
+var _fpfExclBlocks=new Set(),_fpfExclRegions=new Set(),_fpfAllBlockList=[],_fpfAllRegionList=[];
+var _ttSortState=null,_ttColSearch={},_ttIpFocusCol=null,_ttSelected=null;
+var _ttChecked=null; // null = all checked; otherwise Set of _rk strings
+var _ttExclBlocks=new Set(),_ttExclRegions=new Set(),_ttAllBlockListTT=[],_ttAllRegionListTT=[];
 
 function uniq(arr,key){return[...new Set(arr.map(r=>key?r[key]:r).filter(v=>v!=null&&String(v)!=='nan'&&String(v)!==''))].sort();}
 function _ph(id){const el=document.getElementById(id);if(!el)return 500;const h=el.parentElement.clientHeight;return h>20?h-8:500;}
@@ -725,87 +774,162 @@ function selAll(){_visIndices().forEach(function(i){SEL_WFR.add(i);});buildWfrLi
 function clrAll(){_visIndices().forEach(function(i){SEL_WFR.delete(i);});buildWfrList();applyFilters();}
 function togglePanel(){const p=document.getElementById("wfr-panel");const btn=document.getElementById("wfr-collapse-btn");p.classList.toggle("collapsed");btn.innerHTML=p.classList.contains("collapsed")?"&#9660;":"&#9650;";}
 
-/* ── Hierarchical filter: Module → Block → Region → IP ──────────────── */
+/* ── Hierarchical filter: Module → Partition → [Region →] IP-L0..N ── */
 function buildXfChips(){
-  /* Build hierarchy from D.per_ip: mod → blk → reg → Set(ips) */
+  /* hier[mod][part] = {regs:{reg:[{ip,lvls}]}} — reg='' folds directly under partition */
   const hier={};
-  D.per_ip.forEach(r=>{
-    const mod=r.MODULE||'?',blk=r.BLOCK||'?',reg=r.REGION||'?',ip=r.IP||'?';
+
+  function _addEntry(mod,part,reg,ip,lvls,realBlk){
     if(!hier[mod])hier[mod]={};
-    if(!hier[mod][blk])hier[mod][blk]={};
-    if(!hier[mod][blk][reg])hier[mod][blk][reg]=new Set();
-    hier[mod][blk][reg].add(ip);
+    if(!hier[mod][part])hier[mod][part]={regs:{}};
+    if(!hier[mod][part].regs[reg])hier[mod][part].regs[reg]=[];
+    if(ip){
+      const list=hier[mod][part].regs[reg];
+      /* deduplicate by full path — same leaf can appear under different ancestor chains */
+      const pathKey=lvls.join('>')+'>'+ip;
+      if(!list.find(x=>x.lvls.join('>')+'>'+x.ip===pathKey)){
+        list.push({ip,lvls});
+        const k=realBlk+'|'+ip; /* keep _blkIpLevels by actual BLOCK for _failPath */
+        if(!_blkIpLevels[k])_blkIpLevels[k]=lvls;
+      }
+    }
+  }
+
+  (M.cfg_entries||[]).forEach(e=>{
+    const mod=e.MODULE||'?',part=e.PARTITION||'',reg=e.REGION||'',ip=e.IP||'';
+    const realBlk=e.BLOCK||'';
+    const lvls=[];
+    for(let li=0;;li++){const v=e['IP-L'+li];if(v===undefined)break;if(v)lvls.push(v);}
+    _addEntry(mod,part,reg,ip,lvls.length?lvls:[ip],realBlk);
   });
+
+  D.per_ip.forEach(r=>{
+    const mod=r.MODULE||'?',part=r.PARTITION||'',reg=r.REGION||'',ip=r.IP||'';
+    const realBlk=r.BLOCK||'';
+    const lvls=[];
+    for(let li=0;;li++){const v=r['IP-L'+li];if(v===undefined)break;if(v)lvls.push(v);}
+    _addEntry(mod,part,reg,ip,lvls.length?lvls:[ip],realBlk);
+  });
+
   const mods=Object.keys(hier).sort();
-  /* Global All / None header */
-  let html='<div class="xf-tree"><div class="xf-tree-hdr"><span style="font-size:7.5px;color:#6a8a9a">Select:</span>';
+  let html='<div class="xf-tree" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden"><div class="xf-tree-hdr"><span style="font-size:7.5px;color:#6a8a9a">Select:</span>';
   html+='<div class="xft-tree-acts"><button onclick="_xftAll(true)">All</button><button onclick="_xftAll(false)">None</button></div></div>';
-  /* 3-column row */
   html+='<div class="xft-cols-wrap" id="xft-cols-wrap">';
   mods.forEach((mod,mi)=>{
     const modId='xft-m-'+_xfId(mod);
     if(mi>0)html+='<div class="xft-col-handle" data-ci="'+(mi-1)+'" onmousedown="_xftColDrag(event,this)"></div>';
     html+='<div class="xft-col" id="xft-col-'+_xfId(mod)+'" data-mod="'+mod+'">';
-    html+='<details class="xft-mod" open><summary>';
+    html+='<div class="xft-mod"><div class="xft-mod-sum">';
     html+='<input type="checkbox" class="xft-chk" id="'+modId+'" data-level="mod" data-mod="'+mod+'" checked onchange="_xftParentChange(this)">';
     html+='<span onclick="_xftLblClick(\''+modId+'\')" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+mod+'</span>';
     html+='<button class="xft-mod-popup-btn" onclick="event.stopPropagation();_xftPopup(\''+mod+'\')" title="Expand in popup">&#8663;</button>';
-    html+='<span class="xft-mod-acts"><button onclick="event.stopPropagation();_xftMod(true,\''+mod+'\')">All</button><button onclick="event.stopPropagation();_xftMod(false,\''+mod+'\')">None</button></span>';
-    html+='</summary><div class="xft-col-body"><div class="xft-mod-body">';
-    /* Block → Region (details+checkbox) → IP (checkboxes) tree */
-    const blks=Object.keys(hier[mod]).sort();
-    blks.forEach(blk=>{
-      const blkId='xft-b-'+_xfId(mod)+'-'+_xfId(blk);
+    html+='<span class="xft-mod-acts"><button onclick="_xftMod(true,\''+mod+'\')">All</button><button onclick="_xftMod(false,\''+mod+'\')">None</button></span>';
+    html+='</div><div class="xft-col-body"><div class="xft-mod-body">';
+    Object.keys(hier[mod]).sort().forEach(part=>{
+      const dispPart=part||'(ungrouped)';
+      const {regs}=hier[mod][part];
+      const partId='xft-b-'+_xfId(mod)+'-'+_xfId(dispPart);
       html+='<details class="xft-blk"><summary>';
-      html+='<input type="checkbox" class="xft-chk xft-blk-cb" id="'+blkId+'" data-level="blk" data-mod="'+mod+'" data-blk="'+blk+'" checked onchange="_xftParentChange(this)"> <span onclick="_xftLblClick(\''+blkId+'\')">'+blk+'</span>';
+      html+='<input type="checkbox" class="xft-chk xft-blk-cb" id="'+partId+'" data-level="blk" data-mod="'+mod+'" data-blk="'+part+'" checked onchange="_xftParentChange(this)"> <span onclick="_xftLblClick(\''+partId+'\')">'+dispPart+'</span>';
       html+='</summary><div class="xft-blk-body">';
-      const regs=Object.keys(hier[mod][blk]).sort();
-      regs.forEach(reg=>{
-        const regId='xft-r-'+_xfId(mod)+'-'+_xfId(blk)+'-'+_xfId(reg);
-        html+='<details class="xft-reg-dd"><summary class="xft-reg-sum">';
-        html+='<input type="checkbox" class="xft-chk xft-reg-cb" id="'+regId+'" data-level="reg" data-mod="'+mod+'" data-blk="'+blk+'" data-reg="'+reg+'" checked onchange="_xftParentChange(this)">';
-        html+='<span onclick="event.stopPropagation();_xftLblClick(\''+regId+'\')">'+reg+'</span>';
-        html+='</summary><div class="xft-mip-list" style="padding-left:12px">';
-        const ips=[...hier[mod][blk][reg]].sort();
-        ips.forEach(ip=>{
-          const mipId='xft-mip-'+_xfId(mod)+'-'+_xfId(blk)+'-'+_xfId(reg)+'-'+_xfId(ip);
-          html+='<label class="xft-mip-item"><input type="checkbox" class="xft-mip" id="'+mipId+'" data-mod="'+mod+'" data-blk="'+blk+'" data-reg="'+reg+'" data-ip="'+ip+'" checked onchange="_xftMipChange(this)">'+ip+'</label>';
-        });
-        html+='</div></details>';
+      /* fold: items with no REGION render flat directly under partition */
+      const direct=regs['']||[];
+      if(direct.length)html+=_renderIpItems(direct,mod,part,'');
+      /* named regions */
+      Object.keys(regs).filter(r=>r!=='').sort().forEach(reg=>{
+        const ipItems=regs[reg];
+        const regId='xft-r-'+_xfId(mod)+'-'+_xfId(dispPart)+'-'+_xfId(reg);
+        if(!ipItems.length){
+          html+='<div class="xft-reg-leaf"><input type="checkbox" class="xft-chk xft-reg-cb" id="'+regId+'" data-level="reg" data-mod="'+mod+'" data-blk="'+part+'" data-reg="'+reg+'" checked onchange="_xftParentChange(this)">';
+          html+='<span onclick="_xftLblClick(\''+regId+'\')">'+reg+'</span></div>';
+        }else{
+          html+='<details class="xft-reg-dd"><summary class="xft-reg-sum">';
+          html+='<input type="checkbox" class="xft-chk xft-reg-cb" id="'+regId+'" data-level="reg" data-mod="'+mod+'" data-blk="'+part+'" data-reg="'+reg+'" checked onchange="_xftParentChange(this)">';
+          html+='<span onclick="event.stopPropagation();_xftLblClick(\''+regId+'\')">'+reg+'</span>';
+          html+='</summary><div class="xft-mip-list" style="padding-left:12px">';
+          html+=_renderIpItems(ipItems,mod,part,reg);
+          html+='</div></details>';
+        }
       });
       html+='</div></details>';
     });
-    html+='</div></div></details></div>'; /* close mod-body, col-body, details, col */
+    html+='</div></div></div></div>';
   });
-  html+='</div></div>'; /* close cols-wrap, tree */
+  html+='</div></div>';
   document.getElementById("xf-bar").innerHTML=html;
   _xftEnsureModal();
+}
+function _renderMip(ip,mod,part,reg){
+  const mipId='xft-mip-'+_xfId(mod)+'-'+_xfId(part)+'-'+_xfId(reg)+'-'+_xfId(ip);
+  return '<label class="xft-mip-item"><input type="checkbox" class="xft-mip" id="'+mipId+'" data-mod="'+mod+'" data-blk="'+part+'" data-reg="'+reg+'" data-ip="'+ip+'" checked onchange="_xftMipChange(this)">'+ip+'</label>';
+}
+function _renderIpLevel(items,mod,part,reg,depth){
+  /* items: [{ip, subLvls:[remaining path levels]}] — recursively renders IP hierarchy */
+  const byVal={};
+  items.forEach(({ip,subLvls})=>{
+    const cur=subLvls[0]||ip;
+    if(!byVal[cur])byVal[cur]={direct:[],sub:[]};
+    if(subLvls.length<=1)byVal[cur].direct.push(ip);
+    else byVal[cur].sub.push({ip,subLvls:subLvls.slice(1)});
+  });
+  return Object.keys(byVal).sort().map(val=>{
+    const {direct,sub}=byVal[val];
+    if(!sub.length) return direct.map(ip=>_renderMip(ip,mod,part,reg)).join('');
+    const cbCls=depth===0?'xft-ip-l0-cb':depth===1?'xft-ip-l1-cb':'xft-ip-ln-cb';
+    const chgFn=depth===0?'_xftL0Change(this)':depth===1?'_xftL1Change(this)':'_xftLnChange(this)';
+    const gId='xft-ipg-d'+depth+'-'+_xfId(mod)+'-'+_xfId(part)+'-'+_xfId(reg)+'-'+_xfId(val);
+    const inner=direct.map(ip=>_renderMip(ip,mod,part,reg)).join('')+
+      _renderIpLevel(sub,mod,part,reg,depth+1);
+    return '<details class="xft-ip-dd"><summary class="xft-ip-dd-sum">'+
+      '<input type="checkbox" class="'+cbCls+'" id="'+gId+'" data-mod="'+mod+'" data-blk="'+part+'" data-reg="'+reg+'" checked onchange="'+chgFn+'">'+
+      '<span onclick="event.stopPropagation();_xftLblClick(\''+gId+'\')">'+val+'</span></summary>'+
+      '<div class="xft-mip-list" style="padding-left:8px">'+inner+'</div></details>';
+  }).join('');
+}
+function _renderIpItems(items,mod,part,reg){
+  /* items: [{ip, lvls:[l0,l1,...,leaf]}] */
+  const hasHier=items.some(x=>x.lvls.length>1);
+  if(!hasHier) return items.sort((a,b)=>a.ip<b.ip?-1:1).map(({ip})=>_renderMip(ip,mod,part,reg)).join('');
+  return _renderIpLevel(items.map(({ip,lvls})=>({ip,subLvls:lvls})),mod,part,reg,0);
+}
+function _xftL0Change(cb){
+  const state=cb.indeterminate?true:cb.checked;
+  var dd=cb.closest('.xft-ip-dd');
+  if(dd)dd.querySelectorAll('.xft-ip-l1-cb,.xft-mip').forEach(c=>{c.checked=state;c.indeterminate=false;});
+  _xftUpdateAncestors();applyFilters();
+}
+function _xftL1Change(cb){
+  const state=cb.indeterminate?true:cb.checked;
+  var dd=cb.closest('.xft-ip-dd');
+  if(dd)dd.querySelectorAll('.xft-ip-ln-cb,.xft-mip').forEach(c=>{c.checked=state;c.indeterminate=false;});
+  _xftUpdateAncestors();applyFilters();
+}
+function _xftLnChange(cb){
+  const state=cb.indeterminate?true:cb.checked;
+  var dd=cb.closest('.xft-ip-dd');
+  if(dd)dd.querySelectorAll('.xft-ip-ln-cb,.xft-mip').forEach(c=>{c.checked=state;c.indeterminate=false;});
+  _xftUpdateAncestors();applyFilters();
 }
 /* Safe CSS id fragment from a string */
 function _xfId(s){return s.replace(/[^a-zA-Z0-9_-]/g,'_');}
 /* Click on label text toggles the parent checkbox */
 function _xftLblClick(cbId){const cb=document.getElementById(cbId);if(!cb)return;cb.indeterminate=false;cb.checked=!cb.checked;_xftParentChange(cb);}
-/* When a parent-level checkbox changes: cascade to region checkboxes */
+/* When a parent-level checkbox changes: cascade to children via DOM */
 function _xftParentChange(cb){
-  const lv=cb.dataset.level,mod=cb.dataset.mod,blk=cb.dataset.blk,reg=cb.dataset.reg;
+  if(cb.classList.contains('xft-ip-l0-cb')){_xftL0Change(cb);return;}
+  if(cb.classList.contains('xft-ip-l1-cb')){_xftL1Change(cb);return;}
+  if(cb.classList.contains('xft-ip-ln-cb')){_xftLnChange(cb);return;}
+  const lv=cb.dataset.level;
   const state=cb.indeterminate?true:cb.checked;
   if(lv==='reg'){
-    /* Cascade checked state to all IP children in this region */
-    document.querySelectorAll('.xft-mip[data-mod="'+mod+'"][data-blk="'+blk+'"][data-reg="'+reg+'"]')
-      .forEach(m=>{m.checked=state;m.indeterminate=false;});
+    var dd=cb.closest('.xft-reg-dd');
+    if(dd)dd.querySelectorAll('.xft-ip-l0-cb,.xft-ip-l1-cb,.xft-ip-ln-cb,.xft-mip').forEach(c=>{c.checked=state;c.indeterminate=false;});
   }else if(lv==='blk'){
-    /* Cascade to all regions and IPs in this block */
-    document.querySelectorAll('.xft-reg-cb[data-mod="'+mod+'"][data-blk="'+blk+'"]')
-      .forEach(r=>{r.checked=state;r.indeterminate=false;});
-    document.querySelectorAll('.xft-mip[data-mod="'+mod+'"][data-blk="'+blk+'"]')
-      .forEach(m=>{m.checked=state;m.indeterminate=false;});
+    var dd=cb.closest('.xft-blk');
+    if(dd)dd.querySelectorAll('.xft-reg-cb,.xft-ip-l0-cb,.xft-ip-l1-cb,.xft-ip-ln-cb,.xft-mip').forEach(c=>{c.checked=state;c.indeterminate=false;});
   }else if(lv==='mod'){
-    /* Cascade to all blocks, regions and IPs in this module */
-    document.querySelectorAll('.xft-blk-cb[data-mod="'+mod+'"]').forEach(c=>{c.checked=state;c.indeterminate=false;});
-    document.querySelectorAll('.xft-reg-cb[data-mod="'+mod+'"]')
-      .forEach(r=>{r.checked=state;r.indeterminate=false;});
-    document.querySelectorAll('.xft-mip[data-mod="'+mod+'"]')
-      .forEach(m=>{m.checked=state;m.indeterminate=false;});
+    var md=cb.closest('.xft-mod');
+    if(md)md.querySelectorAll('.xft-blk-cb,.xft-reg-cb,.xft-ip-l0-cb,.xft-ip-l1-cb,.xft-ip-ln-cb,.xft-mip').forEach(c=>{c.checked=state;c.indeterminate=false;});
   }
   _xftUpdateAncestors();applyFilters();
 }
@@ -813,26 +937,44 @@ function _xftParentChange(cb){
 function _xftMipChange(cb){_xftUpdateAncestors();applyFilters();}
 function _xftUpdateIpVisibility(){/* no-op: IPs are now direct children of region details */}
 function _xftUpdateAncestors(){
-  /* Step 1: reg-cb state derived from its .xft-mip children */
-  document.querySelectorAll('.xft-reg-cb').forEach(function(cb){
-    var mod=cb.dataset.mod,blk=cb.dataset.blk,reg=cb.dataset.reg;
-    var mips=[...document.querySelectorAll('.xft-mip[data-mod="'+mod+'"][data-blk="'+blk+'"][data-reg="'+reg+'"]')];
+  /* IP level CBs (L0, L1, Ln) ← their .xft-mip descendants */
+  document.querySelectorAll('.xft-ip-ln-cb,.xft-ip-l1-cb,.xft-ip-l0-cb').forEach(function(cb){
+    var dd=cb.closest('.xft-ip-dd');
+    var mips=dd?[...dd.querySelectorAll('.xft-mip')]:[];
     var n=mips.length,s=mips.filter(m=>m.checked).length;
     if(n===0){cb.checked=true;cb.indeterminate=false;}
     else{cb.indeterminate=(s>0&&s<n);cb.checked=(s===n);}
   });
-  /* Step 2: blk-cb state derived from its .xft-reg-cb children */
-  document.querySelectorAll('.xft-chk[data-level="blk"]').forEach(function(cb){
-    var regs=[...document.querySelectorAll('.xft-reg-cb[data-mod="'+cb.dataset.mod+'"][data-blk="'+cb.dataset.blk+'"]')];
-    var n=regs.length,s=regs.filter(r=>r.checked&&!r.indeterminate).length,p=regs.filter(r=>r.indeterminate).length;
-    if(n===0){cb.checked=true;cb.indeterminate=false;}
-    else if(s===n){cb.checked=true;cb.indeterminate=false;}
-    else if(s===0&&p===0){cb.checked=false;cb.indeterminate=false;}
-    else{cb.indeterminate=true;cb.checked=true;}
+  /* reg-cb ← its .xft-mip descendants (leaf regions have no mips: keep state) */
+  document.querySelectorAll('.xft-reg-cb').forEach(function(cb){
+    var dd=cb.closest('.xft-reg-dd');
+    var mips=dd?[...dd.querySelectorAll('.xft-mip')]:[];
+    if(!mips.length)return;
+    var n=mips.length,s=mips.filter(m=>m.checked).length;
+    cb.indeterminate=(s>0&&s<n);cb.checked=(s===n);
   });
-  /* Step 3: mod-cb state derived from its .xft-blk-cb children */
+  /* blk-cb (partition) ← reg-cbs for named regions + direct mips for folded items */
+  document.querySelectorAll('.xft-blk-cb').forEach(function(cb){
+    var dd=cb.closest('.xft-blk');
+    var regs=dd?[...dd.querySelectorAll('.xft-reg-cb')]:[];
+    if(regs.length){
+      var n=regs.length,s=regs.filter(r=>r.checked&&!r.indeterminate).length,p=regs.filter(r=>r.indeterminate).length;
+      if(n===0){cb.checked=true;cb.indeterminate=false;}
+      else if(s===n){cb.checked=true;cb.indeterminate=false;}
+      else if(s===0&&p===0){cb.checked=false;cb.indeterminate=false;}
+      else{cb.indeterminate=true;cb.checked=true;}
+    }else{
+      /* fold case: no region wrapper — check direct mip descendants */
+      var mips=dd?[...dd.querySelectorAll('.xft-mip')]:[];
+      var n=mips.length,s=mips.filter(m=>m.checked).length;
+      if(n===0){cb.checked=true;cb.indeterminate=false;}
+      else{cb.indeterminate=(s>0&&s<n);cb.checked=(s===n);}
+    }
+  });
+  /* mod-cb ← its .xft-blk-cb descendants */
   document.querySelectorAll('.xft-chk[data-level="mod"]').forEach(function(cb){
-    var blks=[...document.querySelectorAll('.xft-blk-cb[data-mod="'+cb.dataset.mod+'"]')];
+    var md=cb.closest('.xft-mod');
+    var blks=md?[...md.querySelectorAll('.xft-blk-cb')]:[];
     var n=blks.length,s=blks.filter(b=>b.checked&&!b.indeterminate).length,p=blks.filter(b=>b.indeterminate).length;
     if(n===0){cb.checked=true;cb.indeterminate=false;}
     else if(s===n){cb.checked=true;cb.indeterminate=false;}
@@ -876,8 +1018,9 @@ function _xftPopup(mod){
   /* Detach from column, attach to modal */
   body.innerHTML='';
   body.appendChild(modEl);
-  /* Remove height cap so full tree is visible in modal */
-  const cb=modEl.querySelector('.xft-col-body');if(cb){cb.style.maxHeight='none';cb.style.overflowY='visible';}
+  /* Allow full scroll in modal */
+  modEl.style.overflow='visible';modEl.style.flex='none';
+  const cb=modEl.querySelector('.xft-col-body');if(cb){cb.style.overflow='visible';cb.style.flex='none';}
   modal.classList.add('open');
 }
 function _xftPopupClose(){
@@ -887,25 +1030,31 @@ function _xftPopupClose(){
   const modEl=body.querySelector('.xft-mod');if(!modEl)return;
   const colId=modal.dataset.colId;
   const col=document.getElementById(colId);if(!col)return;
-  /* Restore height cap and move back */
-  const cb=modEl.querySelector('.xft-col-body');if(cb){cb.style.maxHeight='';cb.style.overflowY='';}
+  /* Restore and move back */
+  modEl.style.overflow='';modEl.style.flex='';
+  const cb=modEl.querySelector('.xft-col-body');if(cb){cb.style.overflow='';cb.style.flex='';}
   col.appendChild(modEl);
   body.innerHTML='';
   applyFilters();
 }
 /* Select or deselect all globally */
 function _xftAll(state){
-  document.querySelectorAll('.xft-blk-cb,.xft-reg-cb,.xft-mip').forEach(cb=>{cb.checked=state;cb.indeterminate=false;});
-  _xftUpdateAncestors();applyFilters();
+  document.querySelectorAll('.xft-blk-cb,.xft-reg-cb,.xft-ip-l0-cb,.xft-ip-l1-cb,.xft-ip-ln-cb,.xft-mip').forEach(cb=>{cb.checked=state;cb.indeterminate=false;});
+  applyFilters();
 }
 /* Select or deselect all within a single module */
 function _xftMod(state,mod){
-  document.querySelectorAll('.xft-blk-cb[data-mod="'+mod+'"],.xft-reg-cb[data-mod="'+mod+'"],.xft-mip[data-mod="'+mod+'"]').forEach(cb=>{cb.checked=state;cb.indeterminate=false;});
+  const col=document.getElementById('xft-col-'+_xfId(mod));if(!col)return;
+  col.querySelectorAll('.xft-blk-cb,.xft-reg-cb,.xft-ip-l0-cb,.xft-ip-l1-cb,.xft-ip-ln-cb,.xft-mip').forEach(cb=>{cb.checked=state;cb.indeterminate=false;});
   _xftUpdateAncestors();applyFilters();
 }
 /* Close dropdown panels when clicking outside */
 document.addEventListener('click',function(e){
   ['part-dd-panel','ip-dd-panel'].forEach(id=>{const p=document.getElementById(id);const b=document.getElementById(id.replace('panel','btn'));if(p&&b&&!p.contains(e.target)&&e.target!==b){p.classList.remove('open');b.classList.remove('open');}});
+  // close FPF / TT block/region dropdowns
+  ['blk','reg'].forEach(function(w){
+    ['fpf-','tt-'].forEach(function(pfx){var d=document.getElementById(pfx+w+'-dd');var btn=document.getElementById(pfx+w+'-dd-wrap');if(d&&d.style.display!=='none'&&!d.contains(e.target)&&!(btn&&btn.contains(e.target)))d.style.display='none';});
+  });
 });
 function toggleGrpBy(val){const i=GRP_BY.indexOf(val);if(i>=0)GRP_BY.splice(i,1);else GRP_BY.push(val);applyFilters();}
 function _grpKey(r){if(!GRP_BY.length)return'All';return GRP_BY.map(f=>f+"="+String(r[f]||'\u2014')).join(' | ');}
@@ -923,8 +1072,9 @@ function getFiltered(){
   return D.per_ip.filter(r=>{
     if(!selLW.has(r.LOT+'|'+r.WAFER))return false;
     if(SEL_TESTS.size>0&&SEL_TESTS.size<_allTestKeys.length&&!SEL_TESTS.has((r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'')))return false;
-    if(totalRegN>0&&selRegKeys.size<totalRegN&&!selRegKeys.has((r.MODULE||'?')+'|'+(r.BLOCK||'?')+'|'+(r.REGION||'?')))return false;
-    if(totalMipN>0&&selMipKeys.size<totalMipN&&!selMipKeys.has((r.MODULE||'?')+'|'+(r.IP||'?')))return false;
+    if(totalRegN>0&&selRegKeys.size<totalRegN&&!selRegKeys.has((r.MODULE||'?')+'|'+(r.PARTITION||'?')+'|'+(r.REGION||'?')))return false;
+    const _ip=r.IP||'';
+    if(totalMipN>0&&selMipKeys.size<totalMipN&&_ip&&!selMipKeys.has((r.MODULE||'?')+'|'+_ip))return false;
     return true;
   });
 }
@@ -997,21 +1147,38 @@ function drawFailChart(){
 function fcSort(col){_fcSortState={col,asc:_fcSortState&&_fcSortState.col===col?!_fcSortState.asc:false};drawFailChart();}
 
 /* ── FailPerTestType ───────────────────────────────────────────────── */
-var _ttSortState=null;
 function toggleTTShow(tt,on){if(on)TT_SHOW.add(tt);else TT_SHOW.delete(tt);document.querySelectorAll('[data-tt="'+tt+'"]').forEach(function(cb){cb.checked=on;});applyFilters();}
-function setTTGrp(byReg){TT_GRP_REGION=byReg;applyFilters();}
 function drawTestType(){
   const allRecs=getFiltered();
   const _tdpw=M.total_dies_per_wafer||{};
   const totalUniqDies=[..._selLW()].reduce((s,wk)=>s+(_tdpw[wk]||0),0)||(new Set(allRecs.map(r=>r.VISUAL_ID)).size||1);
   const recs=allRecs.filter(r=>TT_SHOW.has(r.TESTTYPE));
   if(!recs.length){noPlot('plot-testtype');document.getElementById('tbl-testtype').innerHTML='';document.getElementById('cnt-testtype').textContent='';return;}
-  const byReg=TT_GRP_REGION;
-  // Aggregate unique VISUAL_IDs per (MODULE, [BLOCK, REGION,] IP, TESTTYPE)
+  // populate block/region dropdowns and apply exclusion filters
+  _ttAllBlockListTT=[...new Set(allRecs.map(r=>r.BLOCK).filter(Boolean))].sort();
+  _ttAllRegionListTT=[...new Set(allRecs.map(r=>r.REGION).filter(Boolean))].sort();
+  _fpfRebuildDD('tt-blk-filters',_ttAllBlockListTT,_ttExclBlocks,'_ttToggleBlk');
+  _fpfRebuildDD('tt-reg-filters',_ttAllRegionListTT,_ttExclRegions,'_ttToggleReg');
+  _fpfDDLbl('tt-blk-lbl',_ttExclBlocks,_ttAllBlockListTT);
+  _fpfDDLbl('tt-reg-lbl',_ttExclRegions,_ttAllRegionListTT);
+  const filtRecs=recs.filter(r=>!_ttExclBlocks.has(r.BLOCK)&&!_ttExclRegions.has(r.REGION));
+  if(!filtRecs.length){try{Plotly.purge('plot-testtype');}catch(e){}document.getElementById('plot-testtype').innerHTML='<div class="nodata">No data after block/region filter</div>';document.getElementById('tbl-testtype').innerHTML='';document.getElementById('cnt-testtype').textContent='0 rows';return;}
+  // detect IP-L* hierarchy columns present in data
+  var allIpLColsTT=[];
+  for(var _tli=0;_tli<=4;_tli++){const _tc='IP-L'+_tli;if(filtRecs.some(function(r){return r[_tc]!=null&&r[_tc]!=='';}))allIpLColsTT.push(_tc);}
+  // build L0 › L1 › Ln path label (req 3)
+  function _ipPath(r){if(!allIpLColsTT.length)return r.IP||'';return allIpLColsTT.map(c=>r[c]||'').filter(Boolean).join(' \u203a ');}
+  // fault count from config (req 5)
+  const _cfc=(M.cfg_fault_counts)||{};
+  const _cfcSTt=_cfc.stuckat||{};
+  const _cfcATt=_cfc.atspeed||{};
+  // aggregate by module|block|region|ip_path
   const agg={};
-  recs.forEach(r=>{
-    const gk=r.MODULE+'|'+(byReg?r.BLOCK+'|'+r.REGION+'|':'')+r.IP;
-    if(!agg[gk])agg[gk]={module:r.MODULE,block:byReg?r.BLOCK:null,region:byReg?r.REGION:null,ip:r.IP};
+  filtRecs.forEach(r=>{
+    const _ipP=_ipPath(r);
+    const gk=r.MODULE+'|'+(r.BLOCK||'')+'|'+(r.REGION||'')+'|'+_ipP;
+    if(!agg[gk])agg[gk]={module:r.MODULE,block:r.BLOCK||'',region:r.REGION||'',ip:_ipP,_rawIps:new Set()};
+    agg[gk]._rawIps.add(r.IP);
     const sk='_s'+r.TESTTYPE;
     if(!agg[gk][sk])agg[gk][sk]=new Set();
     agg[gk][sk].add(r.VISUAL_ID);
@@ -1020,7 +1187,10 @@ function drawTestType(){
   });
   const allTT=[...TT_SHOW].sort();
   const rows=Object.values(agg).map(g=>{
-    const o={module:g.module,block:g.block,region:g.region,ip:g.ip};
+    const _rk=g.module+'|'+(g.block||'')+'|'+(g.region||'')+'|'+g.ip;
+    let faultCount=0;
+    for(const rip of g._rawIps){const k=g.region+'|'+rip;faultCount+=(_cfcSTt[k]||0)+(_cfcATt[k]||0);}
+    const o={module:g.module,block:g.block,region:g.region,ip:g.ip,faultCount,_rk};
     allTT.forEach(tt=>{o[tt]=g['_s'+tt]?g['_s'+tt].size:0;});
     o._total=allTT.reduce((s,tt)=>s+(o[tt]||0),0);
     o._failDies=g._sALL?g._sALL.size:0;
@@ -1028,82 +1198,76 @@ function drawTestType(){
     return o;
   }).sort((a,b)=>{
     let d=a.module.localeCompare(b.module);if(d)return d;
-    if(byReg){d=(a.block||'').localeCompare(b.block||'');if(d)return d;d=(a.region||'').localeCompare(b.region||'');if(d)return d;}
+    d=(a.block||'').localeCompare(b.block||'');if(d)return d;
+    d=(a.region||'').localeCompare(b.region||'');if(d)return d;
     return a.ip.localeCompare(b.ip);
   });
   const TT_BASE={CHAIN:'#0071C5',STUCKAT:'#E8421C',ATSPEED:'#1CA44A',DIAG:'#8B5CF6'};
   const TT_OPA={CHAIN:0.75,STUCKAT:0.85,ATSPEED:1.0,DIAG:0.9};
-  // byReg=true  → one trace per Block/Region (color-coded), 2-level x-axis, legend at bottom
-  // byReg=false → one trace per TestType (color-coded), 2-level x-axis, legend at top
-  const nMI=[...new Set(rows.map(r=>r.module+'|'+r.ip))].length;
-  let traces, botMargin;
-  if(byReg){
-    const brKeys=[...new Set(rows.map(r=>r.block+'||'+r.region))].sort();
-    botMargin=240;
-    traces=brKeys.map((brk,i)=>{
-      const [blk,reg]=brk.split('||');
-      const sub=rows.filter(r=>r.block===blk&&r.region===reg);
-      return{
-        type:'bar',name:blk+'/'+reg,
-        x:[sub.map(r=>r.module),sub.map(r=>r.ip)],
-        y:sub.map(r=>r._failDies),
-        text:sub.map(r=>'<b>'+r.ip+'</b>'
-          +'<br>Block: '+r.block+'  Region: '+r.region
-          +'<br>Module: '+r.module
-          +'<br>Fail Dies: '+r._failDies+' ('+r._pct.toFixed(1)+'%)'
-          +(allTT.filter(tt=>r[tt]).length
-            ?'<br>'+allTT.filter(tt=>r[tt]).map(tt=>tt+': '+r[tt]).join(' | ')
-            :'')),
-        hovertemplate:'%{text}<extra></extra>',
-        marker:{color:MPLT[i%MPLT.length],opacity:0.85}
-      };
-    });
-  }else{
-    botMargin=200;
-    traces=allTT.map(tt=>({
+  // filter rows to those checked in the table (null = all checked)
+  const plotRows=_ttChecked?rows.filter(r=>_ttChecked.has(r._rk)):rows;
+  // vertical grouped bar with horizontal scroll — reliable across all IP counts
+  const traces=allTT.map(tt=>{
+    const baseColor=TT_BASE[tt]||mc(tt);
+    const baseOpa=TT_OPA[tt]||0.9;
+    const colors=_ttSelected?plotRows.map(r=>r._rk===_ttSelected?'#f59e0b':baseColor):baseColor;
+    const opacities=_ttSelected?plotRows.map(r=>r._rk===_ttSelected?1.0:0.25):baseOpa;
+    return{
       type:'bar',name:tt,
-      x:[rows.map(r=>r.module),rows.map(r=>r.ip)],
-      y:rows.map(r=>r[tt]||0),
-      text:rows.map(r=>'<b>'+tt+'</b><br>Module: '+r.module+'<br>IP: '+r.ip+'<br>Fail dies ('+tt+'): '+(r[tt]||0)+'<br>Fail dies (any): '+r._failDies+' ('+r._pct.toFixed(1)+'%)'),
+      x:plotRows.map(r=>r.module+' \u25b8 '+r.ip),
+      y:plotRows.map(r=>r[tt]||0),
+      text:plotRows.map(r=>'<b>'+tt+'</b><br>Module: '+r.module+'<br>Block: '+r.block+'<br>Region: '+r.region+'<br>IP: '+r.ip+'<br>FC: '+r.faultCount.toLocaleString()+'<br>Fail dies ('+tt+'): '+(r[tt]||0)+'<br>Fail dies (any): '+r._failDies+' ('+r._pct.toFixed(1)+'%)'),
       hovertemplate:'%{text}<extra></extra>',
-      marker:{color:TT_BASE[tt]||mc(tt),opacity:TT_OPA[tt]||0.9}
-    }));
-  }
-  document.getElementById('plot-testtype').style.minWidth=Math.max(750,nMI*55+220)+'px';
+      marker:{color:colors,opacity:opacities}
+    };
+  });
+  const _el=document.getElementById('plot-testtype');
+  const _ttW=Math.max(750,plotRows.length*55+220);
+  _el.style.flex='';_el.style.height='';
+  _el.style.width=_ttW+'px';
   Plotly.react('plot-testtype',traces,{
-    barmode:'group',height:_ph('plot-testtype'),margin:{t:30,l:65,r:20,b:botMargin},
+    barmode:'group',height:_ph('plot-testtype'),width:_ttW,margin:{t:30,l:65,r:20,b:180},
     xaxis:{tickfont:{size:7.5},tickangle:-45,automargin:true,showgrid:true,gridcolor:'#e8ecf0'},
-    yaxis:{title:'Fail Dies (unique)',gridcolor:'#e8ecf0',tickfont:{size:10},titlefont:{size:11},
-           showgrid:true,zeroline:true,zerolinecolor:'#ccc'},
-    legend:{font:{size:10},orientation:'h',y:byReg?-0.22:1.06,x:0.5,xanchor:'center',yanchor:byReg?'top':'bottom'},
+    yaxis:{title:'Fail Dies (unique)',gridcolor:'#e8ecf0',tickfont:{size:10},titlefont:{size:11},showgrid:true,zeroline:true,zerolinecolor:'#ccc'},
+    legend:{font:{size:10},orientation:'h',y:1.06,x:0.5,xanchor:'center',yanchor:'bottom'},
     plot_bgcolor:'#fff',paper_bgcolor:'#fff',hoverlabel:HL
-  },{...CFG,responsive:true});
-  // Table — sortable; Module | [Block | Region] | IP | TT cols | Fail Dies | % Fail | TT Sum
+  },{...CFG,responsive:false});
+  // sortable table: Module | Block | Region | IP | Fault Count | TT cols | Fail Dies | % Fail | TT Sum
   const _ss=_ttSortState||{col:null,asc:true};
   let trows=[...rows];
-  if(_ss.col){
-    trows.sort((a,b)=>{
-      const av=a[_ss.col],bv=b[_ss.col];
-      const cmp=typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||''));
-      return _ss.asc?cmp:-cmp;
-    });
-  }
+  const _cs=_ttColSearch;
+  if(Object.keys(_cs).some(k=>_cs[k])){trows=trows.filter(r=>Object.keys(_cs).every(k=>{if(!_cs[k])return true;return String(r[k]||'').toLowerCase().includes(_cs[k]);}));}
+  if(_ss.col){trows.sort((a,b)=>{const av=a[_ss.col],bv=b[_ss.col];const cmp=typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||''));return _ss.asc?cmp:-cmp;});}
   const _tth=(c,l,xtra)=>'<th onclick="ttSort(\''+c+'\')" class="'+(c===_ss.col?'sarr '+(_ss.asc?'asc':'desc'):'')+'"'+(xtra?' '+xtra:'')+'>'+l+'</th>';
+  const _tsh=(c)=>'<th style="padding:1px 2px"><input class="dt-srch" data-col="'+c+'" placeholder="\uD83D\uDD0D" value="'+(_cs[c]||'')+'" oninput="ttColSearch(\''+c+'\',this.value)" onclick="event.stopPropagation()"></th>';
+  const _ttAllCols=['_chk','module','block','region','ip','faultCount',...allTT,'_failDies','_pct','_total'];
+  const _allRks=rows.map(r=>r._rk);
+  const _allChecked=!_ttChecked||_allRks.every(k=>_ttChecked.has(k));
   let thtml='<table class="dt"><thead><tr>'
+    +'<th style="padding:2px 4px;white-space:nowrap"><input type="checkbox"'+(_allChecked?' checked':'')+' onchange="ttChkAll(this)" style="accent-color:#5dade2;cursor:pointer"> <span style="font-size:7px;color:#8ab4d4;cursor:pointer" onclick="ttChkNone()">✕</span></th>'
     +_tth('module','Module')
-    +(byReg?_tth('block','Block')+_tth('region','Region'):'')
+    +_tth('block','Block')
+    +_tth('region','Region')
     +_tth('ip','IP')
+    +_tth('faultCount','Fault Count','style="color:#2980b9"')
     +allTT.map(tt=>_tth(tt,tt,'style="color:'+(TT_BASE[tt]||'#333')+'"')).join('')
     +_tth('_failDies','Fail Dies','style="color:#b45309;font-weight:700"')
     +_tth('_pct','% Fail','style="color:#b45309;font-weight:700"')
     +_tth('_total','TT Sum')
-    +'</tr></thead><tbody>';
+    +'</tr>'
+    +'<tr class="dt-srch-row"><th></th>'+_ttAllCols.slice(1).map(c=>_tsh(c)).join('')+'</tr>'
+    +'</thead><tbody>';
   trows.forEach(r=>{
-    const ttVals=allTT.map(tt=>r[tt]||0);
-    thtml+='<tr>'
-      +'<td>'+r.module+'</td>'+(byReg?'<td>'+(r.block||'')+'</td><td>'+(r.region||'')+'</td>':'')
+    const _sel=_ttSelected&&r._rk===_ttSelected;
+    const _chkd=!_ttChecked||_ttChecked.has(r._rk);
+    const _rke=r._rk.replace(/'/g,"\\'");
+    thtml+='<tr data-ttrk="'+r._rk+'" onclick="ttSelectRow(this)" style="cursor:pointer'+(_sel?';background:#fef3c7;outline:2px solid #f59e0b;outline-offset:-1px':'')+'">'
+      +'<td style="padding:2px 4px" onclick="event.stopPropagation()"><input type="checkbox"'+(_chkd?' checked':'')+' data-rk="'+r._rk+'" onchange="ttChkRow(this,\''+_rke+'\')" style="accent-color:#5dade2;cursor:pointer"></td>'
+      +'<td>'+r.module+'</td>'
+      +'<td>'+(r.block||'')+'</td><td>'+(r.region||'')+'</td>'
       +'<td>'+r.ip+'</td>'
-      +ttVals.map(v=>'<td class="n">'+v+'</td>').join('')
+      +'<td class="n">'+r.faultCount.toLocaleString()+'</td>'
+      +allTT.map(tt=>'<td class="n">'+(r[tt]||0)+'</td>').join('')
       +'<td class="n" style="color:#b45309;font-weight:700">'+r._failDies+'</td>'
       +'<td class="n" style="color:#b45309;font-weight:700">'+r._pct.toFixed(1)+'%</td>'
       +'<td class="n">'+r._total+'</td></tr>';
@@ -1111,8 +1275,19 @@ function drawTestType(){
   thtml+='</tbody></table>';
   document.getElementById('tbl-testtype').innerHTML=thtml;
   document.getElementById('cnt-testtype').textContent=trows.length+' rows';
+  if(_ttIpFocusCol){var _tfi=document.querySelector('#tbl-testtype .dt-srch[data-col="'+_ttIpFocusCol+'"]');if(_tfi){_tfi.focus();_tfi.setSelectionRange(_tfi.value.length,_tfi.value.length);}_ttIpFocusCol=null;}
 }
 function ttSort(col){_ttSortState={col,asc:_ttSortState&&_ttSortState.col===col?!_ttSortState.asc:false};drawTestType();}
+function ttColSearch(col,val){_ttColSearch[col]=val.toLowerCase();_ttIpFocusCol=col;drawTestType();}
+function ttChkRow(cb,rk){
+  // build _ttChecked from current table checkboxes after this toggle
+  const all=[...document.querySelectorAll('#tbl-testtype input[type="checkbox"][data-rk]')];
+  const checked=new Set(all.filter(c=>c.checked).map(c=>c.dataset.rk));
+  _ttChecked=checked.size===all.length?null:checked;
+  drawTestType();
+}
+function ttChkAll(cb){_ttChecked=cb.checked?null:new Set();drawTestType();}
+function ttChkNone(){_ttChecked=new Set();drawTestType();}
 
 /* ── FailPerFault ──────────────────────────────────────────────────── */
 function _polyFit(xs,ys,deg){
@@ -1135,28 +1310,61 @@ function _polyFit(xs,ys,deg){
   }
   return function(x){const lv=Math.log10(Math.max(1,x));let v=0,pw=1;for(let j=0;j<d;j++){v+=b[j]*pw;pw*=lv;}return Math.max(0,v);};
 }
-function setFPFGrp(byReg){_fpfGrpRegion=byReg;applyFilters();}
+function _fpfOpenDD(evt,which){evt.stopPropagation();var dd=document.getElementById('fpf-'+which+'-dd');if(!dd)return;var wasOpen=dd.style.display!=='none';['blk','reg'].forEach(function(w){var d=document.getElementById('fpf-'+w+'-dd');if(d)d.style.display='none';});if(!wasOpen)dd.style.display='block';}
+function _fpfCloseDD(){['blk','reg'].forEach(function(w){var d=document.getElementById('fpf-'+w+'-dd');if(d)d.style.display='none';});}
+function _fpfRebuildDD(cId,items,exclSet,tFn){var el=document.getElementById(cId);if(!el)return;el.innerHTML=items.map(function(v){var chk=!exclSet.has(v);var esc=v.split('\\').join('\\\\').split("'").join("\\'");return'<label style="display:flex;align-items:center;gap:4px;padding:2px 3px;font-size:8px;color:#c0ccd8;cursor:pointer;white-space:nowrap"><input type="checkbox"'+(chk?' checked':'')+' style="accent-color:#f9e04b;cursor:pointer" onchange="'+tFn+"('"+esc+"',this.checked)\"> "+v+"</label>";}).join('');}
+function _fpfDDLbl(elId,exclSet,all){var el=document.getElementById(elId);if(!el)return;if(exclSet.size===0){el.textContent='All';}else{var shown=all.filter(function(v){return!exclSet.has(v);});el.textContent=shown.length<=2?shown.join(','):shown.length+' sel';}}
+function _fpfToggleBlk(v,on){if(!on)_fpfExclBlocks.add(v);else _fpfExclBlocks.delete(v);drawFaultPerFault();}
+function _fpfToggleReg(v,on){if(!on)_fpfExclRegions.add(v);else _fpfExclRegions.delete(v);drawFaultPerFault();}
+function _fpfAllBlk(){_fpfExclBlocks=new Set();drawFaultPerFault();}
+function _fpfNoneBlk(){_fpfExclBlocks=new Set(_fpfAllBlockList);drawFaultPerFault();}
+function _fpfAllReg(){_fpfExclRegions=new Set();drawFaultPerFault();}
+function _fpfNoneReg(){_fpfExclRegions=new Set(_fpfAllRegionList);drawFaultPerFault();}
+function _ttOpenDD(evt,which){evt.stopPropagation();var dd=document.getElementById('tt-'+which+'-dd');if(!dd)return;var wasOpen=dd.style.display!=='none';['blk','reg'].forEach(function(w){var d=document.getElementById('tt-'+w+'-dd');if(d)d.style.display='none';});if(!wasOpen)dd.style.display='block';}
+function _ttToggleBlk(v,on){if(!on)_ttExclBlocks.add(v);else _ttExclBlocks.delete(v);drawTestType();}
+function _ttToggleReg(v,on){if(!on)_ttExclRegions.add(v);else _ttExclRegions.delete(v);drawTestType();}
+function _ttAllBlk(){_ttExclBlocks=new Set();drawTestType();}
+function _ttNoneBlk(){_ttExclBlocks=new Set(_ttAllBlockListTT);drawTestType();}
+function _ttAllReg(){_ttExclRegions=new Set();drawTestType();}
+function _ttNoneReg(){_ttExclRegions=new Set(_ttAllRegionListTT);drawTestType();}
+function ttSelectRow(tr){const k=tr.dataset.ttrk;_ttSelected=(k===_ttSelected)?null:k;drawTestType();}
 function drawFaultPerFault(){
   const allRecs=getFiltered();
   const _tdpw=M.total_dies_per_wafer||{};
   const totalUniqDies=[..._selLW()].reduce((s,wk)=>s+(_tdpw[wk]||0),0)||(new Set(allRecs.map(r=>r.VISUAL_ID)).size||1);
   if(!allRecs.length){noPlot('plot-fpf');document.getElementById('tbl-fpf').innerHTML='';document.getElementById('cnt-fpf').textContent='';return;}
-  const byReg=_fpfGrpRegion;
-  // Build block→module map from per_ip data
-  const blkMod={};
-  allRecs.forEach(r=>{if(!blkMod[r.BLOCK])blkMod[r.BLOCK]=r.MODULE;});
-  // Build module+ip fault count lookup (sum across all blocks/regions in module)
-  const _fcMI={};
-  Object.entries(HRY_CFG).forEach(([k,v])=>{
-    const p=k.split('|');const mod=blkMod[p[0]];if(!mod)return;
-    const mk=mod+'|'+p[2];_fcMI[mk]=(_fcMI[mk]||0)+v;
-  });
-  // Aggregate unique fails per (MODULE, [BLOCK, REGION,] IP)
+  // detect IP-L* hierarchy columns present in data
+  var allIpLColsFPF=[];
+  for(var _fli=0;_fli<=4;_fli++){const _fc='IP-L'+_fli;if(allRecs.some(function(r){return r[_fc]!=null&&r[_fc]!=='';}))allIpLColsFPF.push(_fc);}
+  var hasIpLvlsFPF=allIpLColsFPF.length>0;
+  var ipLColsFPF=hasIpLvlsFPF?allIpLColsFPF:[];
+  var showIpColFPF=!hasIpLvlsFPF;
+  // populate block / region dropdowns and apply exclusion filters
+  _fpfAllBlockList=[...new Set(allRecs.map(r=>r.BLOCK).filter(Boolean))].sort();
+  _fpfAllRegionList=[...new Set(allRecs.map(r=>r.REGION).filter(Boolean))].sort();
+  _fpfAllBlockList=[...new Set(allRecs.map(r=>r.BLOCK).filter(Boolean))].sort();
+  _fpfAllRegionList=[...new Set(allRecs.map(r=>r.REGION).filter(Boolean))].sort();
+  _fpfRebuildDD('fpf-blk-filters',_fpfAllBlockList,_fpfExclBlocks,'_fpfToggleBlk');
+  _fpfRebuildDD('fpf-reg-filters',_fpfAllRegionList,_fpfExclRegions,'_fpfToggleReg');
+  _fpfDDLbl('fpf-blk-lbl',_fpfExclBlocks,_fpfAllBlockList);
+  _fpfDDLbl('fpf-reg-lbl',_fpfExclRegions,_fpfAllRegionList);
+  var recs=allRecs;
+  if(_fpfExclBlocks.size>0)recs=recs.filter(r=>!_fpfExclBlocks.has(r.BLOCK));
+  if(_fpfExclRegions.size>0)recs=recs.filter(r=>!_fpfExclRegions.has(r.REGION));
+  // Aggregate by (module, block, region, IP-L* path)
   const agg={};
-  allRecs.forEach(r=>{
+  recs.forEach(r=>{
     if(!TT_SHOW.has(r.TESTTYPE))return;
-    const gk=r.MODULE+'|'+(byReg?r.BLOCK+'|'+r.REGION+'|':'')+r.IP;
-    if(!agg[gk])agg[gk]={module:r.MODULE,block:byReg?r.BLOCK:null,region:byReg?r.REGION:null,ip:r.IP};
+    const _ipk=ipLColsFPF.map(c=>r[c]||'').join('|');
+    const gk=r.MODULE+'|'+r.BLOCK+'|'+r.REGION+'|'+_ipk+(ipLColsFPF.length===0?'|'+r.IP:'');
+    if(!agg[gk]){
+      var _lbl=hasIpLvlsFPF?ipLColsFPF.map(c=>r[c]||'').filter(Boolean).join(' › '):r.IP;
+      agg[gk]={module:r.MODULE,block:r.BLOCK,region:r.REGION,ip:_lbl,_rawIps:new Set()};
+      ipLColsFPF.forEach(c=>{agg[gk][c]=r[c]||'';});
+    }
+    agg[gk]._rawIps.add(r.IP);
+    if(r.STUCKAT_FAULTS!=null&&!isNaN(r.STUCKAT_FAULTS))agg[gk]._stFaults=(agg[gk]._stFaults||0)+Number(r.STUCKAT_FAULTS);
+    if(r.ATSPEED_FAULTS!=null&&!isNaN(r.ATSPEED_FAULTS))agg[gk]._atFaults=(agg[gk]._atFaults||0)+Number(r.ATSPEED_FAULTS);
     if(!agg[gk]._sALL)agg[gk]._sALL=new Set();
     agg[gk]._sALL.add(r.VISUAL_ID);
     const sk='_s'+r.TESTTYPE;
@@ -1164,15 +1372,22 @@ function drawFaultPerFault(){
     agg[gk][sk].add(r.VISUAL_ID);
   });
   const rows=Object.values(agg).map(g=>{
-    const faultCount=byReg?(HRY_CFG[g.block+'|'+g.region+'|'+g.ip]||0):(_fcMI[g.module+'|'+g.ip]||0);
+    // fault count is fixed per IP — not filtered by TT_SHOW
+    const _hasFCols=(g._stFaults||0)+(g._atFaults||0)>0;
+    const faultCount=_hasFCols
+      ?((g._stFaults||0)+(g._atFaults||0))
+      :(()=>{let s=0;for(const rip of g._rawIps){const k=g.region+'|'+rip;s+=(_cfcST[k]||0)+(_cfcAT[k]||HRY_CFG[g.block+'|'+k]||0);}return s;})();
     const failDies=g._sALL?g._sALL.size:0;
     const pct=failDies/totalUniqDies*100;
-    const o={module:g.module,block:g.block,region:g.region,ip:g.ip,faultCount,failDies,pct};
+    const _rk=g.module+'|'+(g.block||'')+'|'+(g.region||'')+'|'+g.ip;
+    const o={module:g.module,block:g.block,region:g.region,ip:g.ip,faultCount,failDies,pct,_rk};
+    ipLColsFPF.forEach(c=>{o[c]=g[c]||'';});
     TT_ALL.forEach(tt=>{o[tt]=g['_s'+tt]?g['_s'+tt].size:0;});
     return o;
   }).sort((a,b)=>{
     let d=a.module.localeCompare(b.module);if(d)return d;
-    if(byReg){d=(a.block||'').localeCompare(b.block||'');if(d)return d;d=(a.region||'').localeCompare(b.region||'');if(d)return d;}
+    d=(a.block||'').localeCompare(b.block||'');if(d)return d;
+    d=(a.region||'').localeCompare(b.region||'');if(d)return d;
     return a.ip.localeCompare(b.ip);
   });
   if(!rows.length){noPlot('plot-fpf','No data for selected filters');document.getElementById('tbl-fpf').innerHTML='';document.getElementById('cnt-fpf').textContent='';return;}
@@ -1183,23 +1398,26 @@ function drawFaultPerFault(){
     'star-triangle-up','star-square','hourglass','bowtie','circle-cross','circle-x','square-cross'];
   const allIPs=[...new Set(rows.map(r=>r.ip))].sort();
   const IP_SYM={}; allIPs.forEach((ip,i)=>{IP_SYM[ip]=IP_SYMS[i%IP_SYMS.length];});
-  const _seenLeg=new Set();
-  const actTraces=rows.map(r=>{
-    const showLeg=!_seenLeg.has(r.ip); _seenLeg.add(r.ip);
-    return{
-      type:'scatter',mode:'markers',
-      name:r.ip,legendgroup:r.ip,showlegend:showLeg,
-      x:[r.faultCount],
-      y:[r.pct],
-      text:['<b>'+r.ip+'</b>'+(byReg?'<br>Block: '+r.block+'<br>Region: '+r.region:'')+'<br>Module: '+r.module+'<br>Fault Count: '+r.faultCount.toLocaleString()+'<br>Fail Dies: '+r.failDies+'<br>YieldLoss: '+r.pct.toFixed(2)+'%'],
-      hovertemplate:'%{text}<extra></extra>',
-      marker:{size:9,color:mc(r.module),symbol:IP_SYM[r.ip],opacity:.85,line:{color:'#fff',width:.5}}
-    };
-  });
-  // Target: degree-3 polynomial fit in log10(x) space
+  // Target: degree-3 polynomial fit in log10(x) space — computed early so hover can use it
   const tgtSorted=[...YIELD_TARGET].sort((a,b)=>a.fc-b.fc);
   const txs=tgtSorted.map(r=>r.fc),tys=tgtSorted.map(r=>r.pct);
   const polyFn=_polyFit(txs,tys,3);
+  const _seenLeg=new Set();
+  const actTraces=rows.map(r=>{
+    const showLeg=!_seenLeg.has(r.ip); _seenLeg.add(r.ip);
+    const _sel=_fpfSelected&&r._rk===_fpfSelected;
+    const _hasOther=_fpfSelected&&!_sel;
+    const _tgt=polyFn?polyFn(Math.max(1,r.faultCount)):null;
+    return{
+      type:'scatter',mode:'markers',
+      name:r.ip,legendgroup:r.ip,showlegend:showLeg,
+      x:[Math.max(1,r.faultCount)],
+      y:[r.pct],
+      text:['<b>'+r.ip+'</b><br>Block: '+(r.block||'')+'<br>Region: '+(r.region||'')+'<br>Module: '+r.module+'<br>FC: '+r.faultCount.toLocaleString()+'<br>Fail Dies: '+r.failDies+'<br>YL: '+r.pct.toFixed(2)+'%'+(_tgt!=null?'<br><span style="color:#aaa">Target: '+_tgt.toFixed(2)+'%  &Delta;: '+((r.pct-_tgt)>=0?'+':'')+(r.pct-_tgt).toFixed(2)+'%</span>':'')],
+      hovertemplate:'%{text}<extra></extra>',
+      marker:{size:_sel?16:(_hasOther?7:9),color:_sel?'#f59e0b':mc(r.block||r.module),symbol:IP_SYM[r.ip],opacity:_hasOther?.35:.9,line:{color:_sel?'#92400e':'#fff',width:_sel?2.5:.5}}
+    };
+  });
   let polyTrace;
   if(polyFn){
     const lmin=Math.log10(Math.max(1,txs[0])),lmax=Math.log10(txs[txs.length-1]);
@@ -1217,31 +1435,42 @@ function drawFaultPerFault(){
     hovertemplate:'%{text}<extra></extra>',
     marker:{size:7,color:'#888',symbol:'x',opacity:.8}};
   Plotly.react('plot-fpf',[...actTraces,polyTrace,tgtPts],{
-    height:_ph('plot-fpf'),margin:{t:30,l:65,r:20,b:160},
+    height:_ph('plot-fpf'),margin:{t:30,l:65,r:20,b:50},
     xaxis:{type:'log',title:'Fault Count (log)',gridcolor:'#e8ecf0',tickfont:{size:10},titlefont:{size:11},showgrid:true},
     yaxis:{title:'YieldLoss (%)',gridcolor:'#e8ecf0',tickfont:{size:10},titlefont:{size:11},showgrid:true,zeroline:true,zerolinecolor:'#ccc'},
-    legend:{font:{size:9},orientation:'h',y:-0.18,x:0.5,xanchor:'center',yanchor:'top'},
+    showlegend:false,
     plot_bgcolor:'#fff',paper_bgcolor:'#fff',hoverlabel:HL
   },{...CFG,responsive:true});
-  // Sortable table: Module | [Block | Region] | IP | Fault Count | TT cols | Fail Dies | % Fail
+  // Sortable table: Module | [Block | Region] | IP-L* | IP | Fault Count | TT cols | Fail Dies | % Fail
   const TT_BASE={CHAIN:'#0071C5',STUCKAT:'#E8421C',ATSPEED:'#1CA44A',DIAG:'#8B5CF6'};
   const _ss=_fpfSortState||{col:null,asc:true};
   let trows=[...rows];
+  const _fcs=_fpfColSearch;
+  if(Object.keys(_fcs).some(k=>_fcs[k])){trows=trows.filter(r=>Object.keys(_fcs).every(k=>{if(!_fcs[k])return true;return String(r[k]||'').toLowerCase().includes(_fcs[k]);}));}
   if(_ss.col){trows.sort((a,b)=>{const av=a[_ss.col],bv=b[_ss.col];const cmp=typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||''));return _ss.asc?cmp:-cmp;});}
   const _fth=(c,l,xtra)=>'<th onclick="fpfSort(\''+c+'\')" class="'+(c===_ss.col?'sarr '+(_ss.asc?'asc':'desc'):'')+'"'+(xtra?' '+xtra:'')+'>'+l+'</th>';
+  const _fsh=(c)=>'<th style="padding:1px 2px"><input class="dt-srch" data-col="'+c+'" placeholder="\uD83D\uDD0D" value="'+(_fcs[c]||'')+'" oninput="fpfColSearch(\''+c+'\',this.value)" onclick="event.stopPropagation()"></th>';
+  const _fpfAllCols=['module','block','region',...ipLColsFPF,...(showIpColFPF?['ip']:[]),'faultCount',...TT_ALL,'failDies','pct'];
   let thtml='<table class="dt"><thead><tr>'
     +_fth('module','Module')
-    +(byReg?_fth('block','Block')+_fth('region','Region'):'')
-    +_fth('ip','IP')
+    +_fth('block','Block')
+    +_fth('region','Region')
+    +ipLColsFPF.map(c=>_fth(c,c)).join('')
+    +(showIpColFPF?_fth('ip','IP'):'')
     +_fth('faultCount','Fault Count','style="color:#2980b9"')
     +TT_ALL.map(tt=>_fth(tt,tt,'style="color:'+(TT_BASE[tt]||'#333')+'"')).join('')
     +_fth('failDies','Fail Dies','style="color:#b45309;font-weight:700"')
     +_fth('pct','% Fail','style="color:#b45309;font-weight:700"')
-    +'</tr></thead><tbody>';
+    +'</tr>'
+    +'<tr class="dt-srch-row">'+_fpfAllCols.map(c=>_fsh(c)).join('')+'</tr>'
+    +'</thead><tbody>';
   trows.forEach(r=>{
-    thtml+='<tr>'
-      +'<td>'+r.module+'</td>'+(byReg?'<td>'+(r.block||'')+'</td><td>'+(r.region||'')+'</td>':'')
-      +'<td>'+r.ip+'</td>'
+    const _sel=_fpfSelected&&r._rk===_fpfSelected;
+    thtml+='<tr data-fpfkey="'+r._rk+'" onclick="fpfSelectRow(this)" style="cursor:pointer'+(_sel?';background:#fef3c7;outline:2px solid #f59e0b;outline-offset:-1px':'')+'">'
+      +'<td>'+r.module+'</td>'
+      +'<td>'+(r.block||'')+'</td><td>'+(r.region||'')+'</td>'
+      +ipLColsFPF.map(c=>'<td style="font-size:8px">'+(r[c]||'')+'</td>').join('')
+      +(showIpColFPF?'<td>'+r.ip+'</td>':'')
       +'<td class="n">'+r.faultCount.toLocaleString()+'</td>'
       +TT_ALL.map(tt=>'<td class="n">'+(r[tt]||0)+'</td>').join('')
       +'<td class="n" style="color:#b45309;font-weight:700">'+r.failDies+'</td>'
@@ -1251,8 +1480,11 @@ function drawFaultPerFault(){
   thtml+='</tbody></table>';
   document.getElementById('tbl-fpf').innerHTML=thtml;
   document.getElementById('cnt-fpf').textContent=trows.length+' rows';
+  if(_fpfIpFocusCol){var _ffi=document.querySelector('#tbl-fpf .dt-srch[data-col="'+_fpfIpFocusCol+'"]');if(_ffi){_ffi.focus();_ffi.setSelectionRange(_ffi.value.length,_ffi.value.length);}_fpfIpFocusCol=null;}
 }
 function fpfSort(col){_fpfSortState={col,asc:_fpfSortState&&_fpfSortState.col===col?!_fpfSortState.asc:false};drawFaultPerFault();}
+function fpfColSearch(col,val){_fpfColSearch[col]=val.toLowerCase();_fpfIpFocusCol=col;drawFaultPerFault();}
+function fpfSelectRow(tr){const k=tr.dataset.fpfkey;_fpfSelected=(k===_fpfSelected)?null:k;drawFaultPerFault();}
 
 /* ── Wafer Map (SVG / wmRender) ────────────────────────────────────── */
 function toggleWMShow(tt,on){if(on)WM_TT_SHOW.add(tt);else WM_TT_SHOW.delete(tt);drawWaferMap();}
@@ -1281,7 +1513,7 @@ function _wmColor(d,mode,maxFc,totalWfrs,bg,selMips){
     var fbBase=mc('FB:'+fbVal);
     return d._fc>0?fbBase:'url(#wmck-'+fbBase.slice(1)+')';
   }
-  if(!d._fc)return'#1e3a50';
+  if(!d._fc)return d._excl?'#2e4455':'#1e3a50';
   if(mode==='freq'){
     const t=(d._wfrs?d._wfrs.length:0)/Math.max(1,totalWfrs);
     return _heatColor(t);
@@ -1300,7 +1532,7 @@ function _wmColor(d,mode,maxFc,totalWfrs,bg,selMips){
   if(mode==='ip'&&d._failPairs){
     /* Color by most-frequently failing IP filtered to currently-selected IPs */
     const ipCount={};
-    d._failPairs.forEach(function(p){var pts=p.split(':');var ip=pts[2];if(!ip)return;var key=pts[0]+'|'+pts[1]+'|'+ip;if(selMips&&!selMips.has(key))return;ipCount[ip]=(ipCount[ip]||0)+1;});
+    d._failPairs.forEach(function(p){var pts=p.split(':');var ip=pts[2];if(!ip)return;var partKey=(_blkRegToPart[pts[0]+'|'+pts[1]]||pts[0])+'|'+pts[1]+'|'+ip;if(selMips&&!selMips.has(partKey))return;ipCount[ip]=(ipCount[ip]||0)+1;});
     var topIp=Object.entries(ipCount).sort(function(a,b){return b[1]-a[1];})[0];
     if(!topIp)return _heatColor(d._fc/maxFc);  /* no selected IP matches — fall back to heat color */
     return mc(topIp[0]);
@@ -1367,12 +1599,12 @@ function _buildWmFilterDDs(aggDies,bg){
     ipDDHtml+='</div></div>';  /* also re-apply search-hide to region headers after build */
     if(WM_IP_SEARCH)setTimeout(function(){_wmIpSearch(WM_IP_SEARCH);},0);
   }
-  var html='<span style="font-size:8px;color:#6a8a9a">Die(X,Y):</span>';
-  html+='<input id="wm-fi-dloc" class="wm-fi" placeholder="5,12" value="'+WM_F_DLOC+'" oninput="WM_F_DLOC=this.value.trim();_wmApplyAndRedraw()" style="width:60px">';
+  var html='<span style="font-size:8px;color:#6a8a9a">Reticle(X,Y):</span>';
+  html+='<input id="wm-fi-dloc" class="wm-fi" placeholder="X or X,Y" title="Exclude this reticle position from map &amp; site analysis" value="'+WM_F_DLOC+'" oninput="WM_F_DLOC=this.value.trim();_wmApplyAndRedraw()" style="width:60px">';
   html+=_dd('Shot','shot',sShots,WM_F_SHOTS,'shot');
   html+=_dd('Site','site',sSites,WM_F_SITES,'site');
   html+=ipDDHtml;
-  html+='<button style="margin-left:auto;font-size:8px;padding:1px 7px;border:1px solid #2a4060;border-radius:3px;background:none;color:#8ab4d4;cursor:pointer" onclick="WM_F_DLOC=\'\';WM_F_SHOTS=null;WM_F_SITES=null;drawWaferMap()">Clear</button>';
+  html+='<button style="margin-left:auto;font-size:8px;padding:1px 7px;border:1px solid #2a4060;border-radius:3px;background:none;color:#8ab4d4;cursor:pointer" onclick="WM_F_DLOC=\'\';WM_F_SHOTS=null;WM_F_SITES=null;WM_F_EXCL_DLOCS=null;drawWaferMap()">Clear</button>';
   bar.innerHTML=html;
   /* Set indeterminate on partial region checkboxes in IP dropdown */
   bar.querySelectorAll('.wm-fdd-reg-cb[data-partial]').forEach(function(cb){cb.indeterminate=true;});
@@ -1428,6 +1660,24 @@ function _wmToggleDd(e,id){
   WM_OPEN_DD=wasOpen?null:id;
   if(!wasOpen)p.classList.add('open');
 }
+function _wmToggleDloc(xy,cb){
+  /* Normalize to int coords to match Math.round() keys used in fading */
+  var pts=xy.split(',');xy=Math.round(+pts[0])+','+Math.round(+pts[1]);
+  if(!WM_F_EXCL_DLOCS)WM_F_EXCL_DLOCS=new Set();
+  if(cb.checked)WM_F_EXCL_DLOCS.delete(xy);else WM_F_EXCL_DLOCS.add(xy);
+  if(WM_F_EXCL_DLOCS.size===0)WM_F_EXCL_DLOCS=null;
+  drawWaferMap();
+}
+function _wmDlocAll(show){
+  var cbs=document.querySelectorAll('#rv-site-body input[type="checkbox"][onchange*="_wmToggleDloc"]');
+  if(show){
+    WM_F_EXCL_DLOCS=null;
+  }else{
+    if(!WM_F_EXCL_DLOCS)WM_F_EXCL_DLOCS=new Set();
+    cbs.forEach(function(cb){var m=cb.getAttribute('onchange').match(/'([^']+)'/);if(m)WM_F_EXCL_DLOCS.add(m[1]);});
+  }
+  drawWaferMap();
+}
 function _wmDdChange(type,cb){
   if(type==='ip'){
     var ipVal=cb.value,on=cb.checked,regVal=cb.dataset.reg;
@@ -1451,11 +1701,13 @@ function _wmApplyAndRedraw(){
 function _applyWmFilters(aggDies,bg){
   if(!WM_F_DLOC&&!WM_F_SHOTS&&!WM_F_SITES)return aggDies;
   return aggDies.filter(function(d){
+    /* Die Loc: EXCLUSION — typed X or X,Y is hidden from map and site analysis */
     if(WM_F_DLOC){
       var parts=WM_F_DLOC.split(',').map(function(s){return s.replace(/[XYxy=\s]/g,'');});
       var fx=parts[0]?parseInt(parts[0]):null,fy=parts[1]?parseInt(parts[1]):null;
-      if(fx!==null&&!isNaN(fx)&&+d.x!==fx)return false;
-      if(fy!==null&&!isNaN(fy)&&+d.y!==fy)return false;
+      if(fx!==null&&!isNaN(fx)&&+d.x===fx){
+        if(fy===null||isNaN(fy)||+d.y===fy)return false;
+      }
     }
     if(WM_F_SHOTS&&bg&&bg.ret_map){var rm=bg.ret_map[d.x+','+d.y];var sh=rm&&rm[2]!=null?rm[2]:null;if(sh===null||!WM_F_SHOTS.has(sh))return false;}
     if(WM_F_SITES&&bg&&bg.ret_map&&bg.ret_site_num){var rm2=bg.ret_map[d.x+','+d.y];if(!rm2)return false;var sn=bg.ret_site_num[rm2[0]+','+rm2[1]];if(sn==null||!WM_F_SITES.has(+sn))return false;}
@@ -1499,7 +1751,6 @@ function _getWmDies(){
       if(!ttFails.length)return false;
       if(_rvIBFilter.size>0&&!_rvIBFilter.has(String(d.IB||'').trim()))return false;
       if(_rvFBFilter.size>0&&!_rvFBFilter.has(String(d.FB||'').trim()))return false;
-      if(_rvRetFilter.size>0&&!_rvRetFilter.has(String(d.Reticle||'').trim()))return false;
       return true;
     });
   }
@@ -1510,7 +1761,6 @@ function _getWmDies(){
     if(!ttFails.length)return false;
     if(_rvIBFilter.size>0&&!_rvIBFilter.has(String(d.IB||'').trim()))return false;
     if(_rvFBFilter.size>0&&!_rvFBFilter.has(String(d.FB||'').trim()))return false;
-    if(_rvRetFilter.size>0&&!_rvRetFilter.has(String(d.Reticle||'').trim()))return false;
     return true;
   });
 }
@@ -1589,7 +1839,7 @@ function drawWaferMap(){
     if(_allMipsOn||!a._failPairs.size){
       a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0);
     }else{
-      var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var key=pts[0]+'|'+pts[1]+'|'+pts[2];if(key&&_selMipSet.has(key))fc++;});
+      var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var partKey=(_blkRegToPart[pts[0]+'|'+pts[1]]||pts[0])+'|'+pts[1]+'|'+pts[2];if(pts[2]?_selMipSet.has(partKey):true)fc++;});
       a._fc=fc;
     }
   });
@@ -1598,7 +1848,22 @@ function drawWaferMap(){
   _buildWmFilterDDs(aggDies,bg);
 
   /* Apply extra wafer-map filters (die loc, shot, block, site) */
-  const wmFiltAgg=_applyWmFilters(aggDies,bg);
+  const wmFiltAgg=_applyWmFilters(aggDies,bg).map(function(d){
+    /* Fade dies on unchecked site checkboxes: keep in map but zero _fc so they appear empty */
+    if(_rvRetFilter.size>0&&bg&&bg.ret_map&&bg.ret_site_num){
+      const _rm=bg.ret_map[d.x+','+d.y];
+      const _sn=_rm?bg.ret_site_num[_rm[0]+','+_rm[1]]:null;
+      if(_sn!=null&&!_rvRetFilter.has(String(_sn)))
+        return Object.assign({},d,{_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,_failPairs:new Set(),_wfrs:[]});
+    }
+    /* Fade dies unchecked in Reticle Loc Analysis table (same visual as Sites) */
+    if(WM_F_EXCL_DLOCS){
+      var _dk=Math.round(d.x)+','+Math.round(d.y);
+      if(WM_F_EXCL_DLOCS.has(_dk))
+        return Object.assign({},d,{_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,_failPairs:new Set(),_wfrs:[],_excl:true});
+    }
+    return d;
+  });
   const wmAllowXY=new Set(wmFiltAgg.map(d=>d.x+'|'+d.y));
   const maxFc=Math.max(1,...wmFiltAgg.filter(d=>d._fc>0).map(d=>d._fc));
 
@@ -1609,7 +1874,14 @@ function drawWaferMap(){
 
   /* Build composite die array: bg positions + fail positions merged */
   const composMap={};
-  if(bg&&bg.x){bg.x.forEach((x,i)=>{const k=x+','+bg.y[i];if(!composMap[k])composMap[k]={x,y:bg.y[i],_fc:0,_wfrs:[],_failPairs:new Set()};});}
+  if(bg&&bg.x){bg.x.forEach((x,i)=>{
+    const k=x+','+bg.y[i];
+    if(WM_F_SITES&&bg.ret_map&&bg.ret_site_num){
+      const _rm=bg.ret_map[k];if(!_rm)return;
+      const _sn=bg.ret_site_num[_rm[0]+','+_rm[1]];if(_sn==null||!WM_F_SITES.has(+_sn))return;
+    }
+    if(!composMap[k])composMap[k]={x,y:bg.y[i],_fc:0,_wfrs:[],_failPairs:new Set()};
+  });}
   wmFiltAgg.forEach(d=>{composMap[d.x+','+d.y]=d;});
   /* Attach IB/FB for ALL die positions (from die_bins) so we can color non-failing dies */
   const _dbins=D.die_bins||{};
@@ -1665,11 +1937,12 @@ function drawWaferMap(){
     /* Group fail pairs by block→region→ip */
     const bri={};
     if(d._failPairs)d._failPairs.forEach(function(p){
-      var pts=p.split(':');var blk=pts[0]||'?',part=pts[1]||'',ip=pts[2]||part;
-      var reg=_blkIpToReg[blk+'|'+ip]||part||ip;
-      if(!bri[blk])bri[blk]={};
-      if(!bri[blk][reg])bri[blk][reg]=new Set();
-      if(ip)bri[blk][reg].add(ip);
+      var pts=p.split(':');var blk=pts[0]||'?',reg=pts[1]||'',ip=pts[2]||reg;
+      var part=_blkRegToPart[blk+'|'+reg]||'';
+      var topKey=blk+(part?'|'+part:'');
+      if(!bri[topKey])bri[topKey]={blk:blk,part:part,regs:{}};
+      if(!bri[topKey].regs[reg])bri[topKey].regs[reg]=new Set();
+      if(ip)bri[topKey].regs[reg].add(ip);
     });
     var tip='<b>Die ('+d.x+', '+d.y+')</b>';
     if(si&&si.site!=null)tip+=' <b>Site '+si.site+'</b>';
@@ -1678,10 +1951,11 @@ function drawWaferMap(){
     if(ibStr)tip+=' &nbsp;IB:<b>'+ibStr+'</b>';
     if(fbStr)tip+=' FB:<b style="color:#f59e0b">'+fbStr+'</b>';
     tip+='<br>Fails: '+d._fc+' ('+d._wfrs.length+'/'+wfrKeys.length+' wfrs)';
-    Object.keys(bri).slice(0,3).forEach(function(blk){
-      Object.keys(bri[blk]).slice(0,3).forEach(function(reg){
-        var ips=[...bri[blk][reg]].slice(0,4);
-        tip+='<br><span style="color:#8ab4d4">'+blk+'</span>→<span style="color:#c0ccd8">'+reg+'</span>→<span style="color:#f59e0b">'+ips.join(', ')+'</span>';
+    Object.keys(bri).slice(0,3).forEach(function(topKey){
+      var g=bri[topKey];
+      Object.keys(g.regs).slice(0,3).forEach(function(reg){
+        var ips=[...g.regs[reg]].slice(0,4);
+        ips.forEach(function(ip){tip+='<br>'+_failPath(g.blk,g.part,reg,ip);});
       });
     });
     tip+=_wmApCrTip(d._apCr);
@@ -1741,8 +2015,9 @@ function drawWaferMap(){
     const tile=document.createElement('div');tile.className='svg-wm-tile';tile.dataset.idx=_wIdx;
     const title=document.createElement('div');title.className='svg-wm-title';
     const wDies=wfrMap[wk].filter(d=>wmAllowXY.has(d.X+'|'+d.Y));
-    if(!wDies.length){
-      title.textContent=wk.replace('/',' · ')+' (filtered)';tile.appendChild(title);
+    /* skip "(filtered)" label only when no spatial filter is active */
+    if(!wDies.length&&!WM_F_EXCL_DLOCS&&!WM_F_DLOC&&!WM_F_SHOTS&&!WM_F_SITES){
+      title.textContent=wk.replace('/',' ·')+' (filtered)';tile.appendChild(title);
       window._wmTileCaches.push(null);tilesWrap.appendChild(tile);return;
     }
     title.textContent=wk.replace('/',' · ');tile.appendChild(title);
@@ -1767,11 +2042,22 @@ function drawWaferMap(){
     const wAgg=Object.values(wxyMap);
     wAgg.forEach(function(a){
       if(_allMipsOnC||!a._failPairs.size){a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0);}
-      else{var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var key=pts[0]+'|'+pts[1]+'|'+pts[2];if(key&&_selMipSetC&&_selMipSetC.has(key))fc++;});a._fc=fc;}
+      else{var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var partKey=(_blkRegToPart[pts[0]+'|'+pts[1]]||pts[0])+'|'+pts[1]+'|'+pts[2];if(pts[2]?(_selMipSetC&&_selMipSetC.has(partKey)):true)fc++;});a._fc=fc;}
     });
+    /* Apply site-checkbox and die-loc-checkbox fading to per-tile dies (mirrors composite map) */
+    if(_rvRetFilter.size>0&&bg&&bg.ret_map&&bg.ret_site_num){
+      wAgg.forEach(function(a){var _rm=bg.ret_map[a.x+','+a.y];var _sn=_rm?bg.ret_site_num[_rm[0]+','+_rm[1]]:null;if(_sn!=null&&!_rvRetFilter.has(String(_sn)))a._fc=a.CHAIN=a.STUCKAT=a.ATSPEED=a.DIAG=0;});
+    }
+    if(WM_F_EXCL_DLOCS){
+      wAgg.forEach(function(a){var _dk=Math.round(a.x)+','+Math.round(a.y);if(WM_F_EXCL_DLOCS.has(_dk)){a._fc=a.CHAIN=a.STUCKAT=a.ATSPEED=a.DIAG=0;a._excl=true;}});
+    }
     const wMaxFc=Math.max(1,...wAgg.map(d=>d._fc));
     const wComposMap={};
-    if(bg&&bg.x){bg.x.forEach((x,i)=>{const k=x+','+bg.y[i];if(!wComposMap[k])wComposMap[k]={x,y:bg.y[i],_fc:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set()};});}
+    if(bg&&bg.x){bg.x.forEach((x,i)=>{
+      const k=x+','+bg.y[i];
+      if(WM_F_SITES&&bg.ret_map&&bg.ret_site_num){const _rm=bg.ret_map[k];if(!_rm)return;const _sn=bg.ret_site_num[_rm[0]+','+_rm[1]];if(_sn==null||!WM_F_SITES.has(+_sn))return;}
+      if(!wComposMap[k])wComposMap[k]={x,y:bg.y[i],_fc:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set()};
+    });}
     wAgg.forEach(d=>{wComposMap[d.x+','+d.y]=d;});
     const _wbins=_dbinsTile[wk]||{};
     Object.keys(_wbins).forEach(function(xy){var ent=_wbins[xy];if(!wComposMap[xy]){var pts=xy.split(',');wComposMap[xy]={x:+pts[0],y:+pts[1],_fc:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set(),_apCr:{}};}if(ent.ib&&!wComposMap[xy]._ib)wComposMap[xy]._ib=ent.ib;if(ent.fb&&!wComposMap[xy]._fb)wComposMap[xy]._fb=ent.fb;if(ent.ap_cr){if(!wComposMap[xy]._apCr)wComposMap[xy]._apCr={};Object.keys(ent.ap_cr).forEach(function(g){if(!wComposMap[xy]._apCr[g])wComposMap[xy]._apCr[g]=ent.ap_cr[g];});}});
@@ -1798,13 +2084,14 @@ function drawWaferMap(){
         return tip;
       }
       const si=_wmGetSite(d.x,d.y,bg);
-      const bri={};
+      const bri2={};
       if(d._failPairs)d._failPairs.forEach(function(p){
-        var pts=p.split(':');var blk=pts[0]||'?',part=pts[1]||'',ip=pts[2]||part;
-        var reg=_blkIpToReg[blk+'|'+ip]||part||ip;
-        if(!bri[blk])bri[blk]={};
-        if(!bri[blk][reg])bri[blk][reg]=new Set();
-        if(ip)bri[blk][reg].add(ip);
+        var pts=p.split(':');var blk=pts[0]||'?',reg=pts[1]||'',ip=pts[2]||reg;
+        var part=_blkRegToPart[blk+'|'+reg]||'';
+        var topKey=blk+(part?'|'+part:'');
+        if(!bri2[topKey])bri2[topKey]={blk:blk,part:part,regs:{}};
+        if(!bri2[topKey].regs[reg])bri2[topKey].regs[reg]=new Set();
+        if(ip)bri2[topKey].regs[reg].add(ip);
       });
       var tip='<b>Die ('+d.x+', '+d.y+')</b>';
       if(si&&si.site!=null)tip+=' <b>Site '+si.site+'</b>';
@@ -1813,10 +2100,11 @@ function drawWaferMap(){
       if(ibStr)tip+=' &nbsp;IB:<b>'+ibStr+'</b>';
       if(fbStr)tip+=' FB:<b style="color:#f59e0b">'+fbStr+'</b>';
       tip+='<br>Fails: <b>'+d._fc+'</b>';
-      Object.keys(bri).slice(0,4).forEach(function(blk){
-        Object.keys(bri[blk]).slice(0,4).forEach(function(reg){
-          var ips=[...bri[blk][reg]].slice(0,5);
-          tip+='<br><span style="color:#8ab4d4">'+blk+'</span>\u2192<span style="color:#c0ccd8">'+reg+'</span>\u2192<span style="color:#f59e0b">'+ips.join(', ')+'</span>';
+      Object.keys(bri2).slice(0,4).forEach(function(topKey){
+        var g=bri2[topKey];
+        Object.keys(g.regs).slice(0,4).forEach(function(reg){
+          var ips=[...g.regs[reg]].slice(0,5);
+          ips.forEach(function(ip){tip+='<br>'+_failPath(g.blk,g.part,reg,ip);});
         });
       });
       tip+=_wmApCrTip(d._apCr);
@@ -1860,30 +2148,34 @@ function drawWaferMap(){
   if(siteBody){
     const SCOLS=['#0071C5','#E8421C','#1CA44A','#8B5CF6','#F59E0B','#06B6D4','#EC4899','#10B981','#A78BFA','#F97316'];
     const _siteColor=function(s){if(s==null||s===''||s==='?')return'#3a4060';var n=parseInt(s);return isNaN(n)?SCOLS[Math.abs(s.charCodeAt(0))%SCOLS.length]:SCOLS[(n-1)%SCOLS.length]||'#3a4060';};
-    const siteMap={}; let totalFail=0;
+    /* totalBgPos = unique die positions × wafer count = total (die,wafer) opportunities */
+    const totalBgPos=composArr.length*wfrKeys.length;
+    const siteMap={};
     const retMapS=bg&&bg.ret_map?bg.ret_map:{},retSiteNumS=bg&&bg.ret_site_num?bg.ret_site_num:{};
     wmFiltAgg.forEach(function(d){
       if(!d._fc)return;
-      totalFail+=d._fc;
       const rm=retMapS[d.x+','+d.y];
       const sn=(rm&&retSiteNumS[rm[0]+','+rm[1]]!=null)?String(retSiteNumS[rm[0]+','+rm[1]]):'?';
       if(!siteMap[sn])siteMap[sn]={fc:0,pos:0,wfrs:new Set()};
-      siteMap[sn].fc+=d._fc;siteMap[sn].pos++;
+      siteMap[sn].fc+=d._fc;
+      /* count each (die,wafer) pair that failed on this site */
+      siteMap[sn].pos+=d._wfrs?d._wfrs.length:1;
       if(d._wfrs)d._wfrs.forEach(function(w){siteMap[sn].wfrs.add(w);});
     });
-    if(!totalFail){siteBody.innerHTML='<span style="color:#445566">No fail data in current filter</span>';}
+    if(!totalBgPos||!Object.keys(siteMap).length){siteBody.innerHTML='<span style="color:#445566">No fail data in current filter</span>';}
     else{
-      const srows=Object.keys(siteMap).map(function(sn){return{sn,fc:siteMap[sn].fc,pos:siteMap[sn].pos,pct:siteMap[sn].fc/totalFail,nWfrs:siteMap[sn].wfrs.size};}).sort(function(a,b){return b.fc-a.fc;});
+      /* pct = failing die positions on this site / total visible background positions */
+      const srows=Object.keys(siteMap).map(function(sn){return{sn,fc:siteMap[sn].fc,pos:siteMap[sn].pos,pct:siteMap[sn].pos/totalBgPos,nWfrs:siteMap[sn].wfrs.size};}).sort(function(a,b){return b.pos-a.pos;});
       const topPct=srows[0]?srows[0].pct:0;let shtml='';
-      if(topPct>=0.5)shtml+='<div style="background:#2a1a0a;border-left:3px solid #e67e22;padding:5px 8px;font-size:9px;color:#ffd166;margin-bottom:6px;border-radius:0 4px 4px 0">&#9888; Site <b>'+srows[0].sn+'</b> = <b>'+Math.round(topPct*100)+'%</b> of fails. Possible reticle/mask defect.</div>';
-      else if(topPct>=0.3)shtml+='<div style="background:#0d1a2a;border-left:3px solid #2471a3;padding:5px 8px;font-size:9px;color:#8ab4d4;margin-bottom:6px;border-radius:0 4px 4px 0">Site <b>'+srows[0].sn+'</b> leads at '+Math.round(topPct*100)+'% — partial concentration.</div>';
-      else shtml+='<div style="background:#0d1a2a;border-left:3px solid #27ae60;padding:5px 8px;font-size:9px;color:#8ab4d4;margin-bottom:6px;border-radius:0 4px 4px 0">Fails spread across multiple sites — not single-site reticle issue.</div>';
+      if(topPct>=0.5)shtml+='<div style="background:#2a1a0a;border-left:3px solid #e67e22;padding:5px 8px;font-size:9px;color:#ffd166;margin-bottom:6px;border-radius:0 4px 4px 0">&#9888; Site <b>'+srows[0].sn+'</b> = <b>'+Math.round(topPct*100)+'%</b> of visible dies fail. Possible reticle/mask defect.</div>';
+      else if(topPct>=0.3)shtml+='<div style="background:#0d1a2a;border-left:3px solid #2471a3;padding:5px 8px;font-size:9px;color:#8ab4d4;margin-bottom:6px;border-radius:0 4px 4px 0">Site <b>'+srows[0].sn+'</b> leads at '+Math.round(topPct*100)+'% of visible dies — partial concentration.</div>';
+      else shtml+='<div style="background:#0d1a2a;border-left:3px solid #27ae60;padding:5px 8px;font-size:9px;color:#8ab4d4;margin-bottom:6px;border-radius:0 4px 4px 0">Fails spread across sites — not single-site reticle issue.</div>';
       shtml+='<table style="border-collapse:collapse;width:100%;font-size:9px"><tr>'
         +'<th style="text-align:left;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Site</th>'
-        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Fail Parts</th>'
-        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Die Locs</th>'
+        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Fail IPs</th>'
+        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Die\u00d7Wfr</th>'
         +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">Wafers</th>'
-        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">% Total</th>'
+        +'<th style="text-align:right;padding:2px 6px;background:#1a2a40;color:#8ab4d4">% Dies</th>'
         +'<th style="padding:2px 6px;background:#1a2a40;color:#8ab4d4">Bar</th></tr>';
       srows.forEach(function(r){
         var col=_siteColor(r.sn);
@@ -1895,7 +2187,8 @@ function drawWaferMap(){
           +'<td style="padding:2px 6px;text-align:right;color:#ffd166">'+Math.round(r.pct*100)+'%</td>'
           +'<td style="padding:2px 6px"><div style="width:'+Math.round(r.pct*70)+'px;height:7px;background:'+col+';border-radius:2px;opacity:0.85"></div></td></tr>';
       });
-      shtml+='</table>';siteBody.innerHTML=shtml;
+      shtml+='</table>';
+      siteBody.innerHTML=shtml;
     }
   }
 
@@ -1914,7 +2207,7 @@ function drawWaferMap(){
     }else if(_mode==='ip'){
       const ipsInData=new Set();
       wmFiltAgg.filter(function(d){return d._fc>0&&d._failPairs;}).forEach(function(d){
-        d._failPairs.forEach(function(p){var pts=p.split(':');var ip=pts[2];if(!ip)return;var key=pts[0]+'|'+pts[1]+'|'+ip;if(_allMipsOn||_selMipSet.has(key))ipsInData.add(ip);});
+        d._failPairs.forEach(function(p){var pts=p.split(':');var ip=pts[2];if(!ip)return;var partKey=(_blkRegToPart[pts[0]+'|'+pts[1]]||pts[0])+'|'+pts[1]+'|'+ip;if(_allMipsOn||_selMipSet.has(partKey))ipsInData.add(ip);});
       });
       _leg.innerHTML='IP: '+[...ipsInData].sort().map(function(ip){return'<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:11px;height:11px;display:inline-block;background:'+mc(ip)+';border-radius:2px"></span>'+ip+'</span>';}).join(' ');
     }else if(_mode==='ib'||_mode==='fb'){
@@ -1952,12 +2245,139 @@ function _wmDrawTable(){
   const tblRows=sorted.slice(0,500);
   const _wmth=(c,l)=>'<th onclick="wmSort(\''+c+'\')"'+(c===_wms.col?' class="sarr '+(_wms.asc?'asc':'desc')+'"':'')+'>'+l+'</th>';
   let tHtml='<table class="dt" id="tbl-wmap-inner"><thead><tr>'+_wmth('x','X')+_wmth('y','Y')+_wmth('CHAIN','CHAIN')+_wmth('STUCKAT','STUCKAT')+_wmth('ATSPEED','ATSPEED')+_wmth('DIAG','DIAG')+_wmth('_fc','Total')+_wmth('_wl','Wafers')+'</tr></thead><tbody>';
-  tblRows.forEach(d=>{tHtml+='<tr><td>'+d.x+'</td><td>'+d.y+'</td><td class="n">'+(d.CHAIN||0)+'</td><td class="n">'+(d.STUCKAT||0)+'</td><td class="n">'+(d.ATSPEED||0)+'</td><td class="n">'+(d.DIAG||0)+'</td><td class="n" style="font-weight:bold">'+d._fc+'</td><td style="font-size:7.5px">'+d._wfrs.join(', ')+'</td></tr>';});
+  tblRows.forEach(d=>{
+    const _isSel=_wmSelDie&&_wmSelDie[0]===d.x&&_wmSelDie[1]===d.y;
+    tHtml+='<tr data-wmd-x="'+d.x+'" data-wmd-y="'+d.y+'" onclick="_wmClickDie(this,'+d.x+','+d.y+')" style="cursor:pointer'+(_isSel?';background:#fde8e8;outline:2px solid #e53e3e;outline-offset:-1px':'')+'"><td>'+d.x+'</td><td>'+d.y+'</td><td class="n">'+(d.CHAIN||0)+'</td><td class="n">'+(d.STUCKAT||0)+'</td><td class="n">'+(d.ATSPEED||0)+'</td><td class="n">'+(d.DIAG||0)+'</td><td class="n" style="font-weight:bold">'+d._fc+'</td><td style="font-size:7.5px">'+d._wfrs.join(', ')+'</td></tr>';
+  });
   tHtml+='</tbody></table>';
   document.getElementById('tbl-wmap').innerHTML=tHtml;
-  document.getElementById('cnt-wmap').textContent=tblRows.length+(tblRows.length<fd.length?' of '+fd.length+' fail dies':' fail die'+(tblRows.length!==1?'s':''));
+  var _cntEl=document.getElementById('cnt-wmap');if(_cntEl)_cntEl.textContent=tblRows.length+(tblRows.length<fd.length?' of '+fd.length+' fail dies':' fail die'+(tblRows.length!==1?'s':''));
+  var _wBtn=document.getElementById('wm-dtab-wfr');if(_wBtn)_wBtn.textContent='Wafer Fail Details ('+fd.length+')';
+  // re-apply SVG highlight for the selected die after table redraw
+  if(_wmSelDie)requestAnimationFrame(function(){_wmApplyDieHL(_wmSelDie[0],_wmSelDie[1]);});
+  _wmDrawIpTable();
 }
 function wmSort(col){_wmSortState={col,asc:_wmSortState&&_wmSortState.col===col?!_wmSortState.asc:false};_wmDrawTable();}
+
+var _wmSelDie=null; // [x,y] of persistently selected die
+function _wmHoverDie(x,y,fromClick){
+  // hover no longer highlights dies; only row click does
+}
+function _wmApplyDieHL(x,y){
+  var prev=document.querySelector('#rv-composite-wrap svg rect[data-wm-hl]');
+  if(prev){prev.removeAttribute('data-wm-hl-fill');if(prev.getAttribute('data-wm-orig-fill')!=null){prev.setAttribute('fill',prev.getAttribute('data-wm-orig-fill'));prev.removeAttribute('data-wm-orig-fill');}prev.removeAttribute('stroke');prev.removeAttribute('stroke-width');prev.removeAttribute('data-wm-hl');}
+  var r=document.querySelector('#rv-composite-wrap svg rect[data-x="'+x+'"][data-y="'+y+'"]');
+  if(r){r.setAttribute('data-wm-orig-fill',r.getAttribute('fill')||'');r.setAttribute('fill','#e53e3e');r.setAttribute('stroke','#9b1c1c');r.setAttribute('stroke-width','1.5');r.setAttribute('data-wm-hl','1');}
+}
+function _wmClickDie(tr,x,y){
+  var already=_wmSelDie&&_wmSelDie[0]===x&&_wmSelDie[1]===y;
+  // clear old selected row style
+  document.querySelectorAll('#tbl-wmap-inner tr[data-wmd-x]').forEach(function(r){r.style.background='';r.style.outline='';});
+  if(already){
+    _wmSelDie=null;
+    var prev=document.querySelector('#rv-composite-wrap svg rect[data-wm-hl]');
+    if(prev){if(prev.getAttribute('data-wm-orig-fill')!=null){prev.setAttribute('fill',prev.getAttribute('data-wm-orig-fill'));prev.removeAttribute('data-wm-orig-fill');}prev.removeAttribute('stroke');prev.removeAttribute('stroke-width');prev.removeAttribute('data-wm-hl');}
+  }else{
+    _wmSelDie=[x,y];
+    tr.style.background='#fde8e8';
+    tr.style.outline='2px solid #e53e3e';
+    tr.style.outlineOffset='-1px';
+    _wmApplyDieHL(x,y);
+  }
+}
+
+var _wmIpSortState={col:'fails',asc:false};
+var _wmIpColSearch={};
+var _wmIpShowLevels=true;
+var _wmIpFocusCol=null;
+function _wmSetDataTab(t){
+  var wPane=document.getElementById('tbl-wmap-pane'),iPane=document.getElementById('tbl-ip-pane');
+  var wBtn=document.getElementById('wm-dtab-wfr'),iBtn=document.getElementById('wm-dtab-ip');
+  if(wPane&&iPane&&wBtn&&iBtn){
+    var isIp=(t==='ip');
+    wPane.style.display=isIp?'none':'';
+    iPane.style.display=isIp?'':'none';
+    wBtn.classList.toggle('active',!isIp);
+    iBtn.classList.toggle('active',isIp);
+  }
+}
+function _wmExportActiveTab(){
+  var ip=document.getElementById('tbl-ip-pane');
+  exportCsv(ip&&ip.style.display!=='none'?'tbl-wmap-ip-inner':'tbl-wmap-inner','wafer-map');
+}
+function wmIpColSearch(col,val){_wmIpColSearch[col]=val.toLowerCase().trim();_wmIpFocusCol=col;_wmDrawIpTable();}
+function _wmDrawIpTable(){
+  /* Apply getFiltered() + wafer-map panel filters (TT, IB/FB, die-loc exclusions) */
+  var recs=getFiltered();
+  recs=recs.filter(function(r){return WM_TT_SHOW.has((r.TESTTYPE||'').toUpperCase());});
+  if(_rvIBFilter.size>0)recs=recs.filter(function(r){return _rvIBFilter.has(String(r.IB||'').trim());});
+  if(_rvFBFilter.size>0)recs=recs.filter(function(r){return _rvFBFilter.has(String(r.FB||'').trim());});
+  if(WM_F_DLOC){var _dPts=WM_F_DLOC.split(',');var _dfx=+_dPts[0];var _dfy=_dPts[1]!==undefined?+_dPts[1]:null;recs=recs.filter(function(r){if(!isNaN(_dfx)&&+r.X===_dfx){if(_dfy===null||isNaN(_dfy)||+r.Y===_dfy)return false;}return true;});}
+  if(WM_F_EXCL_DLOCS&&WM_F_EXCL_DLOCS.size>0)recs=recs.filter(function(r){return!WM_F_EXCL_DLOCS.has(r.X+','+r.Y);});
+  /* Die Loc / Site / Shot spatial filters: keep only X,Y positions visible in wafer map */
+  if(_wmFailDiesCache&&(_rvRetFilter.size>0||WM_F_SITES||WM_F_SHOTS)){
+    var _allowedXY=new Set(_wmFailDiesCache.map(function(d){return d.x+','+d.y;}));
+    recs=recs.filter(function(r){return _allowedXY.has(r.X+','+r.Y);});
+  }
+  if(!recs.length){document.getElementById('tbl-wmap-ip').innerHTML='<span style="color:#445;font-size:9px;padding:6px">No data</span>';var _iB0=document.getElementById('wm-dtab-ip');if(_iB0)_iB0.textContent='IP Fail Details (0)';return;}
+  /* Detect IP-L* columns present; respect IP Levels checkbox */
+  var allIpLCols=[];
+  for(var li=0;li<=4;li++){const c='IP-L'+li;if(recs.some(function(r){return r[c]!=null&&r[c]!=='';}))allIpLCols.push(c);}
+  var ipLCols=_wmIpShowLevels?allIpLCols:[];
+  /* Show IP column only if IP carries information beyond what IP-L* already shows */
+  var hasIp=(function(){
+    if(!recs.some(function(r){return r.IP&&r.IP!=='';}))return false;
+    if(!allIpLCols.length)return true;
+    /* If IP always equals the last non-empty IP-L* value it's redundant — hide it */
+    return recs.some(function(r){
+      if(!r.IP)return false;
+      var lastL='';
+      for(var i=allIpLCols.length-1;i>=0;i--){if(r[allIpLCols[i]]){lastL=r[allIpLCols[i]];break;}}
+      return r.IP!==lastL;
+    });
+  }());
+  /* Aggregate by unique path */
+  const pathMap={};
+  recs.forEach(function(r){
+    if(r.STATUS!=='FAIL'&&r.STATUS!=='RESET_FAIL')return;
+    const key=[r.MODULE||'',r.BLOCK||'',r.PARTITION||'',r.REGION||'',...ipLCols.map(c=>r[c]||''),hasIp?(r.IP||''):''].join('\x00');
+    if(!pathMap[key])pathMap[key]={MODULE:r.MODULE||'',BLOCK:r.BLOCK||'',PARTITION:r.PARTITION||'',REGION:r.REGION||'',IP:r.IP||'',fails:0,resets:0};
+    ipLCols.forEach(c=>{pathMap[key][c]=r[c]||'';});
+    if(r.STATUS==='FAIL')pathMap[key].fails++;else pathMap[key].resets++;
+  });
+  var rows=Object.values(pathMap);
+  /* Per-column search */
+  var _cs=_wmIpColSearch;
+  if(Object.keys(_cs).some(function(k){return _cs[k];})){rows=rows.filter(function(r){return Object.keys(_cs).every(function(k){if(!_cs[k])return true;return String(r[k]||'').toLowerCase().includes(_cs[k]);});});}
+  /* Sort */
+  const si=_wmIpSortState;
+  rows.sort(function(a,b){
+    var av=si.col==='fails'?a.fails:si.col==='resets'?a.resets:String(a[si.col]||'');
+    var bv=si.col==='fails'?b.fails:si.col==='resets'?b.resets:String(b[si.col]||'');
+    var c=typeof av==='number'?av-bv:av.localeCompare(bv);
+    return si.asc?c:-c;
+  });
+  var total=rows.length;rows=rows.slice(0,1000);
+  const _th=(c,l)=>'<th onclick="wmIpSort(\''+c+'\')"'+(c===si.col?' class="sarr '+(si.asc?'asc':'desc')+'"':'')+' style="white-space:nowrap">'+l+'</th>';
+  const _sh=(c)=>'<th style="padding:1px 2px"><input class="dt-srch" data-col="'+c+'" placeholder="\uD83D\uDD0D" value="'+(_cs[c]||'')+'" oninput="wmIpColSearch(\''+c+'\',this.value)" onclick="event.stopPropagation()"></th>';
+  var allCols=['MODULE','BLOCK','PARTITION','REGION',...ipLCols,...(hasIp?['IP']:[]),'fails'];
+  let h='<table class="dt" id="tbl-wmap-ip-inner"><thead>'
+    +'<tr>'+_th('MODULE','Module')+_th('BLOCK','Block')+_th('PARTITION','Partition')+_th('REGION','Region')+ipLCols.map(c=>_th(c,c)).join('')+(hasIp?_th('IP','IP'):'')+_th('fails','Fails')+'</tr>'
+    +'<tr class="dt-srch-row">'+allCols.map(c=>_sh(c)).join('')+'</tr>'
+    +'</thead><tbody>';
+  rows.forEach(function(r){
+    h+='<tr><td style="font-size:8px">'+r.MODULE+'</td><td style="font-size:8px">'+r.BLOCK+'</td><td style="font-size:8px">'+r.PARTITION+'</td><td style="font-size:8px">'+r.REGION+'</td>';
+    ipLCols.forEach(c=>{h+='<td style="font-size:8px">'+(r[c]||'')+'</td>';});
+    if(hasIp)h+='<td style="font-size:8px;font-weight:600;color:#5dade2">'+r.IP+'</td>';
+    h+='<td class="n" style="color:#c0392b;font-weight:bold">'+r.fails+'</td></tr>';
+  });
+  if(total>1000)h+='<tr><td colspan="'+(4+ipLCols.length+(hasIp?1:0)+1)+'" style="color:#666;font-size:8px;text-align:center">Showing 1000 of '+total+'</td></tr>';
+  h+='</tbody></table>';
+  var _iB=document.getElementById('wm-dtab-ip');if(_iB)_iB.textContent='IP Fail Details ('+total+')';
+  document.getElementById('tbl-wmap-ip').innerHTML=h;
+  if(_wmIpFocusCol){var _fi=document.querySelector('#tbl-wmap-ip .dt-srch[data-col="'+_wmIpFocusCol+'"]');if(_fi){_fi.focus();_fi.setSelectionRange(_fi.value.length,_fi.value.length);}_wmIpFocusCol=null;}
+}
+function wmIpSort(col){_wmIpSortState={col,asc:_wmIpSortState&&_wmIpSortState.col===col?!_wmIpSortState.asc:false};_wmDrawIpTable();}
 
 /* ── Die Table ─────────────────────────────────────────────────────── */
 function drawDieTable(){
@@ -2047,9 +2467,14 @@ function _rvInitIBFBFilters(){
   var rc=document.getElementById('rv-ret-filters');
   if(rc&&retVals.length){
     retVals.forEach(function(v){
-      var b=document.createElement('span');b.className='rv-fpill';b.dataset.type='ret';b.dataset.val=v;
-      b.textContent=v;b.onclick=function(){_rvTogglePill(this,'ret');};
-      rc.appendChild(b);
+      var lbl=document.createElement('label');
+      lbl.style.cssText='display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:9px;color:#8ab4d4;background:#0d1a2a;padding:1px 6px;border-radius:3px;border:1px solid #2a4060';
+      var cb=document.createElement('input');cb.type='checkbox';cb.checked=true;
+      cb.style.cssText='accent-color:#5dade2;cursor:pointer;width:10px;height:10px';
+      cb.dataset.retVal=v;
+      cb.addEventListener('change',function(){_rvRetSiteChange();});
+      lbl.appendChild(cb);lbl.appendChild(document.createTextNode('S'+v));
+      rc.appendChild(lbl);
     });
   }
   _rvIBFBMap={};
@@ -2088,6 +2513,13 @@ function _rvInitIBFBFilters(){
     var fbw=document.getElementById('rv-fb-dd-wrap'),fbd=document.getElementById('rv-fb-dd');
     if(fbd&&fbw&&!fbw.contains(e.target))fbd.style.display='none';
   },true);
+}
+function _rvRetSiteChange(){
+  var cbs=[...document.querySelectorAll('#rv-ret-filters input[data-ret-val]')];
+  var checked=cbs.filter(function(c){return c.checked;}).map(function(c){return c.dataset.retVal;});
+  /* no filter when all checked; otherwise include only checked sites */
+  _rvRetFilter=checked.length===cbs.length?new Set():new Set(checked);
+  drawWaferMap();
 }
 function rvToggleSection(id,show){
   var el=document.getElementById(id);if(el)el.style.display=show?'':'none';
@@ -2138,7 +2570,7 @@ function _rvBuildPatternScore(wmFiltAggDies,bg2,nWTotal2){
   var concCol=concPct>=70?'#ff8080':concPct>=40?'#ffd166':'#58d68d';
   html+='<table style="border-collapse:collapse;width:100%;font-size:9px;margin-bottom:8px">';
   html+='<tr><td style="color:#667788;padding:1px 0">Fail parts (total)</td><td style="text-align:right;color:#ffd166">'+totFc+'</td></tr>';
-  html+='<tr><td style="color:#667788;padding:1px 0">Fail die locs</td><td style="text-align:right;color:#ffd166">'+totPos+(totLayout?' / '+totLayout:'')+'</td></tr>';
+  html+='<tr><td style="color:#667788;padding:1px 0">Fail reticle locs</td><td style="text-align:right;color:#ffd166">'+totPos+(totLayout?' / '+totLayout:'')+'</td></tr>';
   if(totLayout)html+='<tr><td style="color:#667788;padding:1px 0">Fail rate</td><td style="text-align:right;color:#ffd166">'+Math.round(totPos/totLayout*1000)/10+'%</td></tr>';
   html+='<tr><td style="color:#667788;padding:1px 0">Spatial conc.</td><td style="text-align:right;color:'+concCol+'">'+concPct+'% in top 10%'+(concPct>=70?' &#9888;':'')+'</td></tr>';
   html+='</table>';
@@ -2163,7 +2595,7 @@ function _rvBuildPatternScore(wmFiltAggDies,bg2,nWTotal2){
     var sorted2=Object.entries(scores).sort(function(a,b){return b[1]-a[1];});
     var primary=sorted2[0][0];
     var patColors={EDGE:'#e74c3c',CENTER:'#9b59b6',DONUT:'#f39c12',RETICLE:'#3498db',SYSTEMATIC:'#1abc9c',RANDOM:'#58d68d'};
-    var patTips={EDGE:'Fails concentrated in outer ring (r>0.6)',CENTER:'Fails concentrated near center (r<0.3)',DONUT:'Fails in mid-ring band',RETICLE:'One reticle shot disproportionately fails',SYSTEMATIC:'Small number of die locations hold most fails',RANDOM:'No dominant spatial pattern'};
+    var patTips={EDGE:'Fails concentrated in outer ring (r>0.6)',CENTER:'Fails concentrated near center (r<0.3)',DONUT:'Fails in mid-ring band',RETICLE:'One reticle shot disproportionately fails',SYSTEMATIC:'Small number of reticle locations hold most fails',RANDOM:'No dominant spatial pattern'};
     var confidence=n<20?'LOW':n<50?'MED':'HIGH';
     var confCol={LOW:'#e74c3c',MED:'#f39c12',HIGH:'#58d68d'}[confidence];
     html+='<div style="font-size:8.5px;color:#667788;margin-bottom:4px">Spatial Pattern</div>';
@@ -2207,9 +2639,26 @@ document.addEventListener('click',function(e){
 });
 
 /* ── Bootstrap ─────────────────────────────────────────────────────── */
+var _blkIpLevels={};  /* 'blk|ip' → [l0,l1,l2,...] non-empty intermediate levels */
 if(D.per_ip&&D.per_ip.length){
-  /* Build block|ip → region lookup for tooltip */
-  D.per_ip.forEach(function(r){var k=(r.BLOCK||'')+'|'+(r.IP||'');if(!_blkIpToReg[k])_blkIpToReg[k]=r.REGION||'';});
+  /* Build block|ip → region and block|ip → ip-level-path lookups */
+  D.per_ip.forEach(function(r){
+    var k=(r.BLOCK||'')+'|'+(r.IP||'');
+    if(!_blkIpToReg[k])_blkIpToReg[k]=r.REGION||'';
+    var rk=(r.BLOCK||'')+'|'+(r.REGION||'');if(!_blkRegToPart[rk])_blkRegToPart[rk]=r.PARTITION||'';
+    if(!_blkIpLevels[k]){
+      var lvls=[];
+      for(var li=0;;li++){var v=r['IP-L'+li];if(v===undefined)break;if(v)lvls.push(v);}
+      _blkIpLevels[k]=lvls;
+    }
+  });
+  /* Detect singular levels using config-wide coverage (not just current failures) */
+  var _uBlk=new Set(D.per_ip.map(function(r){return r.BLOCK||'';}));
+  _singularLevels.blk=_uBlk.size<=1;
+  var _cfgParts=(M.cfg_partitions||[]).filter(function(p){return p;});
+  _singularLevels.part=_cfgParts.length<=1;
+  /* Hide IP Fail Details tab when no IP decoder data available */
+  if(!D.per_ip.length){var _ipTabBtn=document.getElementById('wm-dtab-ip');if(_ipTabBtn)_ipTabBtn.style.display='none';}
   buildInfoBar();buildXfChips();buildTestFilter();buildWfrTable();setTimeout(applyFilters,0);
 }
 else{document.getElementById("info-bar").innerHTML='<span style="color:#e74c3c">No data loaded. Run the pipeline first.</span>';}
