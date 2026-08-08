@@ -7396,6 +7396,15 @@ def main() -> None:
     prod_cfg = _find_product_config(_drs)
     if _drs:
         _log(f"  DevRevStep: {_drs}  →  {Path(prod_cfg).name if prod_cfg else '(none)'}")
+    # Prefer testprogram_folder from product config JSON over yield_setup_config.json
+    if prod_cfg:
+        try:
+            _pcfg_data = json.loads(Path(prod_cfg).read_text(encoding="utf-8"))
+            _tp_from_pcfg = str(_pcfg_data.get("testprogram_folder", "")).strip()
+            if _tp_from_pcfg:
+                _tp_folder = _tp_from_pcfg
+        except Exception:
+            pass
     run_dir  = base_dir / "output" / f"NVL_unknown_{ts}"   # fallback; overwritten per-group
 
     for _letter, _letter_keys in sorted(_letter_groups.items(), reverse=True):

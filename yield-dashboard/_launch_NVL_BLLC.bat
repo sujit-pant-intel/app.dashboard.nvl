@@ -1,2 +1,2 @@
 @echo off
-"C:\scripts\.venv\Scripts\python.exe" "C:\scripts\app.dashboard.nvl\yield-dashboard\yld\run_automation.py" --report-config "C:\scripts\app.dashboard.nvl\shared\setup\automation\yield-dashboard\NVL_Sort_Yield - AutoPull.txt" --product-name "NVL-BLLC" --program-series "H61"
+"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa002\users\snpant\tools\scripts\.venv\Scripts\python.exe" "\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa002\users\snpant\tools\scripts\app.dashboard.nvl\yield-dashboard\yld\run_automation.py" --report-config "\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa002\users\snpant\tools\scripts\app.dashboard.nvl\shared\setup\automation\yield-dashboard\NVL_Sort_Yield - AutoPull.txt" --product-name "NVL-BLLC" --program-series "H61"

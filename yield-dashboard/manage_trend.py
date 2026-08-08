@@ -31,12 +31,18 @@ from tkinter import messagebox, ttk
 # ── defaults ──────────────────────────────────────────────────────────────────
 _HERE      = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent   # app.dashboard.nvl/
-_BASE_DIR  = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend")
+_BASE_DIR  = Path.home() / "auto" / "trend"
+_VENV_PY   = next((p for p in [
+               _REPO_ROOT.parent / ".venv" / "Scripts" / "python.exe",
+               Path(r"Y:\tools\scripts\.venv\Scripts\python.exe"),
+               Path(r"C:\scripts\.venv\Scripts\python.exe"),
+             ] if p.exists()), None)
+_PYTHON    = str(_VENV_PY) if _VENV_PY else sys.executable
 _CFG_NAME       = "trend_product_config.json"
 _EMAIL_CFG_NAME = "trend_setup_config.json"
 _CFG_DIR        = _REPO_ROOT / "shared" / "setup" / "automation" / "trend-dashboard"
 _EMAIL_TO       = "sujit.n.pant@intel.com"
-_TASK_NAME = "NVL-BLLC Trend Chart"
+_TASK_NAME = "NVL Trend Chart"
 
 # ── AQUA pull ─────────────────────────────────────────────────────────────────
 _AQUA_CFG     = _REPO_ROOT / "shared" / "setup" / "automation" / "trend-dashboard" / "NVL_Yield-Trend - AutoPull.txt"
@@ -245,7 +251,7 @@ class AutomationManager(tk.Frame):
         self.ecfg       = _load_config(self.ecfg_path) if self.ecfg_path.exists() else {
             "email_to": _EMAIL_TO, "smtp_server": "smtp.intel.com",
             "smtp_port": 25, "smtp_from": _EMAIL_TO,
-            "subject_prefix": "NVL-BLLC Trend Chart",
+            "subject_prefix": "NVL Trend Chart",
         }
 
         self._apply_styles()
@@ -637,7 +643,7 @@ class AutomationManager(tk.Frame):
                 out_html = reports_dir / f"Trend_Report_{ts_file}.html"
                 import subprocess as _sp
                 r = _sp.run(
-                    [sys.executable, trend_script, str(src), "--out", str(out_html)],
+                    [_PYTHON, trend_script, str(src), "--out", str(out_html)],
                     capture_output=True, text=True, timeout=300,
                 )
                 if r.returncode != 0:
@@ -858,7 +864,7 @@ class AutomationManager(tk.Frame):
         for row, lbl, val in [
             (0, "Task name:", _TASK_NAME),
             (1, "Script:",    run_script),
-            (2, "Python:",    sys.executable),
+            (2, "Python:",    _PYTHON),
         ]:
             tk.Label(frm_cfg, text=lbl, font=FONT_UI, bg=BG, fg=FG_DIM
                      ).grid(row=row, column=0, sticky="w", padx=(10, 4), pady=3)
@@ -988,6 +994,13 @@ class AutomationManager(tk.Frame):
             self._sched_state.config(text="Error", fg=RED)
             self._sched_status.set(f"Error querying task: {e}")
 
+    def _write_launcher_bat(self) -> Path:
+        """Write a .bat launcher so /tr stays under 261 chars."""
+        bat_path = _HERE / "_launch_trend.bat"
+        line = f'"{_PYTHON}" "{_HERE / "trend" / "run_trend.py"}"'
+        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+        return bat_path
+
     def _sched_create(self) -> None:
         hh = self._sched_hour.get().zfill(2)
         mm = self._sched_min.get().zfill(2)
@@ -998,7 +1011,15 @@ class AutomationManager(tk.Frame):
             return
         # Save current Email & Filter settings first
         self._save_email_config()
-        tr = f'"{sys.executable}" "{_HERE / "trend" / "run_trend.py"}"'
+        # always use a bat so the task runs from a stable local path
+        bat = self._write_launcher_bat()
+        tr  = f'cmd /c "{bat}"'
+        if len(tr) > 261:
+            messagebox.showerror(
+                "Path too long",
+                f"Command is still too long ({len(tr)} chars).\n"
+                f"Move the project to a shorter path.")
+            return
         selected_days = [d for d, v in self._day_vars.items() if v.get()]
         if selected_days:
             cmd = ["schtasks", "/create",
@@ -1265,7 +1286,7 @@ class AutomationManager(tk.Frame):
                     _prod_folder = reports_dir / _PREFIX_TO_PRODUCT.get(_pfx, _pfx)
                     _prod_folder.mkdir(parents=True, exist_ok=True)
                     _out_html = _prod_folder / f"{_csv_file.stem}.html"
-                    _cmd = [sys.executable, trend_script,
+                    _cmd = [_PYTHON, trend_script,
                             str(_csv_file), "--out", str(_out_html)]
                     _append(f"\n--- {_pfx} ---\n")
                     _append("$ " + " ".join(_cmd) + "\n")
@@ -1593,7 +1614,7 @@ class AutomationManager(tk.Frame):
                 _prod_folder = reports_dir / _PREFIX_TO_PRODUCT.get(pfx, pfx)
                 _prod_folder.mkdir(parents=True, exist_ok=True)
                 out_html = _prod_folder / f"{csv_file.stem}.html"
-                cmd = [sys.executable, trend_script,
+                cmd = [_PYTHON, trend_script,
                        str(csv_file), "--out", str(out_html)]
                 dlg.after(0, _append, f"\n--- {pfx} ---")
                 dlg.after(0, _append, "$ " + " ".join(cmd))
@@ -1972,13 +1993,20 @@ class AutomationManager(tk.Frame):
 # Entry point
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _write_startup_bat() -> None:
+    """Regenerate the trend launcher .bat on startup."""
+    bat_path = _HERE / "_launch_trend.bat"
+    line = f'"{_PYTHON}" "{_HERE / "trend" / "run_trend.py"}"'
+    bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Trend Chart Automation Manager")
-    ap.add_argument("--base-dir", default=None,
-                    help="Trend automation base directory (overrides config)")
-    args = ap.parse_args()
+    ap.parse_args()
     cfg = _load_config(_CFG_DIR / _EMAIL_CFG_NAME)
-    base_dir = Path(args.base_dir) if args.base_dir else Path(cfg.get("base_dir", str(_BASE_DIR)))
+    base_dir = Path(cfg.get("base_dir", str(_BASE_DIR)))
+    # keep bat current so the scheduled task always uses the right path
+    _write_startup_bat()
     root = tk.Tk()
     root.title("Trend Chart Automation Manager")
     root.configure(bg=BG)

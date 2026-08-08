@@ -1,20 +1,21 @@
-@ Report : NVLG_Sort_Yield - Dashboard
+@ Report : NVLG_Sort_Scan - Dashboard
 
 
 ####################
-@ FilterSet : NVLG_Sort_Yield - Dashboard_FilterSet
+@ FilterSet : NVLG_Sort_Scan - Dashboard_FilterSet
 ####################
 
 @ Domain : PreAssembly
 @ Apply all to Parameter : NO
 @ Attributes : 
 	@@ Operation :
+		 = 119325, = 
 	;
 	@@ LATOValidFlag :
 		 = Both
 	;
 	@@ ProgramName :
-		 = NGXSDJXA*H8*
+	 	= NGXSDJXA*H8*
 	;
 	@@ LastNWwsStartDateTime :
 		 = 8
@@ -25,11 +26,9 @@
 	;
 	@@ DevRevStep :
 	;
-	@@ LastNDaysLoadStart :
-	;
 
 ####################
-@ Parameters : NVLG_Sort_Yield - Dashboard_Parameters
+@ Parameters : NVLG_Sort_Scan - Dashboard_Parameters
 ####################
 
 @ Operations : 
@@ -98,6 +97,11 @@
 	@@ "9|*LOGTRACKER_SLC*" : 
 	@@ "10|TPI_BIN::CTRL_UB_X_K_*FINAL_X_X_X_X_LOGTRACKER_TRACKER_*" : 
 	@@ "11|TPI_ADTL::CTRL_UF_X_K_END_X_X_X_X_ADTL_BULK_KILL*" : 
+	@@ "12|SCN_GT_GXX::ATSPEED_ALL_GFXSB_K_END_HITO_GT_NOM_LFM_X_HRY_RAWSTR" : Operations = 119325; 
+	@@ "13|SCN_GT_GXX::ATSPEED_ALL_GFXSB_K_END_HITO_VNNAON_NOM_LFM_X_HRY_RAWSTR" : Operations = 119325; 
+	@@ "14|SCN_GT_GXX::CHAIN_ALL_GFXSB_K_BEGIN_HITO_GT_NOM_LFM_HVM_HRY_RAWSTR" : Operations = 119325; 
+	@@ "15|SCN_GT_GXX::STUCKAT_ALL_GFXSB_K_BEGIN_HITO_GT_NOM_LFM_HRY_RAWSTR" : Operations = 119325; 
+	@@ "16|SCN_GT_GXX::STUCKAT_ALL_GFXSB_K_END_HITO_GT_NOM_LFM_X_HRY_RAWSTR" : Operations = 119325; 
 
 @ Parameters Group : Session Attribute
 	@@ "0|BOMGROUPNAME" : Operations = 119325; 

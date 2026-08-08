@@ -185,11 +185,12 @@ def _compress_csv_to_7z(csv_path: Path) -> Path | None:
 def pull_aqua(aqua_exe: str, report_config: Path, data_dir: Path, dry_run: bool) -> Path | None:
     """Run AquaCmdLine.exe with the repo config. Returns path to the downloaded file."""
     data_dir.mkdir(parents=True, exist_ok=True)
-    ts       = _ts()
-    out_base = data_dir / f"NCXSDJXL0H61_{ts}"
-    out_req  = out_base.with_suffix(".zip")
-
+    ts          = _ts()
     report_name = _aqua_report_name(report_config)
+    safe_name   = report_name.replace(" - ", "_").replace(" ", "_")
+    out_base    = data_dir / f"{safe_name}_{ts}"
+    out_req     = out_base.with_suffix(".zip")
+
     temp_dir    = Path(os.environ.get("TEMP", tempfile.gettempdir()))
     temp_pat    = f"{report_name}*.CSV"
 
@@ -237,7 +238,7 @@ def pull_aqua(aqua_exe: str, report_config: Path, data_dir: Path, dry_run: bool)
     new_csvs   = sorted(after_temp - before_temp, key=lambda p: p.stat().st_mtime)
     if new_csvs:
         src  = max(new_csvs, key=lambda p: p.stat().st_mtime)
-        dest = data_dir / f"NCXSDJXL0H61_{ts}.csv"
+        dest = data_dir / f"{safe_name}_{ts}.csv"
         shutil.copy2(src, dest)
         _log(f"  Fallback from %TEMP%: {src.name} → {dest.name}")
         return dest
@@ -525,10 +526,33 @@ def run_pipeline_for_tp(
 
         run_dir.mkdir(parents=True, exist_ok=True)
 
+        # Resolve HRY config by sniffing DevRevStep prefix directly — avoids importlib overhead
+        _hry_cfg = None
+        try:
+            import pandas as _pd2
+            _cfg_dir = _PIPELINE.parent.parent.parent / "shared" / "setup" / "config" / "scan-dashboard"
+            _cfg_csvs = [p for p in sorted(_cfg_dir.glob("*.csv"))
+                         if p.name != "yield-estimate-per-fault-count.csv"] if _cfg_dir.exists() else []
+            if _cfg_csvs:
+                _dhdr = _pd2.read_csv(str(csv_path), nrows=500, low_memory=False, dtype=str)
+                _drc = next((c for c in _dhdr.columns if c.upper().startswith("DEVREVSTEP")), None)
+                if _drc:
+                    _pfx = _dhdr[_drc].dropna().iloc[0][:6].upper()
+                    _hry_cfg = next((p for p in _cfg_csvs if p.name.upper().startswith(_pfx)), None)
+                if _hry_cfg is None:
+                    _hry_cfg = _cfg_csvs[0]
+        except Exception:
+            pass
+
         cfg = {
             "input":  [str(csv_path)],
             "output": str(tp_output_dir),
         }
+        if _hry_cfg:
+            cfg["config"] = str(_hry_cfg)
+            _log(f"  [{tp_key}] HRY config → {_hry_cfg.name}")
+        else:
+            _log(f"  [{tp_key}] HRY config → (not resolved; pipeline will auto-select)")
         json_path = run_dir / f"run_config_{tp_key}.json"
         json_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
         _log(f"  [{tp_key}] run_config → {json_path}")
@@ -698,10 +722,14 @@ def _parse_scan_summary(data_js_path: Path) -> dict:
         # ── Top IP failures ───────────────────────────────────────────────────
         ip_counter: Counter = Counter()
         ip_module_counter: Counter = Counter()
+        # unique die keys per IP across all wafers (for accurate fail %)
+        ip_fail_dies_all: dict[str, set[str]] = {}
         for r in per_ip:
             ip = (r.get("IP") or "").strip()
             if ip:
                 ip_counter[ip] += 1
+                die_key = f"{r.get('X')}_{r.get('Y')}_{r.get('LOT')}_{r.get('WAFER')}"
+                ip_fail_dies_all.setdefault(ip, set()).add(die_key)
                 mod = (r.get("MODULE") or "").strip()
                 if mod:
                     ip_module_counter[(ip, mod)] += 1
@@ -753,13 +781,16 @@ def _parse_scan_summary(data_js_path: Path) -> dict:
             ip_target_pct = {}
 
         # ── Top Module/Block/Region failures ─────────────────────────────────
-        fail_counter: Counter = Counter()
+        # count unique failing dies per mod/blk/reg (not raw records)
+        mbr_fail_dies: dict[str, set[str]] = {}
         for r in per_ip:
             mod = (r.get("MODULE") or "").strip()
             blk = (r.get("BLOCK")  or "").strip()
             reg = (r.get("REGION") or "").strip()
             if mod:
-                fail_counter[f"{mod}/{blk}/{reg}"] += 1
+                die_key = f"{r.get('X')}_{r.get('Y')}_{r.get('LOT')}_{r.get('WAFER')}"
+                mbr_fail_dies.setdefault(f"{mod}/{blk}/{reg}", set()).add(die_key)
+        fail_counter: Counter = Counter({k: len(v) for k, v in mbr_fail_dies.items()})
 
         # ── Total fault count (sum of per-die fail counts) ────────────────────
         total_fc = sum(
@@ -779,7 +810,9 @@ def _parse_scan_summary(data_js_path: Path) -> dict:
                 tgt = ip_target_pct.get(ip)
                 if tgt is None:
                     continue
-                obs = cnt / total_dies * 100.0
+                # use unique failing dies so multi-instance IPs aren't over-counted
+                uniq_fail_cnt = len(ip_fail_dies_all.get(ip, set()))
+                obs = uniq_fail_cnt / total_dies * 100.0
                 if obs > tgt:
                     mods = [
                         (m, c) for (i, m), c in ip_module_counter.items()
@@ -798,7 +831,7 @@ def _parse_scan_summary(data_js_path: Path) -> dict:
                         if len(uniq_mods) >= 3:
                             break
                     mods_str = ", ".join(uniq_mods) if uniq_mods else "-"
-                    ips_above_target.append((ip, cnt, obs, tgt, obs - tgt, mods_str))
+                    ips_above_target.append((ip, uniq_fail_cnt, obs, tgt, obs - tgt, mods_str))
 
         return {
             "total_dies":   total_dies,
@@ -807,9 +840,9 @@ def _parse_scan_summary(data_js_path: Path) -> dict:
             "ff_pct":       ff_pct,
             "ff_df_pct":    ff_df_pct,
             "top_ips":      [
-                (ip, cnt, ip_target_pct.get(ip))
+                (ip, len(ip_fail_dies_all.get(ip, set())), ip_target_pct.get(ip))
                 for ip, cnt in ip_counter.most_common(5)
-            ],
+            ],  # counts = unique failing dies
             "top_fails":    fail_counter.most_common(5),
             "ips_above_target": ips_above_target,
             "total_fc":     total_fc,
@@ -926,6 +959,7 @@ def _build_run_report(
     tp_results: list[tuple],   # (tp_key, ok, tp_output_dir, data_js_path)
     letter: str = "",
     base_dir: Path | None = None,
+    product_name: str = "NVL816-BLLC",
 ) -> Path | None:
     """Generate report.html in run_dir summarising this automation run."""
 
@@ -1006,8 +1040,8 @@ def _build_run_report(
 <tr><td colspan='9' class='ts' style='padding:2px 12px 8px'>{lots_str}</td></tr>
 """
 
-    title_str = (f"Scan Dashboard \u2014 NVL816-BLLC {letter.upper()} \u2014 {run_ts}"
-                 if letter else f"Scan Dashboard \u2014 NVL816-BLLC \u2014 {run_ts}")
+    title_str = (f"Scan Dashboard \u2014 {product_name} {letter.upper()} \u2014 {run_ts}"
+                 if letter else f"Scan Dashboard \u2014 {product_name} \u2014 {run_ts}")
 
     # ── History section ───────────────────────────────────────────────────────
     history_html = ""
@@ -1085,7 +1119,7 @@ def _build_run_report(
 <title>{title_str}</title>
 {_REPORT_CSS}
 </head><body>
-<h1>&#128202; NVL816-BLLC Scan Dashboard &mdash; Run Report</h1>
+<h1>&#128202; {product_name} Scan Dashboard &mdash; Run Report</h1>
 <p class="ts">Generated: {run_ts} &nbsp;|&nbsp; AQUA: {Path(aqua_file).name}</p>
 <table>
 <thead><tr>
@@ -1216,6 +1250,7 @@ def _collect_history(
     current_run_dir: Path,
     tp_keys: list[str],
     n_past: int = 5,
+    run_prefix: str = "NVL",
 ) -> list[tuple]:
     """Return [(run_label, [(tp_key, smry_or_None)]), ...] for previous runs, newest first.
 
@@ -1226,12 +1261,12 @@ def _collect_history(
     if not output_dir.exists():
         return []
 
-    # Collect all NVL_H61* run dirs, excluding the current one
+    # Collect all <run_prefix>_* run dirs, excluding the current one
     try:
         all_dirs = [
             d for d in output_dir.iterdir()
             if d.is_dir()
-            and re.search(r'^NVL_[A-Za-z]61[A-Za-z]_\d{8}_\d{6}$', d.name, re.IGNORECASE)
+            and re.search(r'^' + re.escape(run_prefix) + r'_[A-Za-z]\d{2}[A-Za-z]_\d{8}_\d{6}$', d.name, re.IGNORECASE)
             and d.resolve() != current_run_dir.resolve()
         ]
     except OSError:
@@ -1241,7 +1276,7 @@ def _collect_history(
     history: list[tuple] = []
     for rd in past_dirs:
         m = re.search(r'_(\d{8})_(\d{6})$', rd.name)
-        lm = re.search(r'NVL_([A-Za-z]61[A-Za-z])_', rd.name, re.IGNORECASE)
+        lm = re.search(re.escape(run_prefix) + r'_([A-Za-z]\d{2}[A-Za-z])_', rd.name, re.IGNORECASE)
         run_letter = lm.group(1).upper() if lm else ""
         if m:
             d, t = m.group(1), m.group(2)
@@ -1450,7 +1485,7 @@ def _build_email_body(
 <body style="font-family:Segoe UI,Arial,sans-serif;background:#1a252f;color:#e8f0f7;
              padding:24px;max-width:900px">
 <h2 style="color:#4fc3f7;margin-bottom:4px">
-  &#128202; NVL816-BLLC Scan Dashboard &mdash; {overall}
+  &#128202; {product_name} Scan Dashboard &mdash; {overall}
 </h2>
 <p style="color:#90a4ae;font-size:0.88em;margin-top:0">{run_ts}</p>
 {report_link}
@@ -1530,7 +1565,8 @@ def _send_via_smtp(to: str, subject: str, body_html: str,
 
 
 def _build_email_report_html(output_dir: Path, run_ts: str,
-                              excluded_keys: list | None = None) -> str:
+                              excluded_keys: list | None = None,
+                              product_name: str = "NVL816-BLLC") -> str:
     """Build self-contained sidebar+history HTML for scan email reports.
 
     Tabs: Summary (latest per program) | 0H61A | 0H61B | ...
@@ -1540,7 +1576,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
 
     _excluded = set(excluded_keys or [])
 
-    run_pattern = re.compile(r'^NVL_([A-Za-z](\d+)[A-Za-z])_(\d{8}_\d{6})$')
+    run_pattern = re.compile(r'^[A-Za-z0-9]+_([A-Za-z](\d+)[A-Za-z])_(\d{8}_\d{6})$')
     tp_pattern  = re.compile(r'([A-Za-z]\d{2}[A-Za-z]).*?_(\d{5,6})$')
     history: dict[str, list[dict]] = defaultdict(list)
 
@@ -1830,13 +1866,13 @@ body {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>NVL816-BLLC Scan Report \u2014 {run_ts}</title>
+<title>{product_name} Scan Report \u2014 {run_ts}</title>
 <style>{CSS}</style>
 </head>
 <body>
 <nav id="sidebar">
   <div id="sb-hdr">
-    <h3>NVL816 Scan</h3>
+    <h3>{product_name}</h3>
     <p>{run_ts}</p>
   </div>
   <ul>{sb}</ul>
@@ -1877,20 +1913,24 @@ def send_email(
         _log(f"  ERROR sending email via SMTP: {e}")
 
 
-def _send_no_new_data_email(base_dir: Path, args) -> None:
+def _send_no_new_data_email(base_dir: Path, args, product_name: str = "NVL816-BLLC") -> None:
     _pcfg: dict = {}
     if _EMAIL_CFG.exists():
         try:
             _d = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
-            for _p in _d.get("products", {}).values():
-                try:
-                    if Path(_p.get("base_dir", "")).resolve() == base_dir.resolve():
-                        _pcfg = _p
-                        break
-                except Exception:
-                    pass
+            _prods = _d.get("products", {})
+            if getattr(args, "product", None) and args.product in _prods:
+                _pcfg = _prods[args.product]
+            else:
+                for _p in _prods.values():
+                    try:
+                        if Path(_p.get("base_dir", "")).resolve() == base_dir.resolve():
+                            _pcfg = _p
+                            break
+                    except Exception:
+                        pass
             if not _pcfg:
-                _pcfg = next(iter(_d.get("products", {}).values()), _d)
+                _pcfg = next(iter(_prods.values()), _d)
         except Exception:
             pass
     to = (_pcfg.get("email_to_report")
@@ -1913,14 +1953,14 @@ def _send_no_new_data_email(base_dir: Path, args) -> None:
 
     run_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     body = f"""<!DOCTYPE html><html><body style="font-family:sans-serif">
-<h2 style="color:#4fc3f7">NVL Scan Dashboard — No New Data</h2>
+<h2 style="color:#4fc3f7">{product_name} Scan Dashboard — No New Data</h2>
 <p>Run at <strong>{run_ts}</strong>: AQUA pull completed but no new lot/wafer data
 was detected since the last run. Pipeline was not re-executed.</p>
 {last_report_link}
 <hr/><p style="font-size:0.85em;color:#888">Pant, Sujit N — GEMS FTE</p>
 </body></html>"""
 
-    send_email(to=to, subject="NVL816-BLLC Scan Dashboard",
+    send_email(to=to, subject=f"{product_name} Scan Dashboard",
                body_html=body, dry_run=getattr(args, "dry_run", False))
 
 
@@ -1928,14 +1968,14 @@ was detected since the last run. Pipeline was not re-executed.</p>
 # Cleanup helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _cleanup_old_runs(base_dir: Path, letter: str, keep: int = 10, dry_run: bool = False) -> None:
+def _cleanup_old_runs(base_dir: Path, letter: str, keep: int = 10, dry_run: bool = False, run_prefix: str = "NVL") -> None:
     """Delete oldest run dirs for a letter, keeping the most recent `keep` runs.
     Tagged runs (.tag file) are always preserved regardless of position.
     """
     output_dir = base_dir / "output"
     if not output_dir.exists():
         return
-    pattern = f"NVL_{letter}_"
+    pattern = f"{run_prefix}_{letter}_"
     try:
         all_dirs = sorted(
             [d for d in output_dir.iterdir()
@@ -1975,6 +2015,9 @@ def main() -> None:
     ap.add_argument("--aqua-exe",      default=_AQUA_EXE_AMR)
     ap.add_argument("--report-config", default=str(_AQUA_CFG))
     ap.add_argument("--base-dir",      default=str(_BASE_DIR))
+    ap.add_argument("--product",       default=None,
+                    help="Product name key in scan_setup_config.json (e.g. 'NVLG-512'); "
+                         "takes priority over base-dir path matching")
     ap.add_argument("--days",          type=int, default=_DEFAULT_DAYS)
     ap.add_argument("--local-csv",     default=None,
                     help="Skip AQUA pull; use this existing CSV/7z/zip (glob ok)")
@@ -1996,7 +2039,37 @@ def main() -> None:
     run_log  = base_dir / "run_log.html"
     ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Resolve per-product config by matching base_dir; falls back to top-level for legacy flat configs.
+    # Override --report-config from product config's aqua_pull_config if not set explicitly.
+    _prod_cfg_early = {}
+    if _EMAIL_CFG.exists():
+        try:
+            _d0 = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
+            _prods0 = _d0.get("products", {})
+            if args.product and args.product in _prods0:
+                _prod_cfg_early = _prods0[args.product]
+            else:
+                for _p0 in _prods0.values():
+                    try:
+                        if Path(_p0.get("base_dir", "")).resolve() == base_dir.resolve():
+                            _prod_cfg_early = _p0
+                            break
+                    except Exception:
+                        pass
+                # Fallback: match by folder name (drive-letter vs UNC)
+                if not _prod_cfg_early:
+                    for _p0 in _prods0.values():
+                        if Path(_p0.get("base_dir", "")).name == base_dir.name:
+                            _prod_cfg_early = _p0
+                            break
+        except Exception:
+            pass
+    _aqcfg_from_prod = _prod_cfg_early.get("aqua_pull_config", "")
+    if _aqcfg_from_prod and "--report-config" not in sys.argv:
+        _resolved_aqcfg = _REPO_ROOT / _aqcfg_from_prod
+        if _resolved_aqcfg.exists():
+            args.report_config = str(_resolved_aqcfg)
+
+    # Resolve per-product config: --product name > base_dir path match > first product.
     def _load_prod_cfg() -> dict:
         if not _EMAIL_CFG.exists():
             return {}
@@ -2004,17 +2077,49 @@ def main() -> None:
             _d = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
         except Exception:
             return {}
-        for _p in _d.get("products", {}).values():
+        _prods = _d.get("products", {})
+        if args.product and args.product in _prods:
+            return _prods[args.product]
+        for _p in _prods.values():
             try:
                 if Path(_p.get("base_dir", "")).resolve() == base_dir.resolve():
                     return _p
             except Exception:
                 pass
-        _prods = _d.get("products", {})
+        # Fallback: match by the final folder name (handles drive-letter vs UNC mismatch)
+        for _k, _p in _prods.items():
+            if Path(_p.get("base_dir", "")).name == base_dir.name:
+                return _p
         return next(iter(_prods.values()), _d)
+
+    # Resolve display product name for email subjects / HTML titles.
+    _product_name: str = "NVL816-BLLC"
+    try:
+        if _EMAIL_CFG.exists():
+            _d0 = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
+            _prods0 = _d0.get("products", {})
+            if args.product and args.product in _prods0:
+                _product_name = args.product
+            elif _prods0:
+                # Try exact resolved path, then fall back to folder-name match
+                _product_name = next(
+                    (k for k, v in _prods0.items()
+                     if Path(v.get("base_dir", "")).resolve() == base_dir.resolve()),
+                    None
+                ) or next(
+                    (k for k, v in _prods0.items()
+                     if Path(v.get("base_dir", "")).name == base_dir.name),
+                    next(iter(_prods0))
+                )
+    except Exception:
+        pass
+
+    # Leading alpha chars of product name, e.g. "NVLG" from "NVLG-512", "NVL" from "NVL816-BLLC"
+    _run_prefix = re.match(r'([A-Za-z]+)', _product_name).group(1) if _product_name else "NVL"
 
     _log("=" * 65)
     _log(f"scan run_automation  [{'DRY-RUN' if args.dry_run else 'LIVE'}]")
+    _log(f"Product   : {_product_name}")
     _log(f"Base dir  : {base_dir}")
     _log(f"Pipeline  : {_PIPELINE}")
     _log("=" * 65)
@@ -2071,7 +2176,7 @@ def main() -> None:
             err_to = _pcfg.get("email_to_alert", _pcfg.get("email_to_report", args.email)) or args.email
             send_email(
                 to=err_to,
-                subject="NVL816-BLLC Scan Dashboard",
+                subject=f"{_product_name} Scan Dashboard",
                 body_html="<p>AQUA pull failed. Check automation logs.</p>",
                 dry_run=args.dry_run,
             )
@@ -2161,7 +2266,7 @@ def main() -> None:
 
     if not keys_to_run:
         _log("Nothing to run — sending no-new-data email and exiting.")
-        _send_no_new_data_email(base_dir, args)
+        _send_no_new_data_email(base_dir, args, _product_name)
         if _local_7z_tmpdir:
             _local_7z_tmpdir.cleanup()
         sys.exit(0)
@@ -2177,7 +2282,7 @@ def main() -> None:
     all_results: list[tuple] = []
 
     for _letter, _letter_keys in sorted(_letter_groups.items(), reverse=True):
-        run_dir = base_dir / "output" / f"NVL_{_letter}_{ts}"
+        run_dir = base_dir / "output" / f"{_run_prefix}_{_letter}_{ts}"
         _log(f"\n{'='*65}")
         _log(f"=== Program {_letter}  ({len(_letter_keys)} TP(s))  →  {run_dir.name} ===")
 
@@ -2244,6 +2349,7 @@ def main() -> None:
                 tp_results,
                 letter=_letter,
                 base_dir=base_dir,
+                product_name=_product_name,
             )
 
         # ── Per-letter run log ────────────────────────────────────────────────
@@ -2274,6 +2380,7 @@ def main() -> None:
         body = _build_email_report_html(
             base_dir / "output", run_ts,
             excluded_keys=excl_keys,
+            product_name=_product_name,
         )
         ts_label = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Save a persistent copy to reports/
@@ -2284,9 +2391,9 @@ def main() -> None:
         _log(f"Report saved: {_report_save}")
         _att_dir  = Path(tempfile.mkdtemp(prefix="nvl_scan_att_"))
         try:
-            att_path = _att_dir / f"NVL816-BLLC Scan Report {ts_label}.html"
+            att_path = _att_dir / f"{_product_name} Scan Report {ts_label}.html"
             att_path.write_text(body, encoding="utf-8")
-            send_email(to=to, subject="NVL816-BLLC Scan Report",
+            send_email(to=to, subject=f"{_product_name} Scan Report",
                        body_html=body, dry_run=args.dry_run,
                        attachments=[str(att_path)])
         finally:

@@ -2,8 +2,7 @@
   "products": {
     "NVL-BLLC": {
       "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\yield\\NVL816-BLLC",
-      "aqua_pull_config": "C:\\scripts\\app.dashboard.nvl\\shared\\setup\\automation\\yield-dashboard\\NVL_Sort_Yield - AutoPull.txt",
-      "tp_folder": "I:\\program\\1001\\prod\\hdmtprogs\\nvl_ncx_sds",
+      "aqua_pull_config": "shared/setup/automation/yield-dashboard/NVL_Sort_Yield - AutoPull.txt",
       "program_series": "H61",
       "email_to_report": "sujit.n.pant@intel.com",
       "email_to_alert": "sujit.n.pant@intel.com",
@@ -17,8 +16,7 @@
     },
     "NVLG-512": {
       "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\yield\\NVLG-512",
-      "aqua_pull_config": "C:\\scripts\\app.dashboard.nvl\\shared\\setup\\automation\\yield-dashboard\\NVLG_Sort_Yield - AutoPull.txt",
-      "tp_folder": "I:\\program\\1001\\prod\\hdmtprogs\\nvl_ngx_sds",
+      "aqua_pull_config": "shared/setup/automation/yield-dashboard/NVLG_Sort_Yield - AutoPull.txt",
       "program_series": "H80",
       "email_to_report": "sujit.n.pant@intel.com",
       "email_to_alert": "sujit.n.pant@intel.com",

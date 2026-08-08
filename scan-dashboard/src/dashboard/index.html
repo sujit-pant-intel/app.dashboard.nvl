@@ -677,8 +677,7 @@ function buildWfrTable(){
     +"<th class='sort-hdr' onclick='sortWfr(\"lot\")'>Lot<span class='sort-ind'>"+_si('lot')+"</span></th>"
     +"<th class='sort-hdr' onclick='sortWfr(\"wafer\")'>Wafer<span class='sort-ind'>"+_si('wafer')+"</span></th>"
     +(_hasMat?"<th class='sort-hdr' onclick='sortWfr(\"material\")'>Material<span class='sort-ind'>"+_si('material')+"</span></th>"
-             +"<th class='sort-hdr' onclick='sortWfr(\"stepping\")'>Step<span class='sort-ind'>"+_si('stepping')+"</span></th>"
-             +"<th class='sort-hdr' onclick='sortWfr(\"aio_bb\")'>Var<span class='sort-ind'>"+_si('aio_bb')+"</span></th>":"")
+             +"<th class='sort-hdr' onclick='sortWfr(\"stepping\")'>Step<span class='sort-ind'>"+_si('stepping')+"</span></th>":"")
     +"<th class='sort-hdr num' onclick='sortWfr(\"total\")'>Total<span class='sort-ind'>"+_si('total')+"</span></th>"
     +"<th class='sort-hdr num' onclick='sortWfr(\"fail\")'>Fail<span class='sort-ind'>"+_si('fail')+"</span></th>"
     +"<th class='sort-hdr num' onclick='sortWfr(\"pct\")'>% Fail<span class='sort-ind'>"+_si('pct')+"</span></th></tr>"
@@ -752,8 +751,7 @@ function buildWfrList(){
       +(_hasMat?'<td style="font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+w.program+'">'+w.program+'</td>':'')
       +'<td>'+w.lot+'</td><td>'+w.wafer+'</td>'
       +(_hasMat?'<td style="font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+matTip+'">'+w.material+'</td>'
-               +'<td style="font-size:8px">'+w.stepping+'</td>'
-               +'<td style="font-size:8px">'+w.aio_bb+'</td>':'')
+               +'<td style="font-size:8px">'+w.stepping+'</td>':'')
       +'<td class="num">'+tot+'</td><td class="num">'+w.fail+'</td><td class="num">'+pct+'</td></tr>';
   });
   var tbody=document.getElementById('wfr-tbody');if(tbody)tbody.innerHTML=html;
@@ -1727,12 +1725,12 @@ function _getWmDies(){
       if(!SEL_TESTS.has(tk))return;
       var k=r.LOT+'|'+r.WAFER+'|'+r.X+'|'+r.Y;
       if(!dm[k])dm[k]={LOT:r.LOT,WAFER:r.WAFER,X:r.X,Y:r.Y,VISUAL_ID:r.VISUAL_ID,
-        Layout:String(r.LOT||'').substring(0,6).toUpperCase(),
-        IB:'',FB:'',Reticle:'',
+        Layout:r.LAYOUT||String(r.LOT||'').substring(0,6).toUpperCase(),
+        IB:r.IB||'',FB:r.FB||'',Reticle:'',
         CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,
         _cf:new Set(),_sf:new Set(),_af:new Set(),_df:new Set(),_all:new Set()};
       var d=dm[k],tt=(r.TESTTYPE||'').toUpperCase();
-      var pair=(r.BLOCK||'')+':'+(r.PARTITION||r.IP||'')+':'+(r.IP||r.PARTITION||'');
+      var pair=(r.BLOCK||'')+':'+(r.REGION||'')+':'+(r.IP||'');
       if(tt==='CHAIN')d._cf.add(pair);
       else if(tt==='STUCKAT')d._sf.add(pair);
       else if(tt==='ATSPEED')d._af.add(pair);

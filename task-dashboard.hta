@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="x-ua-compatible" content="ie=edge">
+<HTA:APPLICATION
+  ID="TaskDashboard"
+  APPLICATIONNAME="NVL Task Dashboard"
+  SCROLL="no"
+  SINGLEINSTANCE="yes"
+  WINDOWSTATE="normal"
+/>
+<title>NVL Automation - Scheduled Task Dashboard</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #1a252f; color: #e8f0f7; font-family: "Segoe UI", sans-serif;
+       font-size: 13px; display: flex; flex-direction: column; height: 100vh; }
+#hdr { background: #263950; padding: 10px 18px; display: flex;
+       align-items: center; gap: 14px; border-bottom: 1px solid #37506e; }
+#hdr h1 { font-size: 16px; font-weight: 700; color: #4fc3f7; }
+#ts { color: #90a4ae; font-size: 11px; margin-left: auto; }
+#tb { padding: 8px 14px; background: #1e2e3d; display: flex;
+      gap: 8px; align-items: center; flex-wrap: wrap; }
+button { background: #263950; color: #e8f0f7; border: none; padding: 5px 14px;
+         border-radius: 3px; cursor: pointer; font-size: 12px; font-family: inherit; }
+button:hover { background: #37506e; }
+.g  { background: #1b5e20; color: #c8e6c9; }
+.g:hover  { background: #2e7d32; }
+.b  { background: #1a3a5c; color: #90caf9; }
+.b:hover  { background: #1565c0; }
+.a  { background: #6d4c00; color: #ffd180; }
+.a:hover  { background: #e65100; }
+.r  { background: #7b1c1c; color: #ffcdd2; }
+.r:hover  { background: #b71c1c; }
+#st { color: #66bb6a; font-size: 12px; margin-left: auto; }
+#main { flex: 1; overflow: auto; padding: 10px 14px; }
+table { width: 100%; border-collapse: collapse; }
+thead tr { background: #263950; }
+th { padding: 7px 10px; text-align: left; color: #4fc3f7; font-size: 12px;
+     font-weight: 600; white-space: nowrap; }
+tbody tr { border-bottom: 1px solid #1e2e3d; }
+tbody tr:hover { background: #1e2e3d; }
+td { padding: 6px 10px; font-size: 12px; vertical-align: middle; }
+.cn  { font-family: "Courier New", monospace; color: #e8f0f7; }
+.crd { color: #66bb6a; font-weight: 600; }
+.cds { color: #ffa726; font-weight: 600; }
+.crn { color: #4fc3f7; font-weight: 600; }
+.cuk { color: #90a4ae; }
+.ctm { font-family: "Courier New", monospace; color: #b0bec5; font-size: 11px; }
+.rok { color: #66bb6a; font-family: monospace; }
+.rer { color: #ef5350; font-family: monospace; }
+.rna { color: #546e7a; font-family: monospace; }
+.act { white-space: nowrap; }
+.act button { padding: 3px 9px; font-size: 11px; margin-right: 4px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+       margin-right: 5px; vertical-align: middle; }
+.dg { background: #66bb6a; }
+.da { background: #ffa726; }
+.dc { background: #4fc3f7; }
+.dd { background: #546e7a; }
+#ov { display: none; position: fixed; top:0; left:0; right:0; bottom:0;
+      background: rgba(0,0,0,.6); z-index: 10;
+      text-align: center; padding-top: 120px; }
+#ov.show { display: block; }
+#dlg { display: inline-block; text-align: left; background: #1e2e3d;
+       border: 1px solid #37506e; border-radius: 6px;
+       padding: 20px 24px; min-width: 380px; }
+#dlg h2 { color: #4fc3f7; font-size: 14px; margin-bottom: 14px; }
+#dlg label { color: #90a4ae; font-size: 12px; display: block; margin-bottom: 4px; }
+#dlg input { background: #263950; color: #e8f0f7; border: 1px solid #37506e;
+             padding: 5px 10px; width: 100%; margin-bottom: 12px;
+             font-family: "Courier New", monospace; font-size: 13px; }
+.drow { margin-top: 4px; }
+.drow button { margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <h1>NVL Automation - Scheduled Task Dashboard</h1>
+  <span id="ts"></span>
+</div>
+
+<div id="tb">
+  <button class="g" onclick="doRefresh()">Refresh</button>
+  <button class="b" onclick="enableSelected()">Enable Selected</button>
+  <button class="a" onclick="disableSelected()">Disable Selected</button>
+  <button class="b" onclick="runSelected()">Run Now</button>
+  <button onclick="editSelected()">Edit Time</button>
+  <button class="r" onclick="deleteSelected()">Delete Selected</button>
+  <span id="st"></span>
+</div>
+
+<div id="main">
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="chkAll" onclick="toggleAll(this)"></th>
+        <th>Task Name</th>
+        <th>Status</th>
+        <th>Next Run</th>
+        <th>Last Run</th>
+        <th>Last Result</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<div id="ov">
+  <div id="dlg">
+    <h2>Edit Schedule - <span id="dlgTitle"></span></h2>
+    <label>New daily run time (HH:MM, e.g. 07:30)</label>
+    <input id="dlgTime" type="text" maxlength="5">
+    <label>Run command (leave blank to keep unchanged)</label>
+    <input id="dlgCmd" type="text">
+    <div class="drow">
+      <button class="g" onclick="applyEdit()">Apply</button>
+      <button onclick="closeEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script language="JScript">
+<!--
+function RunCmd(cmd) {
+  var sh = new ActiveXObject("WScript.Shell");
+  var ex = sh.Exec("cmd /c " + cmd);
+  var txt = "";
+  while (!ex.StdOut.AtEndOfStream) {
+    txt += ex.StdOut.ReadLine() + "\n";
+  }
+  return txt;
+}
+function RunSilent(cmd) {
+  var sh = new ActiveXObject("WScript.Shell");
+  return sh.Run("cmd /c " + cmd, 0, true);
+}
+
+var tasks = [];
+var editTaskName = "";
+
+function setStatus(msg, clr) {
+  var el = document.getElementById("st");
+  el.innerText = msg;
+  el.style.color = clr ? clr : "#66bb6a";
+}
+
+function nowStr() {
+  var d = new Date();
+  return d.toLocaleDateString() + " " + d.toLocaleTimeString();
+}
+
+function parseCSV(line) {
+  var fields = [], cur = "", inQ = false, i, c;
+  for (i = 0; i < line.length; i++) {
+    c = line.charAt(i);
+    if (c === '"') {
+      if (inQ && i + 1 < line.length && line.charAt(i + 1) === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQ = !inQ;
+      }
+    } else if (c === ',' && !inQ) {
+      fields.push(cur);
+      cur = "";
+    } else {
+      cur += c;
+    }
+  }
+  fields.push(cur);
+  return fields;
+}
+
+function colVal(hdr, row, name) {
+  var j;
+  for (j = 0; j < hdr.length; j++) {
+    if (hdr[j] === name) {
+      return (j < row.length) ? row[j] : "";
+    }
+  }
+  return "";
+}
+
+function queryTasks() {
+  var raw = RunCmd("schtasks /query /fo CSV /v");
+  var lines = raw.split("\n");
+  if (lines.length < 2) {
+    return [];
+  }
+
+  var hdrLine = "";
+  var i, k;
+  for (i = 0; i < lines.length; i++) {
+    var trimmed = lines[i].replace(/\r/g, "").replace(/^\s+|\s+$/g, "");
+    if (trimmed !== "") {
+      hdrLine = trimmed;
+      break;
+    }
+  }
+  var hdr = parseCSV(hdrLine);
+  var result = [];
+
+  for (k = i + 1; k < lines.length; k++) {
+    var ln = lines[k].replace(/\r/g, "").replace(/^\s+|\s+$/g, "");
+    if (ln === "") {
+      continue;
+    }
+    var row = parseCSV(ln);
+    var name = colVal(hdr, row, "TaskName");
+    if (!/NVL|Yield/i.test(name)) {
+      continue;
+    }
+    if (/Microsoft/i.test(name)) {
+      continue;
+    }
+    result.push({
+      name:   name.replace(/^\\/, ""),
+      status: colVal(hdr, row, "Status"),
+      next:   colVal(hdr, row, "Next Run Time"),
+      last:   colVal(hdr, row, "Last Run Time"),
+      res:    colVal(hdr, row, "Last Result"),
+      cmd:    colVal(hdr, row, "Task To Run")
+    });
+  }
+  return result;
+}
+
+function escH(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escQ(s) {
+  return String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function renderTable() {
+  var tb = document.getElementById("tbody");
+  tb.innerHTML = "";
+  var i, t, tr, st, dotCls, tdCls, resCls, resTxt, nextTxt, lastTxt, toggleBtn;
+  for (i = 0; i < tasks.length; i++) {
+    t = tasks[i];
+    tr = document.createElement("tr");
+
+    st = t.status;
+    dotCls = "dot dd";
+    tdCls = "cuk";
+    if (st === "Ready")    { dotCls = "dot dg"; tdCls = "crd"; }
+    if (st === "Running")  { dotCls = "dot dc"; tdCls = "crn"; }
+    if (st === "Disabled") { dotCls = "dot da"; tdCls = "cds"; }
+
+    resCls = "rna";
+    resTxt = t.res;
+    if (t.res === "0" || t.res === "0x0") {
+      resCls = "rok";
+      resTxt = "0 (OK)";
+    } else if (t.res === "267011") {
+      resCls = "rna";
+      resTxt = "-- (never run)";
+    } else if (t.res !== "") {
+      resCls = "rer";
+    }
+
+    nextTxt = (t.next === "N/A" || t.next === "") ? "--" : t.next;
+    lastTxt = (t.last === "N/A" || t.last === "" || /1999/.test(t.last)) ? "--" : t.last;
+
+    if (st === "Disabled") {
+      toggleBtn = '<button class="g" onclick="enableTask(\'' + escQ(t.name) + '\')">Enable</button>';
+    } else {
+      toggleBtn = '<button class="a" onclick="disableTask(\'' + escQ(t.name) + '\')">Disable</button>';
+    }
+
+    tr.innerHTML =
+      '<td><input type="checkbox" class="ck" data-i="' + i + '"></td>' +
+      '<td class="cn">' + escH(t.name) + '</td>' +
+      '<td class="' + tdCls + '"><span class="' + dotCls + '"></span>' + escH(st) + '</td>' +
+      '<td class="ctm">' + escH(nextTxt) + '</td>' +
+      '<td class="ctm">' + escH(lastTxt) + '</td>' +
+      '<td class="' + resCls + '">' + escH(resTxt) + '</td>' +
+      '<td class="act">' +
+        toggleBtn +
+        '<button class="b" onclick="runTask(\'' + escQ(t.name) + '\')">Run Now</button>' +
+        '<button onclick="openEdit(\'' + escQ(t.name) + '\',\'' + escQ(t.cmd) + '\')">Edit</button>' +
+        '<button class="r" onclick="deleteTask(\'' + escQ(t.name) + '\')">Delete</button>' +
+      '</td>';
+    tb.appendChild(tr);
+  }
+}
+
+function doRefresh() {
+  setStatus("Refreshing...", "#ffa726");
+  document.getElementById("ts").innerText = "Loading...";
+  setTimeout(function() {
+    tasks = queryTasks();
+    renderTable();
+    document.getElementById("ts").innerText = "Last refresh: " + nowStr();
+    setStatus(tasks.length + " task(s) found.");
+  }, 50);
+}
+
+function selectedNames() {
+  var chks = document.getElementsByClassName("ck");
+  var names = [];
+  var i;
+  for (i = 0; i < chks.length; i++) {
+    if (chks[i].checked) {
+      names.push(tasks[parseInt(chks[i].getAttribute("data-i"), 10)].name);
+    }
+  }
+  return names;
+}
+
+function toggleAll(cb) {
+  var chks = document.getElementsByClassName("ck");
+  var i;
+  for (i = 0; i < chks.length; i++) {
+    chks[i].checked = cb.checked;
+  }
+}
+
+function enableTask(name) {
+  setStatus("Enabling " + name + "...", "#ffa726");
+  RunSilent("schtasks /change /tn \"" + name + "\" /enable");
+  doRefresh();
+}
+
+function disableTask(name) {
+  if (!confirm("Disable task:\n" + name + "?")) {
+    return;
+  }
+  setStatus("Disabling...", "#ffa726");
+  RunSilent("schtasks /change /tn \"" + name + "\" /disable");
+  doRefresh();
+}
+
+function runTask(name) {
+  if (!confirm("Run task now:\n" + name + "?")) {
+    return;
+  }
+  RunSilent("schtasks /run /tn \"" + name + "\"");
+  setStatus("Started: " + name, "#4fc3f7");
+  setTimeout(doRefresh, 1500);
+}
+
+function deleteTask(name) {
+  if (!confirm("Permanently DELETE:\n" + name + "\n\nThis cannot be undone.")) {
+    return;
+  }
+  RunSilent("schtasks /delete /tn \"" + name + "\" /f");
+  doRefresh();
+}
+
+function enableSelected() {
+  var names = selectedNames();
+  var i;
+  if (!names.length) { alert("No tasks selected."); return; }
+  for (i = 0; i < names.length; i++) {
+    RunSilent("schtasks /change /tn \"" + names[i] + "\" /enable");
+  }
+  doRefresh();
+}
+
+function disableSelected() {
+  var names = selectedNames();
+  var i;
+  if (!names.length) { alert("No tasks selected."); return; }
+  if (!confirm("Disable " + names.length + " task(s)?")) { return; }
+  for (i = 0; i < names.length; i++) {
+    RunSilent("schtasks /change /tn \"" + names[i] + "\" /disable");
+  }
+  doRefresh();
+}
+
+function runSelected() {
+  var names = selectedNames();
+  var i;
+  if (!names.length) { alert("No tasks selected."); return; }
+  if (!confirm("Run " + names.length + " task(s) now?")) { return; }
+  for (i = 0; i < names.length; i++) {
+    RunSilent("schtasks /run /tn \"" + names[i] + "\"");
+  }
+  setStatus("Started " + names.length + " task(s).", "#4fc3f7");
+  setTimeout(doRefresh, 1500);
+}
+
+function deleteSelected() {
+  var names = selectedNames();
+  var i;
+  if (!names.length) { alert("No tasks selected."); return; }
+  if (!confirm("Permanently DELETE " + names.length + " task(s)?")) { return; }
+  for (i = 0; i < names.length; i++) {
+    RunSilent("schtasks /delete /tn \"" + names[i] + "\" /f");
+  }
+  doRefresh();
+}
+
+function editSelected() {
+  var names = selectedNames();
+  var i, t;
+  if (names.length !== 1) { alert("Select exactly one task to edit."); return; }
+  for (i = 0; i < tasks.length; i++) {
+    if (tasks[i].name === names[0]) { t = tasks[i]; break; }
+  }
+  if (t) { openEdit(t.name, t.cmd); }
+}
+
+function openEdit(name, cmd) {
+  editTaskName = name;
+  document.getElementById("dlgTitle").innerText = name;
+  document.getElementById("dlgTime").value = "";
+  document.getElementById("dlgCmd").value  = cmd || "";
+  document.getElementById("ov").className  = "show";
+  document.getElementById("dlgTime").focus();
+}
+
+function closeEdit() {
+  document.getElementById("ov").className = "";
+  editTaskName = "";
+}
+
+function applyEdit() {
+  var timeVal = document.getElementById("dlgTime").value.replace(/^\s+|\s+$/g, "");
+  var cmdVal  = document.getElementById("dlgCmd").value.replace(/^\s+|\s+$/g, "");
+
+  if (timeVal === "" && cmdVal === "") {
+    alert("Enter a new time or command.");
+    return;
+  }
+  if (timeVal !== "" && !/^\d{1,2}:\d{2}$/.test(timeVal)) {
+    alert("Invalid time format. Use HH:MM (e.g. 07:30).");
+    return;
+  }
+
+  var name = editTaskName;
+  closeEdit();
+  setStatus("Updating " + name + "...", "#ffa726");
+
+  var args = "/change /tn \"" + name + "\"";
+  if (timeVal !== "") { args += " /st " + timeVal; }
+  if (cmdVal  !== "") { args += " /tr \"" + cmdVal.replace(/"/g, "\\\"") + "\""; }
+
+  var rc = RunSilent("schtasks " + args);
+  if (rc === 0) {
+    setStatus("Updated: " + name);
+  } else {
+    alert("schtasks /change failed (exit " + rc + ").");
+    setStatus("Update failed (exit " + rc + ")", "#ef5350");
+  }
+  doRefresh();
+}
+
+document.getElementById("dlgTime").onkeydown = function(e) {
+  var k = e.keyCode ? e.keyCode : e.which;
+  if (k === 13) { applyEdit(); }
+  if (k === 27) { closeEdit(); }
+};
+
+window.onload = function() {
+  resizeTo(1000, 580);
+  doRefresh();
+};
+
+//-->
+</script>
+</body>
+</html>

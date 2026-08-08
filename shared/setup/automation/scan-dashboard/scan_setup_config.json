@@ -2,7 +2,8 @@
   "products": {
     "NVL816-BLLC": {
       "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\scan\\NVL816-BLLC",
-      "program_series": "0H61",
+       "aqua_pull_config": "shared/setup/automation/scan-dashboard/NVL_Sort_Scan - Dashboard.txt",
+      "program_series": "H61",
       "email_to_report": "sujit.n.pant@intel.com",
       "email_to_alert": "sujit.n.pant@intel.com",
       "excluded_ops": [
@@ -12,7 +13,8 @@
     },
     "NVLG-512": {
       "base_dir": "\\\\samba.zsc10.intel.com\\nfs\\zsc10\\disks\\gsc_gwa011\\users\\snpant\\auto\\scan\\NVLG-512",
-      "program_series": "0H80",
+	"aqua_pull_config": "shared/setup/automation/scan-dashboard/NVLG_Sort_Scan - Dashboard.txt",
+      "program_series": "H80",
       "email_to_report": "sujit.n.pant@intel.com",
       "email_to_alert": "sujit.n.pant@intel.com",
       "excluded_ops": [],

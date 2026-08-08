@@ -29,7 +29,13 @@ from tkinter import messagebox, scrolledtext, ttk
 # ── defaults ───────────────────────────────────────────────────────────────────
 _HERE      = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent   # app.dashboard.nvl/
-_BASE_DIR  = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\class")
+_BASE_DIR  = Path.home() / "auto" / "class"
+_VENV_PY   = next((p for p in [
+               _REPO_ROOT.parent / ".venv" / "Scripts" / "python.exe",
+               Path(r"Y:\tools\scripts\.venv\Scripts\python.exe"),
+               Path(r"C:\scripts\.venv\Scripts\python.exe"),
+             ] if p.exists()), None)
+_PYTHON    = str(_VENV_PY) if _VENV_PY else _sys.executable
 _CFG_DIR   = _REPO_ROOT / "shared" / "setup" / "automation" / "class-dashboard"
 _CFG_NAME  = "class_setup_config.json"
 _EMAIL_TO  = "sujit.n.pant@intel.com"
@@ -816,7 +822,7 @@ class AutomationManager(tk.Frame):
         p   = self._tab_schedule
         pad = dict(padx=14, pady=6)
 
-        _python = _sys.executable
+        _python = _PYTHON
         _script = str(_HERE / "automation" / "run_automation.py")
 
         # ── Task Status card ─────────────────────────────────────────────────
@@ -947,6 +953,13 @@ class AutomationManager(tk.Frame):
             self._sched_state.config(text="Error", fg=RED)
             self._sched_status.set(f"Error querying task: {e}")
 
+    def _write_launcher_bat(self) -> Path:
+        """Write a .bat launcher so /tr stays under 261 chars."""
+        bat_path = _HERE / "_launch_class_automation.bat"
+        line = f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+        return bat_path
+
     def _sched_create(self) -> None:
         hh = self._sched_hour.get().zfill(2)
         mm = self._sched_min.get().zfill(2)
@@ -955,7 +968,16 @@ class AutomationManager(tk.Frame):
                 or not (0 <= int(mm) <= 59)):
             messagebox.showerror("Invalid time", f"Invalid time value: {hh}:{mm}")
             return
-        tr = f'"{_sys.executable}" "{_HERE / "automation" / "run_automation.py"}"'
+        tr = f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+        if len(tr) > 261:
+            bat = self._write_launcher_bat()
+            tr  = f'cmd /c "{bat}"'
+        if len(tr) > 261:
+            messagebox.showerror(
+                "Path too long",
+                f"Command is still too long ({len(tr)} chars).\n"
+                f"Move the project to a shorter path.")
+            return
         cmd = ["schtasks", "/create",
                "/tn", _TASK_NAME,
                "/tr", tr,
@@ -1069,7 +1091,7 @@ class AutomationManager(tk.Frame):
                 dlg.after(0, lambda: start_btn_ref[0].config(
                     text="▶ Start", bg="#00c853", fg="#002200", command=_start))
                 return
-            cmd = [_sys.executable, str(_HERE / "automation" / "run_automation.py"),
+            cmd = [_PYTHON, str(_HERE / "automation" / "run_automation.py"),
                    "--local-csv", csv_val]
             _append("$ " + " ".join(cmd))
             _append("-" * 60)
@@ -1133,7 +1155,7 @@ class AutomationManager(tk.Frame):
         script = str(_HERE / "automation" / "run_automation.py")
         try:
             _sp.Popen(
-                [_sys.executable, script],
+                [_PYTHON, script],
                 creationflags=_sp.CREATE_NEW_CONSOLE,
             )
             self._sched_status.set("Started in new console window.")
@@ -1162,15 +1184,21 @@ class AutomationManager(tk.Frame):
 # Standalone launcher
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _write_startup_bat() -> None:
+    """Regenerate the class launcher .bat on startup."""
+    bat_path = _HERE / "_launch_class_automation.bat"
+    line = f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+    bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description="CLASS Automation Manager GUI"
     )
-    ap.add_argument("--base-dir", metavar="PATH", default=None,
-                    help="Override base dir (default: from config)")
-    args = ap.parse_args()
+    ap.parse_args()
     cfg = _load_config(_CFG_DIR / _CFG_NAME)
-    base_dir = Path(args.base_dir) if args.base_dir else Path(cfg.get("base_dir", str(_BASE_DIR)))
+    base_dir = Path(cfg.get("base_dir", str(_BASE_DIR)))
+    _write_startup_bat()  # keep bat current with latest path
     root = tk.Tk()
     root.title("CLASS Automation Manager")
     root.geometry("980x700")

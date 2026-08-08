@@ -3,7 +3,7 @@ manage_automation.py  —  GUI to manage scan-dashboard automation.
 
 Tabs:
   1. Email & Filter   — recipients + excluded keys (email_config.json)
-  2. Run History      — NVL_0H61_YYYYMMDD/ run folders; view/delete old runs
+  2. Run History      — NVL_H61_YYYYMMDD/ run folders; view/delete old runs
   3. Data Files       — data/programs/*.7z and raw AQUA pull snapshots
   4. Schedule         — Windows Task Scheduler: create, check, run now, remove
 
@@ -18,7 +18,7 @@ import datetime
 import json
 import re
 import shutil
-
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -27,7 +27,13 @@ from tkinter import messagebox, ttk
 # ── defaults (must match run_automation.py) ────────────────────────────────────
 _HERE      = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent   # app.dashboard.nvl/
-_BASE_DIR  = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan")
+_BASE_DIR  = Path.home() / "auto" / "scan"
+_VENV_PY   = next((p for p in [
+               _REPO_ROOT.parent / ".venv" / "Scripts" / "python.exe",
+               Path(r"Y:\tools\scripts\.venv\Scripts\python.exe"),
+               Path(r"C:\scripts\.venv\Scripts\python.exe"),
+             ] if p.exists()), None)
+_PYTHON    = str(_VENV_PY) if _VENV_PY else sys.executable
 _CFG_NAME  = "scan_setup_config.json"
 _CFG_DIR   = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard"
 _EMAIL_TO  = "sujit.n.pant@intel.com"
@@ -35,7 +41,7 @@ _TASK_NAME = "NVL-BLLC Scan Automation"  # base; actual name is per-product
 
 _DEFAULT_PRODUCT_CFG = lambda: {
     "base_dir":        str(_BASE_DIR),
-    "program_series":  "0H61",
+    "program_series":  "H61",
     "email_to_report": _EMAIL_TO,
     "email_to_alert":  _EMAIL_TO,
     "excluded_ops":    [],
@@ -102,7 +108,7 @@ def _open_html(path) -> None:
     subprocess.Popen(["cmd", "/c", "start", "msedge", uri])
 
 
-def _discover_keys(base_dir: Path, program_series: str = "0H61") -> list[str]:
+def _discover_keys(base_dir: Path, program_series: str = "H61") -> list[str]:
     """Discover TP keys from run folder subfolders for the given program_series."""
     keys: set[str] = set()
     output_dir = base_dir / "output"
@@ -118,7 +124,7 @@ def _discover_keys(base_dir: Path, program_series: str = "0H61") -> list[str]:
     return sorted(keys)
 
 
-def _group_keys(keys: list[str], program_series: str = "0H61") -> dict[str, list[str]]:
+def _group_keys(keys: list[str], program_series: str = "H61") -> dict[str, list[str]]:
     # group by full variant key e.g. H61G, M61H so H61G and M61G are separate groups
     groups: dict[str, list[str]] = {}
     for k in keys:
@@ -179,14 +185,21 @@ class AutomationManager(tk.Frame):
 
     @property
     def _task_name(self) -> str:
-        return f"{self._product_var.get()} Scan Automation"
+        return f"Scan Automation [{self._product_var.get()}]"
 
     def _load_product(self, label: str) -> None:
         self.cfg            = self._all_cfg["products"][label]
         self.base_dir       = Path(self.cfg.get("base_dir", str(_BASE_DIR)))
-        self.program_series = self.cfg.get("program_series", "0H61")
+        self.program_series = self.cfg.get("program_series", "H61")
         self.excluded       = set(self.cfg.get("excluded_keys", []))
         self.excluded_ops   = set(str(o) for o in self.cfg.get("excluded_ops", []))
+
+    def _select_product_btn(self, label: str) -> None:
+        self._product_var.set(label)
+        for lbl, btn in self._prod_btns.items():
+            btn.config(bg=ACCENT if lbl == label else BG2,
+                       fg=BG    if lbl == label else FG_DIM)
+        self._switch_product(label)
 
     def _switch_product(self, label: str) -> None:
         self._load_product(label)
@@ -210,13 +223,19 @@ class AutomationManager(tk.Frame):
         if len(self._products) > 1:
             sw = tk.Frame(hdr, bg=BG3)
             sw.pack(side="left", padx=10)
-            tk.Label(sw, text="Product:", font=FONT_UI, bg=BG3, fg=FG_DIM).pack(side="left")
-            om = tk.OptionMenu(sw, self._product_var, *self._products.keys(),
-                               command=self._switch_product)
-            om.config(font=FONT_UI, bg=BG3, fg=ACCENT, activebackground=BG2,
-                      activeforeground=ACCENT, relief="flat", highlightthickness=0)
-            om["menu"].config(bg=BG3, fg=FG, activebackground=ACCENT, activeforeground=BG)
-            om.pack(side="left", padx=4)
+            tk.Label(sw, text="Product:", font=FONT_UI, bg=BG3, fg=FG_DIM).pack(side="left", padx=(0, 4))
+            self._prod_btns: dict[str, tk.Button] = {}
+            for _lbl in self._products:
+                _btn = tk.Button(
+                    sw, text=_lbl, font=FONT_UI, relief="flat", cursor="hand2",
+                    bg=ACCENT if _lbl == self._product_var.get() else BG2,
+                    fg=BG    if _lbl == self._product_var.get() else FG_DIM,
+                    activebackground=ACCENT, activeforeground=BG,
+                    command=lambda l=_lbl: self._select_product_btn(l),
+                    padx=8, pady=3,
+                )
+                _btn.pack(side="left", padx=2)
+                self._prod_btns[_lbl] = _btn
 
         self._base_dir_label = tk.StringVar(value=str(self.base_dir))
         info = tk.Frame(hdr, bg=BG3)
@@ -868,6 +887,7 @@ class AutomationManager(tk.Frame):
 
         self.hist_status.set("Building combined report…")
         self.update_idletasks()
+        label = self._product_var.get()
 
         def _send():
             try:
@@ -883,18 +903,18 @@ class AutomationManager(tk.Frame):
                 run_ts = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
                 _excl  = self.cfg.get("excluded_keys", [])
                 body_html = _build_email_report_html(
-                    out_dir, run_ts, excluded_keys=_excl,
+                    out_dir, run_ts, excluded_keys=_excl, product_name=label,
                 )
 
                 tmp = Path(_tmp.mkdtemp(prefix="nvl_scan_"))
                 try:
-                    att_name = f"NVL816-BLLC Scan Report {latest_ts}.html"
+                    att_name = f"{label} Scan Report {latest_ts}.html"
                     att_path = tmp / att_name
                     att_path.write_text(body_html, encoding="utf-8")
 
                     send_email(
                         to=to,
-                        subject=f"NVL816-BLLC Scan Report — {latest_ts}",
+                        subject=f"{label} Scan Report — {latest_ts}",
                         body_html=body_html,
                         dry_run=False,
                         attachments=[str(att_path)],
@@ -927,6 +947,7 @@ class AutomationManager(tk.Frame):
         reports_dir.mkdir(parents=True, exist_ok=True)
         self.hist_status.set("Building report…")
         self.update_idletasks()
+        label = self._product_var.get()
 
         def _save():
             try:
@@ -938,7 +959,7 @@ class AutomationManager(tk.Frame):
                 run_ts  = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
                 ts_file = _dt.now().strftime("%Y%m%d_%H%M%S")
                 _excl   = self.cfg.get("excluded_keys", [])
-                body    = _build_email_report_html(out_dir, run_ts, excluded_keys=_excl)
+                body    = _build_email_report_html(out_dir, run_ts, excluded_keys=_excl, product_name=label)
                 out_path = reports_dir / f"Scan_Report_{ts_file}.html"
                 out_path.write_text(body, encoding="utf-8")
                 def _done():
@@ -1304,7 +1325,7 @@ class AutomationManager(tk.Frame):
         p   = self._tab_schedule
         pad = dict(padx=14, pady=6)
 
-        _python = _sys.executable
+        _python = _PYTHON
         _script = str(_HERE / "automation" / "run_automation.py")
 
         frm_st = tk.LabelFrame(p, text="  Task Status  ", font=FONT_UI,
@@ -1431,6 +1452,17 @@ class AutomationManager(tk.Frame):
             self._sched_state.config(text="Error", fg=RED)
             self._sched_status.set(f"Error querying task: {e}")
 
+    def _write_launcher_bat(self) -> Path:
+        """Write a .bat launcher so /tr stays under 261 chars."""
+        import sys as _sys
+        safe_label = re.sub(r'[^\w]', '_', self._task_name)
+        bat_path   = _HERE / f"_launch_{safe_label}.bat"
+        product    = self._product_var.get()
+        line = (f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+                f' --base-dir "{self.base_dir}" --product "{product}"')
+        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+        return bat_path
+
     def _sched_create(self) -> None:
         import sys as _sys, subprocess as _sp
         hh = self._sched_hour.get().zfill(2)
@@ -1440,8 +1472,17 @@ class AutomationManager(tk.Frame):
                 or not (0 <= int(mm) <= 59)):
             messagebox.showerror("Invalid time", f"Invalid time value: {hh}:{mm}")
             return
-        tr  = (f'"{_sys.executable}" "{_HERE / "automation" / "run_automation.py"}"'
-               f' --base-dir "{self.base_dir}"')
+        tr  = (f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+               f' --base-dir "{self.base_dir}" --product "{self._product_var.get()}"')
+        if len(tr) > 261:
+            bat = self._write_launcher_bat()
+            tr  = f'cmd /c "{bat}"'
+        if len(tr) > 261:
+            messagebox.showerror(
+                "Path too long",
+                f"Command is still too long ({len(tr)} chars).\n"
+                f"Move the project to a shorter path.")
+            return
         cmd = ["schtasks", "/create", "/tn", self._task_name,
                "/tr", tr, "/sc", "daily", "/st", f"{hh}:{mm}", "/f"]
         try:
@@ -1465,7 +1506,8 @@ class AutomationManager(tk.Frame):
         script = str(_HERE / "automation" / "run_automation.py")
         try:
             _sp.Popen(
-                [_sys.executable, script, "--base-dir", str(self.base_dir)],
+                [_PYTHON, script, "--base-dir", str(self.base_dir),
+                 "--product", self._product_var.get()],
                 creationflags=_sp.CREATE_NEW_CONSOLE,
             )
             self._sched_status.set("Started in new console window.")
@@ -1560,8 +1602,9 @@ class AutomationManager(tk.Frame):
         def _do_run():
             keys_val = keys_var.get().strip()
             csv_val  = csv_var.get().strip()
-            cmd = [_sys.executable, str(_HERE / "automation" / "run_automation.py"), "--force",
-                   "--base-dir", str(self.base_dir)]
+            cmd = [_PYTHON, str(_HERE / "automation" / "run_automation.py"), "--force",
+                   "--base-dir", str(self.base_dir),
+                   "--product", self._product_var.get()]
             if keys_val:
                 cmd += ["--keys", keys_val]
             if csv_val:
@@ -1630,14 +1673,26 @@ class AutomationManager(tk.Frame):
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _write_startup_bat() -> None:
+    """Regenerate all per-product launcher .bat files on startup."""
+    cfg = _load_config(_CFG_DIR / _CFG_NAME)
+    for product_name, prod_cfg in cfg.get("products", {}).items():
+        safe_label   = re.sub(r'[^\w]', '_', f"{product_name} Scan Automation")
+        bat_path     = _HERE / f"_launch_{safe_label}.bat"
+        product_base = prod_cfg.get("base_dir", str(_BASE_DIR))
+        line = (f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+                f' --base-dir "{product_base}" --product "{product_name}"')
+        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Scan Dashboard Automation Manager")
-    ap.add_argument("--base-dir", default=None,
-                    help="Automation base directory (overrides config)")
-    args = ap.parse_args()
+    ap.parse_args()
     cfg = _load_config(_CFG_DIR / _CFG_NAME)
     first_product = next(iter(cfg["products"].values()), {})
-    base_dir = Path(args.base_dir) if args.base_dir else Path(first_product.get("base_dir", str(_BASE_DIR)))
+    base_dir = Path(first_product.get("base_dir", str(_BASE_DIR)))
+    # keep bat current so the scheduled task always uses the right path
+    _write_startup_bat()
     root = tk.Tk()
     root.title("Scan Dashboard Automation Manager")
     root.configure(bg=BG)

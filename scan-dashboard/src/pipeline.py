@@ -53,13 +53,33 @@ _SHARED_MATERIAL = _REPO_ROOT / "shared" / "material"
 _WAFER_TOOLS    = Path(r"C:\scripts\app.yield.nvl\code\utilities\wafer_tools")
 
 
-def _find_default_config() -> Path | None:
-    """Return the first *.csv found in shared/setup/scan-dashboard/, or None."""
-    if _SHARED_CFG.exists():
-        csvs = sorted(_SHARED_CFG.glob("*.csv"))
-        if csvs:
-            return csvs[0]
-    return None
+def _find_default_config(input_csv: str | Path | None = None) -> Path | None:
+    """Return the HRY config CSV whose name starts with the devrevstep prefix of the input.
+
+    Falls back to the first *.csv alphabetically if no match or input not given.
+    Excludes yield-estimate-per-fault-count.csv (not an HRY config).
+    """
+    if not _SHARED_CFG.exists():
+        return None
+    csvs = [p for p in sorted(_SHARED_CFG.glob("*.csv"))
+            if p.name != "yield-estimate-per-fault-count.csv"]
+    if not csvs:
+        return None
+    if input_csv is not None:
+        # Sniff devrevstep prefix (first 6 chars) from the first DevRevStep* column
+        try:
+            import pandas as _pd, re as _re_drc
+            _df_hdr = _pd.read_csv(str(input_csv), nrows=100, low_memory=False)
+            _drc = next((c for c in _df_hdr.columns if c.upper().startswith('DEVREVSTEP')), None)
+            if _drc:
+                _prefix = str(_df_hdr[_drc].dropna().iloc[0])[:6].upper()
+                _match = next((p for p in csvs if p.name.upper().startswith(_prefix)), None)
+                if _match:
+                    print(f"[pipeline] HRY config auto-selected by devrevstep '{_prefix}': {_match.name}")
+                    return _match
+        except Exception:
+            pass
+    return csvs[0]
 
 
 def load_material_lookup() -> dict:
@@ -89,11 +109,11 @@ def build_process_to_product_map() -> dict:
 
 
 def load_material_lookup() -> dict:
-    """Load shared/material/*.csv and return a lookup dict.
+    """Load shared/material/*.csv → lookup keyed by '{lot7}|{wafer_int}'.
 
-    Keys (both registered for each row so 7-char and 8-char Intel lot IDs both match):
-      '{intel_lot_id}|{WaferID_int}'   e.g. 'Q603S6R|1'  or 'Q529P1V0|1'
-    Value: {'lot_num', 'program', 'material', 'stepping', 'aio_bb'}
+    Mirrors yield-dashboard logic: INTEL_LOT/INTEL_LOT7 truncated to 7 chars,
+    WaferID numeric (trailing digits extracted for formatted values like 'Q615S1B-03').
+    Supports both BLLC and NVLG material CSV formats.
     """
     import re as _re
     lookup: dict = {}
@@ -105,39 +125,45 @@ def load_material_lookup() -> dict:
             dm.columns = [c.strip() for c in dm.columns]
             cl = {c.lower(): c for c in dm.columns}
 
-            # Collect ALL Intel lot ID columns (7-char, 8-char, various names)
-            intel_lot_cols = [c for k, c in cl.items()
-                              if 'intel' in k and 'lot' in k
-                              and 'wafer' not in k and 'tsmc' not in k]
-            tsmc_col   = cl.get('tsmc_lot') or cl.get('tsmc lot')
-            wfr_col    = cl.get('waferid') or cl.get('wafer_id') or cl.get('wafer')
-            mat_col    = next((c for k, c in cl.items()
-                               if 'material type' in k or k == 'material'), None)
+            # Accept INTEL_LOT7 or INTEL_LOT (both truncated to 7 chars)
+            intel_lot_col = cl.get('intel_lot7') or cl.get('intel_lot')
+            # Accept WaferID or Intel WaferID
+            wfr_col = cl.get('waferid') or cl.get('intel waferid')
+            mat_col = next((c for k, c in cl.items() if 'material type' in k), None) \
+                      or cl.get('material')
             step_col   = cl.get('stepping')
             aio_col    = cl.get('aio/bb') or cl.get('aio_bb')
             lotnum_col = cl.get('lot#') or cl.get('lot_num') or cl.get('lot number')
 
-            lot_cols = intel_lot_cols or ([tsmc_col] if tsmc_col else [])
-            if not (wfr_col and lot_cols):
-                print(f"[pipeline] WARN: material {fpath.name}: missing lot/wafer columns")
+            if not (intel_lot_col and wfr_col):
+                print(f"[pipeline] WARN: material {fpath.name}: missing INTEL_LOT/WaferID columns")
                 continue
 
             for _, row in dm.iterrows():
-                wfr_id = str(row.get(wfr_col, '')).strip()
-                if not wfr_id or wfr_id == 'nan':
+                lot_id = str(row.get(intel_lot_col, '')).strip()
+                if not lot_id or lot_id == 'nan':
                     continue
+                lot7 = lot_id[:7]
+
+                wfr_raw = str(row.get(wfr_col, '')).strip()
+                if not wfr_raw or wfr_raw == 'nan':
+                    continue
+                # Extract trailing digits: handles "3", "03", "Q615S1B-03"
                 try:
-                    wfr_num = int(float(wfr_id))
-                except Exception:
-                    continue
+                    wfr_num = int(float(wfr_raw))
+                except ValueError:
+                    m_wfr = _re.search(r'(\d+)$', wfr_raw)
+                    if not m_wfr:
+                        continue
+                    wfr_num = int(m_wfr.group(1))
+
                 mat_str    = str(row.get(mat_col,    '') if mat_col    else '').strip()
                 step_str   = str(row.get(step_col,   '') if step_col   else '').strip()
                 aio_str    = str(row.get(aio_col,    '') if aio_col    else '').strip()
                 lotnum_str = str(row.get(lotnum_col, '') if lotnum_col else '').strip()
-                # Derive program: 'NVL816-BLLC-L0 AIO' → 'NVL816-BLLC'
                 prog_str = ''
                 if mat_str:
-                    base = mat_str.split()[0]  # 'NVL816-BLLC-L0'
+                    base = mat_str.split()[0]
                     m = _re.match(r'^(.+)-([A-Z]\d)$', base)
                     prog_str = m.group(1) if m else base
                 entry = {
@@ -147,14 +173,7 @@ def load_material_lookup() -> dict:
                     'stepping': step_str,
                     'aio_bb':   aio_str,
                 }
-                # Register under every Intel lot ID variant found in this row
-                # so both Q529P1V (7-char) and Q529P1V0 (8-char) resolve
-                seen_ids: set = set()
-                for lc in lot_cols:
-                    lot_id = str(row.get(lc, '')).strip()
-                    if lot_id and lot_id != 'nan' and lot_id not in seen_ids:
-                        seen_ids.add(lot_id)
-                        lookup[f"{lot_id}|{wfr_num}"] = entry
+                lookup[f"{lot7}|{wfr_num}"] = entry
         except Exception as e:
             print(f"[pipeline] WARN: material {fpath.name}: {e}")
     n_files = len(list(_SHARED_MATERIAL.glob("*.csv")))
@@ -497,7 +516,41 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
     Only FAIL and RESET_FAIL rows are included to keep the output compact.
     """
     print(f"[pipeline] Loading CSV: {csv_path}")
-    df = pd.read_csv(csv_path, low_memory=False, dtype=str)
+    _tmp_dir = None
+    csv_path = str(csv_path)
+    _ext = Path(csv_path).suffix.lower()
+    if _ext == ".gz":
+        import gzip, io
+        print(f"[pipeline] Decompressing .gz …")
+        with gzip.open(csv_path, "rb") as _gf:
+            df = pd.read_csv(io.BytesIO(_gf.read()), low_memory=False, dtype=str)
+    elif _ext == ".zip":
+        import zipfile
+        print(f"[pipeline] Extracting .zip …")
+        with zipfile.ZipFile(csv_path) as _zf:
+            _names = [n for n in _zf.namelist() if n.lower().endswith(".csv")]
+            if not _names:
+                raise FileNotFoundError(f"No CSV found inside archive: {csv_path}")
+            print(f"[pipeline] Using: {_names[0]}")
+            with _zf.open(_names[0]) as _zcsv:
+                df = pd.read_csv(_zcsv, low_memory=False, dtype=str)
+    elif _ext == ".7z":
+        import tempfile, subprocess
+        _tmp_dir = tempfile.mkdtemp(prefix="scan_pipeline_")
+        print(f"[pipeline] Extracting .7z → {_tmp_dir}")
+        _7z_exe = shutil.which("7z") or shutil.which("7za") or r"C:\Program Files\7-Zip\7z.exe"
+        if not _7z_exe or not os.path.exists(_7z_exe):
+            raise FileNotFoundError("7-Zip not found. Install 7-Zip or add it to PATH.")
+        subprocess.run([_7z_exe, "e", csv_path, f"-o{_tmp_dir}", "-y"],
+                       check=True, capture_output=True)
+        _csvs = sorted(Path(_tmp_dir).glob("*.[cC][sS][vV]"))
+        if not _csvs:
+            raise FileNotFoundError(f"No CSV found inside archive: {csv_path}")
+        csv_path = str(_csvs[0])
+        print(f"[pipeline] Using: {Path(csv_path).name}")
+        df = pd.read_csv(csv_path, low_memory=False, dtype=str)
+    else:
+        df = pd.read_csv(csv_path, low_memory=False, dtype=str)
     for _nc in ["SORT_WAFER", "SORT_X", "SORT_Y"]:
         if _nc in df.columns:
             df[_nc] = pd.to_numeric(df[_nc], errors="coerce")
@@ -542,75 +595,8 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
             print(f"[pipeline] Fault column: {_fc_col}")
 
     # Detect material column directly in the scan CSV (TRACE Sort exports often include it).
-    # Strategy 1: a column with 'material' in the name (e.g. 'Material')
-    # Strategy 2: DevRevStep* column (e.g. 'DevRevStep_119325' = '8PF5CVL')
-    #             combined with Program Name* column for the program field
     import re as _re2
-    _csv_mat_col    = next((c for c in df.columns if 'material' in c.lower()), None)
-    _devrev_col     = next((c for c in df.columns if c.upper().startswith('DEVREVSTEP')), None)
-    _progname_col   = next((c for c in df.columns
-                            if 'program name' in c.lower() or 'program_name' in c.lower()), None)
-    _csv_mat_by_wk: dict = {}
-
-    if all(c in id_df.columns for c in ["LOT", "WAFER"]):
-        if _csv_mat_col:
-            # Strategy 1: explicit Material column (e.g. 'NVL816-BLLC-L0 AIO')
-            id_df['_MAT_TMP'] = df[_csv_mat_col].values
-            for (lot, wfr), grp in id_df.groupby(["LOT", "WAFER"]):
-                vals = grp['_MAT_TMP'].dropna().unique()
-                mat_str = str(vals[0]).strip() if len(vals) else ''
-                if not mat_str or mat_str == 'nan':
-                    continue
-                prog_str, step_str, aio_str = '', '', ''
-                base = mat_str.split()[0]
-                m2 = _re2.match(r'^(.+)-([A-Z]\d)$', base)
-                if m2:
-                    prog_str = m2.group(1)
-                    step_str = m2.group(2)
-                else:
-                    prog_str = base
-                parts = mat_str.split()
-                if len(parts) >= 2:
-                    aio_str = parts[-1]
-                _csv_mat_by_wk[f"{lot}|{int(wfr)}"] = {
-                    'lot_num': '', 'program': prog_str,
-                    'material': mat_str, 'stepping': step_str, 'aio_bb': aio_str,
-                }
-            id_df.drop(columns=['_MAT_TMP'], inplace=True)
-            print(f"[pipeline] CSV Material column '{_csv_mat_col}': {len(_csv_mat_by_wk)} wafer(s)")
-
-        elif _devrev_col:
-            # Strategy 2: DevRevStep column e.g. '8PF5CVL' → process=8PF5CV, step=L0
-            _proc_map = build_process_to_product_map()
-            id_df['_DR_TMP'] = df[_devrev_col].values
-            if _progname_col:
-                id_df['_PN_TMP'] = df[_progname_col].values
-            for (lot, wfr), grp in id_df.groupby(["LOT", "WAFER"]):
-                dr_vals = grp['_DR_TMP'].dropna().unique()
-                dr = str(dr_vals[0]).strip() if len(dr_vals) else ''
-                if not dr or dr == 'nan':
-                    continue
-                pn = ''
-                if _progname_col and '_PN_TMP' in grp.columns:
-                    pn_vals = grp['_PN_TMP'].dropna().unique()
-                    pn = str(pn_vals[0]).strip() if len(pn_vals) else ''
-                # Parse '8PF5CVL' → proc='8PF5CV', step_char='L'
-                dr_m = _re2.match(r'^(8\w+[A-Z]{2})(\w?)$', dr)
-                proc = dr_m.group(1) if dr_m else dr
-                step_char = dr_m.group(2) if dr_m else ''
-                stepping = f"{step_char}0" if step_char and step_char.isalpha() else step_char
-                prod_info = _proc_map.get(proc, {})
-                product = prod_info.get('product', '')
-                # Prefer stepping from DevRevStep; fall back to filename stepping
-                if not stepping:
-                    stepping = prod_info.get('stepping', '')
-                mat_str = f"{product}-{stepping}" if product and stepping else (product or proc)
-                _csv_mat_by_wk[f"{lot}|{int(wfr)}"] = {
-                    'lot_num': '', 'program': pn or dr,
-                    'material': mat_str, 'stepping': stepping, 'aio_bb': '',
-                }
-            id_df.drop(columns=['_DR_TMP', '_PN_TMP'], errors='ignore', inplace=True)
-            print(f"[pipeline] DevRevStep column '{_devrev_col}': {len(_csv_mat_by_wk)} wafer(s)")
+    _devrev_col = next((c for c in df.columns if c.upper().startswith('DEVREVSTEP')), None)
 
     # Derive Layout key from DevRevStep (first 6 chars) so reticle lookup uses process code not lot
     if _devrev_col:
@@ -702,33 +688,23 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
                 _prog_by_lot[str(lot)] = str(vals[0]).strip()
         print(f"[pipeline] Program column '{_prog_col}': {len(_prog_by_lot)} lots")
 
-    # Material enrichment
+    # Material enrichment — shared/material/ CSVs only, no fallback
     _mat = load_material_lookup()
 
     lot_material: dict = {}
     for wk in total_dies_per_wafer:
         lot_part, wafer_part = wk.split('|', 1)
-        # Mirror yield-dashboard logic:
-        #   LOT7  = first 7 chars of lot
-        #   WAFER2 = last 2 chars of absolute SORT_WAFER as int (e.g. 707→7, 712→12)
-        #            matches the 1-based WaferID in the shared material CSV
+        # Key: lot7|wafer_int  (% 100 handles slot-encoded wafers like 703 → 3)
         _lot7 = lot_part[:7]
         try:
-            _wafer2 = int(str(int(wafer_part))[-2:])
+            _wafer_int = int(float(wafer_part)) % 100
         except (ValueError, TypeError):
-            _wafer2 = None
-        # Try exact key first, then LOT7|WAFER2 (yield-dashboard convention)
-        info = (_mat.get(wk)
-                or (_mat.get(f"{_lot7}|{_wafer2}") if _wafer2 is not None else None))
+            _wafer_int = None
+        info = _mat.get(f"{_lot7}|{_wafer_int}") if _wafer_int is not None else None
         if info:
             entry = dict(info)
-            # If CSV has an explicit program column, prefer it
             if _prog_by_lot.get(lot_part):
                 entry['program'] = _prog_by_lot[lot_part]
-        else:
-            # Fall back to material parsed directly from the scan CSV
-            entry = _csv_mat_by_wk.get(wk)
-        if entry:
             lot_material[wk] = entry
     if lot_material:
         print(f"[pipeline] Material match: {len(lot_material)}/{len(total_dies_per_wafer)} wafer(s) enriched")
@@ -750,7 +726,7 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
         "total_dies_per_wafer": total_dies_per_wafer,
         "col_names":    col_names,
         "lot_material":  lot_material,
-        "has_material_files": n_mat_files > 0 or bool(_csv_mat_by_wk),
+        "has_material_files": n_mat_files > 0,
         # per-IP fault counts from config: {block|region|ip: N}
         "cfg_fault_counts": {
             "stuckat": {
@@ -962,6 +938,8 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
         if not _apcr_groups:
             print("[pipeline] ap_cr: no LOGTRACKER_AP/CR columns found in CSV")
 
+    if _tmp_dir:
+        shutil.rmtree(_tmp_dir, ignore_errors=True)
     return {"meta": meta, "per_ip": records,
             "die_map": die_map, "reticle_layout": reticle_layout,
             "die_bins": die_bins, "yield_target": yield_target}
@@ -1106,7 +1084,7 @@ def _load_run_config(path: str) -> dict:
 
 def main():
     os.umask(0o002)  # ensure generated files are group-writable on NFS/Samba
-    _def_cfg = _find_default_config()
+    _def_cfg = _find_default_config()  # initial guess for help text only
     ap = argparse.ArgumentParser(
         description="Scan RAWSTR pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1145,6 +1123,8 @@ CLI args override any key set in the JSON file.
         rc = _load_run_config(args.run_config)
 
     inputs     = args.input      or rc.get("input")
+    # re-run auto-select now that we know the input path
+    _def_cfg   = _find_default_config(inputs[0] if inputs else None)
     hry_config = args.config     or rc.get("config") or (str(_def_cfg) if _def_cfg else None)
     output     = args.output     or rc.get("output") or str(_SHARED_OUT)
     keep_tests_str = args.keep_tests if args.keep_tests is not None else rc.get("keep_tests", "")

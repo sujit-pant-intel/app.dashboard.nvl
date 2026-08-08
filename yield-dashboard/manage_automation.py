@@ -29,7 +29,13 @@ from tkinter import messagebox, ttk
 # ── defaults (same as run_automation.py) ──────────────────────────────────────
 _HERE      = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent   # app.dashboard.nvl/
-_BASE_DIR  = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield")
+_BASE_DIR  = Path.home() / "auto" / "yield"
+_VENV_PY   = next((p for p in [
+               _REPO_ROOT.parent / ".venv" / "Scripts" / "python.exe",
+               Path(r"Y:\tools\scripts\.venv\Scripts\python.exe"),
+               Path(r"C:\scripts\.venv\Scripts\python.exe"),
+             ] if p.exists()), None)
+_PYTHON    = str(_VENV_PY) if _VENV_PY else _sys.executable
 _CFG_NAME  = "yield_setup_config.json"
 _CFG_DIR   = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard"
 _EMAIL_TO  = "sujit.n.pant@intel.com"
@@ -183,7 +189,10 @@ class AutomationManager(tk.Frame):
         """Set self.cfg / base_dir / excluded* from the given product label."""
         self.cfg              = self._all_cfg["products"][label]
         self.base_dir         = Path(self.cfg.get("base_dir", str(_BASE_DIR)))
-        self.aqua_pull_config = self.cfg.get("aqua_pull_config", "")
+        _raw = self.cfg.get("aqua_pull_config", "")
+        _p   = Path(_raw) if _raw else None
+        # resolve relative paths against _REPO_ROOT so bat works from any code location
+        self.aqua_pull_config = str(_REPO_ROOT / _p) if (_p and not _p.is_absolute()) else _raw
         self.program_series   = self.cfg.get("program_series", "0H61")
         self.excluded         = set(self.cfg.get("excluded_keys", []))
         self.excluded_ops     = set(str(o) for o in self.cfg.get("excluded_ops", []))
@@ -228,13 +237,19 @@ class AutomationManager(tk.Frame):
         if len(self._products) > 1:
             sw = tk.Frame(hdr, bg=BG3)
             sw.pack(side="left", padx=10)
-            tk.Label(sw, text="Product:", font=FONT_UI, bg=BG3, fg=FG_DIM).pack(side="left")
-            om = tk.OptionMenu(sw, self._product_var, *self._products.keys(),
-                               command=self._switch_product)
-            om.config(font=FONT_UI, bg=BG3, fg=ACCENT, activebackground=BG2,
-                      activeforeground=ACCENT, relief="flat", highlightthickness=0)
-            om["menu"].config(bg=BG3, fg=FG, activebackground=ACCENT, activeforeground=BG)
-            om.pack(side="left", padx=4)
+            tk.Label(sw, text="Product:", font=FONT_UI, bg=BG3, fg=FG_DIM).pack(side="left", padx=(0, 4))
+            self._prod_btns: dict[str, tk.Button] = {}
+            for _lbl in self._products:
+                _btn = tk.Button(
+                    sw, text=_lbl, font=FONT_UI, relief="flat", cursor="hand2",
+                    bg=ACCENT if _lbl == self._product_var.get() else BG2,
+                    fg=BG    if _lbl == self._product_var.get() else FG_DIM,
+                    activebackground=ACCENT, activeforeground=BG,
+                    command=lambda l=_lbl: self._select_product_btn(l),
+                    padx=8, pady=3,
+                )
+                _btn.pack(side="left", padx=2)
+                self._prod_btns[_lbl] = _btn
 
         self._base_dir_label = tk.StringVar(value=str(self.base_dir))
         info = tk.Frame(hdr, bg=BG3)
@@ -264,6 +279,13 @@ class AutomationManager(tk.Frame):
 
         nb.bind("<<NotebookTabChanged>>", self._on_tab_change)
         self._nb = nb
+
+    def _select_product_btn(self, label: str) -> None:
+        self._product_var.set(label)
+        for lbl, btn in self._prod_btns.items():
+            btn.config(bg=ACCENT if lbl == label else BG2,
+                       fg=BG    if lbl == label else FG_DIM)
+        self._switch_product(label)
 
     def _switch_product(self, label: str) -> None:
         """Switch active product: reload cfg, update email vars, refresh all tabs."""
@@ -1428,7 +1450,7 @@ class AutomationManager(tk.Frame):
         p   = self._tab_schedule
         pad = dict(padx=14, pady=6)
 
-        _python = _sys.executable
+        _python = _PYTHON
         _script = str(_HERE / "yld" / "run_automation.py")
 
         # ── Status card ──────────────────────────────────────────────────────
@@ -1571,7 +1593,7 @@ class AutomationManager(tk.Frame):
         bat_path   = _HERE / f"_launch_{safe_label}.bat"
         lines = [
             "@echo off",
-            f'"{sys.executable}" "{_HERE / "yld" / "run_automation.py"}"',
+            f'"{_PYTHON}" "{_HERE / "yld" / "run_automation.py"}"',
         ]
         if self.aqua_pull_config:
             lines[-1] += f' --report-config "{self.aqua_pull_config}"'
@@ -1592,7 +1614,7 @@ class AutomationManager(tk.Frame):
             return
         # Build direct python command (shows console like scan automation)
         _script = str(_HERE / "yld" / "run_automation.py")
-        tr = f'"{sys.executable}" "{_script}"'
+        tr = f'"{_PYTHON}" "{_script}"'
         if self.aqua_pull_config:
             tr += f' --report-config "{self.aqua_pull_config}"'
         tr += f' --product-name "{self._product_var.get()}"'
@@ -1635,7 +1657,7 @@ class AutomationManager(tk.Frame):
             return
         script = str(_HERE / "yld" / "run_automation.py")
         try:
-            cmd = [_sys.executable, script]
+            cmd = [_PYTHON, script]
             if self.aqua_pull_config:
                 cmd += ["--report-config", self.aqua_pull_config]
             cmd += ["--product-name", self._product_var.get()]
@@ -1776,7 +1798,7 @@ class AutomationManager(tk.Frame):
         def _do_run():
             keys_val = keys_var.get().strip()
             csv_val  = csv_var.get().strip()
-            cmd = [_sys.executable, str(_HERE / "yld" / "run_automation.py"), "--force"]
+            cmd = [_PYTHON, str(_HERE / "yld" / "run_automation.py"), "--force"]
             if self.aqua_pull_config:
                 cmd += ["--report-config", self.aqua_pull_config]
             cmd += ["--product-name", self._product_var.get()]
@@ -1871,7 +1893,7 @@ class AutomationManager(tk.Frame):
 
         _TASK_SRV = "NVL-BLLC Report Server"
         _script   = str(_HERE / "yld" / "automation" / "serve_reports.py")
-        _python   = _sys.executable
+        _python   = _PYTHON
         _base     = str(self.base_dir)
 
         # ── define refresh early so buttons can reference it ──────────────────
@@ -2057,14 +2079,31 @@ class AutomationManager(tk.Frame):
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _write_startup_bats(cfg: dict) -> None:
+    """Regenerate all per-product launcher .bat files on startup."""
+    for product_name, prod_cfg in cfg.get("products", {}).items():
+        safe_label = re.sub(r'[^\w]', '_', product_name)
+        bat_path   = _HERE / f"_launch_{safe_label}.bat"
+        _raw_cfg   = prod_cfg.get("aqua_pull_config", "")
+        _cfg_path  = Path(_raw_cfg) if _raw_cfg else None
+        aqua_cfg   = str(_REPO_ROOT / _cfg_path) if (_cfg_path and not _cfg_path.is_absolute()) else _raw_cfg
+        series     = prod_cfg.get("program_series", "")
+        line = f'"{_PYTHON}" "{_HERE / "yld" / "run_automation.py"}"'
+        if aqua_cfg:
+            line += f' --report-config "{aqua_cfg}"'
+        line += f' --product-name "{product_name}"'
+        if series:
+            line += f' --program-series "{series}"'
+        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Yield Automation Manager")
-    ap.add_argument("--base-dir", default=None,
-                    help="Automation base directory (overrides config)")
-    args = ap.parse_args()
+    ap.parse_args()
     cfg = _load_config(_CFG_DIR / _CFG_NAME)
+    _write_startup_bats(cfg)  # keep bat files current with latest config/path
     first_product = next(iter(cfg["products"].values()), {})
-    base_dir = Path(args.base_dir) if args.base_dir else Path(first_product.get("base_dir", str(_BASE_DIR)))
+    base_dir = Path(first_product.get("base_dir", str(_BASE_DIR)))
     root = tk.Tk()
     root.title("Yield Automation Manager")
     root.configure(bg=BG)
