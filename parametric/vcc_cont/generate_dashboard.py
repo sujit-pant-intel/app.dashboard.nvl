@@ -120,11 +120,29 @@ def _show_run_options_dialog(n_wafers: int, saved: dict) -> dict:
         return {'focus_mode': _auto, 'focus_wafers': _def_thr}
 
 
-# Resolve wafer_tools: try relative path first, fall back to C:\scripts canonical location
+# Resolve wafer_tools: try relative path, then scan candidate roots across drives/folders
 _WT_REL  = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                           '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'wafer_tools'))
-_WT_ABS  = r'C:\scripts\app.yield.nvl\code\utilities\wafer_tools'
-_WP_DIR  = _WT_REL if os.path.isdir(os.path.join(_WT_REL, 'wafer_map')) else _WT_ABS
+def _find_wafer_tools():
+    if os.path.isdir(os.path.join(_WT_REL, 'wafer_map')):
+        return _WT_REL
+    _ayn_tail = os.path.join('app.yield.nvl', 'code', 'utilities', 'wafer_tools')
+    # candidate roots: env-derived + common drive letters + sibling of this file's drive root
+    _roots = []
+    for _ev in ('SCRIPTS_ROOT', 'TOOLS_ROOT'):
+        _v = os.environ.get(_ev)
+        if _v: _roots.append(_v)
+    for _drv in ('C', 'D', 'E', 'Y'):
+        _roots += [_drv + r':\scripts', _drv + r':\tools\scripts']
+    # also try the same scripts folder this repo lives in, regardless of drive
+    _roots.append(os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                 '..', '..', '..')))
+    for _r in dict.fromkeys(_roots):  # preserve order, deduplicate
+        _cand = os.path.join(_r, _ayn_tail)
+        if os.path.isdir(os.path.join(_cand, 'wafer_map')):
+            return _cand
+    return os.path.join(_roots[0] if _roots else '', _ayn_tail)  # best-guess fallback
+_WP_DIR  = _find_wafer_tools()
 
 _AYN_ROOT  = os.path.dirname(os.path.dirname(_WP_DIR))  # …/app.yield.nvl
 _TRACE_DIR = os.path.join(_AYN_ROOT, 'utilities', 'trace')
