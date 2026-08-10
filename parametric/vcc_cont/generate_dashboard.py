@@ -122,11 +122,11 @@ def _show_run_options_dialog(n_wafers: int, saved: dict) -> dict:
 
 # Trace bridge: app.yield.nvl/code/utilities/trace/ (4 up to C:\scripts, then into app.yield.nvl)
 _TRACE_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                            '..', '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'trace'))
+                                            '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'trace'))
 
 # wafer_tools — app.yield.nvl/code/utilities/wafer_tools/
 _WP_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                         '..', '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'wafer_tools'))
+                                         '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'wafer_tools'))
 if _WP_DIR not in sys.path:
     sys.path.insert(0, _WP_DIR)
 from wafer_pattern_analysis import score_wafer, WaferPattern, WpaHtmlBuilder
@@ -136,7 +136,7 @@ from wafer_analysis_parametric.reticle import load_reticle_map
 
 # Local Plotly — shared/library/ in app.dashboard.nvl (3 levels up from src/)
 _PLOTLY_LOCAL = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                              '..', '..', '..',
+                                              '..', '..',
                                               'shared', 'library', 'plotly-2.32.0.min.js'))
 if not os.path.isfile(_PLOTLY_LOCAL):
     raise FileNotFoundError(f'plotly-2.32.0.min.js not found at {_PLOTLY_LOCAL}')
@@ -173,12 +173,12 @@ TARGET_IBINS = [8, 80, 89]  # all failure IBs collected in dashboard
 # Reticle collateral folder (shared/reticle/ in app.dashboard.nvl — 3 levels up from src/)
 _RETICLE_DIR = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    '..', '..', '..', 'shared', 'reticle'))
+    '..', '..', 'shared', 'reticle'))
 
 # Material collateral folder (shared/material/ in app.dashboard.nvl — 3 levels up from src/)
 _MATERIAL_DIR = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    '..', '..', '..', 'shared', 'material'))
+    '..', '..', 'shared', 'material'))
 
 
 # Columns to merge from material lookup — mirrors add_material_type.py
@@ -9773,5 +9773,409 @@ function drawSurge(){
 </html>
 """
 
+# ── GUI (merged from gui.py) ────────────────────────────────────────────────
+import threading, zipfile, gzip, tempfile, shutil
+
+def _gui_resolve_csv(path, log_fn):
+    """Extract/decompress CSV from ZIP / GZ / 7Z to a temp dir; return (csv_path, tmp_dir)."""
+    low = path.lower()
+    if low.endswith('.zip'):
+        log_fn(f'Extracting CSV from ZIP: {os.path.basename(path)}')
+        tmp = tempfile.mkdtemp(prefix='vcccont_')
+        with zipfile.ZipFile(path, 'r') as z:
+            csvs = [n for n in z.namelist() if n.lower().endswith('.csv')]
+            if not csvs:
+                raise ValueError('No .csv file found inside the ZIP archive.')
+            pref = [c for c in csvs if 'yield' in c.lower()]
+            chosen = pref[0] if pref else csvs[0]
+            z.extract(chosen, tmp)
+            log_fn(f'  Using: {chosen}')
+        return os.path.join(tmp, chosen), tmp
+    if low.endswith('.gz'):
+        log_fn(f'Decompressing GZ: {os.path.basename(path)}')
+        tmp = tempfile.mkdtemp(prefix='vcccont_')
+        base = os.path.basename(path[:-3]) if low.endswith('.csv.gz') else os.path.splitext(os.path.basename(path))[0] + '.csv'
+        out_path = os.path.join(tmp, base)
+        with gzip.open(path, 'rb') as gz_in, open(out_path, 'wb') as f_out:
+            shutil.copyfileobj(gz_in, f_out)
+        log_fn(f'  Decompressed to: {base}')
+        return out_path, tmp
+    if low.endswith('.7z'):
+        log_fn(f'Extracting CSV from 7Z: {os.path.basename(path)}')
+        tmp = tempfile.mkdtemp(prefix='vcccont_')
+        try:
+            import py7zr
+            with py7zr.SevenZipFile(path, mode='r') as z:
+                all_names = z.getnames()
+                csvs = [n for n in all_names if n.lower().endswith('.csv')]
+                if not csvs:
+                    raise ValueError('No .csv file found inside the 7Z archive.')
+                pref = [c for c in csvs if 'yield' in c.lower()]
+                chosen = pref[0] if pref else csvs[0]
+                z.extract(path=tmp, targets=[chosen])
+                log_fn(f'  Using: {chosen}')
+            return os.path.join(tmp, chosen), tmp
+        except ImportError:
+            # fallback: try 7z.exe on PATH
+            import subprocess as _sp
+            result = _sp.run(['7z', 'e', path, '-o' + tmp, '*.csv', '-r', '-y'],
+                             capture_output=True, text=True)
+            csvs = [os.path.join(tmp, f) for f in os.listdir(tmp) if f.lower().endswith('.csv')]
+            if not csvs:
+                raise ValueError('No .csv extracted from 7Z. Install py7zr or ensure 7z.exe is on PATH.')
+            pref = [c for c in csvs if 'yield' in os.path.basename(c).lower()]
+            chosen = pref[0] if pref else csvs[0]
+            log_fn(f'  Using: {os.path.basename(chosen)}')
+            return chosen, tmp
+    return path, None
+
+
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+    _TK_AVAILABLE = True
+except ImportError:
+    _TK_AVAILABLE = False
+
+if _TK_AVAILABLE:
+    # colour constants
+    _BG      = '#0d1525'
+    _BG2     = '#141c2e'
+    _BG3     = '#1a2235'
+    _BORDER  = '#1e3050'
+    _FG      = '#c0ccd8'
+    _FG_DIM  = '#556677'
+    _ACCENT  = '#4a9fd4'
+    _GREEN   = '#4ecdc4'
+    _RED     = '#ff6b6b'
+    _GOLD    = '#ffd166'
+    _FONT    = ('Segoe UI', 10)
+    _FONT_SM = ('Segoe UI', 9)
+    _FONT_HD = ('Segoe UI', 12, 'bold')
+
+    class _App(tk.Tk):
+        def __init__(self):
+            super().__init__()
+            self.title('VccCont BIN8 Dashboard Generator')
+            self.resizable(True, True)
+            self.minsize(620, 520)
+            self.configure(bg=_BG)
+            self._last_html = tk.StringVar(value='')
+            self._tmp_dir   = None
+            self._proc      = None
+            self._build_ui()
+            self._refresh_open_btn()
+            if os.path.isfile(_DEFAULT_CSV):
+                self._csv_var.set(_DEFAULT_CSV)
+            if os.path.isdir(_DEFAULT_PROG):
+                self._prog_var.set(_DEFAULT_PROG)
+
+        def _build_ui(self):
+            pad = dict(padx=18, pady=0)
+            hdr = tk.Frame(self, bg=_BG, pady=16)
+            hdr.pack(fill='x', **pad)
+            tk.Label(hdr, text='VccCont BIN8 Dashboard', font=_FONT_HD,
+                     bg=_BG, fg=_ACCENT).pack(anchor='w')
+            tk.Label(hdr, text='Generate and open the BIN8 failure analysis dashboard from a yield CSV / ZIP / GZ / 7Z export.',
+                     font=_FONT_SM, bg=_BG, fg=_FG_DIM, wraplength=560, justify='left').pack(anchor='w', pady=(2, 0))
+            tk.Frame(self, bg=_BORDER, height=1).pack(fill='x', padx=18, pady=(0, 12))
+
+            card = self._card(self, 'Inputs')
+            card.pack(fill='x', padx=18, pady=(0, 10))
+
+            self._csv_var = tk.StringVar()
+            self._make_file_row(card, 'CSV / ZIP / GZ / 7Z', self._csv_var, self._browse_csv,
+                                tip='Yield CSV export, or a ZIP / GZ / 7Z archive containing it')
+
+            self._prog_var = tk.StringVar()
+            self._prog_root_var = tk.StringVar()
+            self._make_file_row(card, 'Program root', self._prog_root_var, self._browse_prog_root,
+                                tip='Folder containing one subfolder per program name.')
+
+            self._out_var = tk.StringVar()
+            self._make_file_row(card, 'Output folder', self._out_var, self._browse_out,
+                                tip='Dashboard HTML will be written here as vcccont-bin8-analysis.html')
+
+            tk.Frame(card, bg=_BORDER, height=1).pack(fill='x', padx=14, pady=(4, 8))
+            setup_row = tk.Frame(card, bg=_BG2)
+            setup_row.pack(fill='x', padx=14, pady=(0, 10))
+            tk.Label(setup_row, text='Setup file', font=_FONT_SM, bg=_BG2, fg=_FG,
+                     width=14, anchor='w').pack(side='left')
+            self._setup_var = tk.StringVar(value='')
+            tk.Entry(setup_row, textvariable=self._setup_var, bg=_BG3, fg=_FG,
+                     insertbackground=_FG, relief='flat', bd=0, font=_FONT_SM,
+                     highlightbackground=_BORDER, highlightthickness=1
+                     ).pack(side='left', fill='x', expand=True, ipady=5, padx=(0, 8))
+            self._btn(setup_row, '📂  Load', self._on_load_setup, _GOLD).pack(side='left', padx=(0, 6))
+            self._btn(setup_row, '💾  Save', self._on_save_setup, _GREEN).pack(side='left')
+            tk.Label(card, text='Load or save all paths above as a JSON preset file.',
+                     font=('Segoe UI', 8), bg=_BG2, fg=_FG_DIM, anchor='w'
+                     ).pack(fill='x', padx=14, pady=(0, 8))
+
+            live_row = tk.Frame(card, bg=_BG2)
+            live_row.pack(fill='x', padx=14, pady=(0, 10))
+            self._live_mode_var = tk.BooleanVar(value=False)
+            tk.Checkbutton(live_row,
+                           text='⚡ Live Mode — embed raw data for interactive pin inspect',
+                           variable=self._live_mode_var,
+                           bg=_BG2, fg=_FG, selectcolor=_BG3,
+                           activebackground=_BG2, activeforeground=_FG,
+                           font=_FONT_SM).pack(side='left')
+
+            btn_frame = tk.Frame(self, bg=_BG)
+            btn_frame.pack(fill='x', padx=18, pady=(4, 0))
+            self._gen_btn = self._btn(btn_frame, '⚙  Generate Dashboard', self._on_generate, _ACCENT)
+            self._gen_btn.pack(side='left', padx=(0, 10))
+            self._open_btn = self._btn(btn_frame, '▶  Open Dashboard', self._on_open, _GREEN)
+            self._open_btn.pack(side='left')
+            self._cancel_btn = self._btn(btn_frame, '✕  Cancel', self._on_cancel, _RED)
+            self._cancel_btn.pack(side='left', padx=(10, 0))
+            self._cancel_btn.config(state='disabled')
+
+            pb_frame = tk.Frame(self, bg=_BG)
+            pb_frame.pack(fill='x', padx=18, pady=(10, 0))
+            self._pb = ttk.Progressbar(pb_frame, mode='indeterminate', length=580)
+            self._pb.pack(fill='x')
+
+            tk.Label(self, text='Log', font=_FONT_SM, bg=_BG, fg=_FG_DIM, anchor='w').pack(fill='x', padx=18, pady=(10, 2))
+            log_frame = tk.Frame(self, bg=_BG3, bd=1, relief='flat',
+                                 highlightbackground=_BORDER, highlightthickness=1)
+            log_frame.pack(fill='both', expand=True, padx=18, pady=(0, 16))
+            self._log = tk.Text(log_frame, bg=_BG3, fg=_FG, font=('Consolas', 9),
+                                relief='flat', bd=0, state='disabled', wrap='word', insertbackground=_FG)
+            vsb = ttk.Scrollbar(log_frame, orient='vertical', command=self._log.yview)
+            self._log.configure(yscrollcommand=vsb.set)
+            vsb.pack(side='right', fill='y')
+            self._log.pack(side='left', fill='both', expand=True, padx=6, pady=6)
+            self._log.tag_config('ok',   foreground=_GREEN)
+            self._log.tag_config('err',  foreground=_RED)
+            self._log.tag_config('warn', foreground=_GOLD)
+            self._log.tag_config('dim',  foreground=_FG_DIM)
+            self._log.tag_config('acc',  foreground=_ACCENT)
+
+        def _card(self, parent, title):
+            outer = tk.Frame(parent, bg=_BG2, bd=1, relief='flat',
+                             highlightbackground=_BORDER, highlightthickness=1)
+            tk.Label(outer, text=title, font=('Segoe UI', 9, 'bold'),
+                     bg=_BG2, fg=_ACCENT).pack(anchor='w', padx=14, pady=(10, 4))
+            return outer
+
+        def _btn(self, parent, text, cmd, color):
+            return tk.Button(parent, text=text, command=cmd,
+                             bg=_BG3, fg=color, activebackground=_BG2, activeforeground=color,
+                             relief='flat', bd=0, font=_FONT_SM, padx=14, pady=7,
+                             cursor='hand2', highlightbackground=_BORDER, highlightthickness=1)
+
+        def _make_file_row(self, parent, label, var, browse_cmd, tip=''):
+            row = tk.Frame(parent, bg=_BG2)
+            row.pack(fill='x', padx=14, pady=(0, 10))
+            tk.Label(row, text=label, font=_FONT_SM, bg=_BG2, fg=_FG,
+                     width=14, anchor='w').pack(side='left')
+            tk.Entry(row, textvariable=var, bg=_BG3, fg=_FG, insertbackground=_FG,
+                     relief='flat', bd=0, font=_FONT_SM,
+                     highlightbackground=_BORDER, highlightthickness=1
+                     ).pack(side='left', fill='x', expand=True, ipady=5, padx=(0, 8))
+            tk.Button(row, text='Browse…', command=browse_cmd,
+                      bg=_BG3, fg=_ACCENT, activebackground=_BG2, activeforeground=_ACCENT,
+                      relief='flat', bd=0, font=_FONT_SM, padx=10, pady=4,
+                      cursor='hand2', highlightbackground=_BORDER, highlightthickness=1
+                      ).pack(side='left')
+            if tip:
+                tk.Label(parent, text=tip, font=('Segoe UI', 8), bg=_BG2,
+                         fg=_FG_DIM, anchor='w').pack(fill='x', padx=14, pady=(0, 6))
+
+        def _browse_csv(self):
+            p = filedialog.askopenfilename(
+                title='Select yield CSV, ZIP, GZ, or 7Z',
+                filetypes=[('All supported', '*.csv *.zip *.gz *.7z'),
+                           ('CSV', '*.csv'), ('ZIP', '*.zip'),
+                           ('GZ', '*.gz'), ('7Z', '*.7z'), ('All', '*.*')])
+            if p: self._csv_var.set(p)
+
+        def _browse_prog_root(self):
+            _cur = self._prog_root_var.get().strip()
+            _init = _cur
+            while _init and not os.path.isdir(_init):
+                _init = os.path.dirname(_init)
+            p = filedialog.askdirectory(
+                title='Select program root folder',
+                initialdir=_init or os.path.expanduser('~'))
+            if p: self._prog_root_var.set(p)
+
+        def _browse_out(self):
+            p = filedialog.askdirectory(title='Select output folder')
+            if p: self._out_var.set(p)
+
+        def _on_load_setup(self):
+            _cur = self._setup_var.get().strip()
+            path = filedialog.askopenfilename(
+                title='Load setup JSON',
+                initialdir=os.path.dirname(_cur) if _cur else os.path.expanduser('~'),
+                initialfile=os.path.basename(_cur) if _cur else 'setup.json',
+                filetypes=[('JSON', '*.json'), ('All', '*.*')])
+            if not path: return
+            try:
+                with open(path, encoding='utf-8') as _f: data = json.load(_f)
+            except Exception as e:
+                messagebox.showerror('Load failed', f'Could not read setup file:\n{e}')
+                return
+            self._setup_var.set(path)
+            if data.get('csv'):       self._csv_var.set(data['csv'])
+            if data.get('prog'):      self._prog_var.set(data['prog'])
+            if data.get('prog_root'): self._prog_root_var.set(data['prog_root'])
+            if data.get('out'):       self._out_var.set(data['out'])
+            if 'live_mode' in data:   self._live_mode_var.set(bool(data['live_mode']))
+            self._log_line(f'[setup] Loaded: {path}', 'acc')
+
+        def _on_save_setup(self):
+            _cur = self._setup_var.get().strip()
+            path = filedialog.asksaveasfilename(
+                title='Save setup JSON',
+                initialdir=os.path.dirname(_cur) if _cur else os.path.expanduser('~'),
+                initialfile=os.path.basename(_cur) if _cur else 'setup.json',
+                defaultextension='.json',
+                filetypes=[('JSON', '*.json'), ('All', '*.*')])
+            if not path: return
+            try:
+                data = {}
+                if os.path.isfile(path):
+                    with open(path, encoding='utf-8') as _f: data = json.load(_f)
+            except Exception: data = {}
+            data.update({'csv': self._csv_var.get().strip(), 'prog': self._prog_var.get().strip(),
+                         'prog_root': self._prog_root_var.get().strip(),
+                         'out': self._out_var.get().strip(), 'live_mode': self._live_mode_var.get()})
+            try:
+                with open(path, 'w', encoding='utf-8') as _f: json.dump(data, _f, indent=2)
+                self._setup_var.set(path)
+                self._log_line(f'[setup] Saved: {path}', 'ok')
+            except Exception as e:
+                messagebox.showerror('Save failed', f'Could not write setup file:\n{e}')
+
+        def _log_write(self, text, tag=''):
+            def _do():
+                self._log.config(state='normal')
+                self._log.insert('end', text, tag)
+                self._log.see('end')
+                self._log.config(state='disabled')
+            self.after(0, _do)
+
+        def _log_line(self, text, tag=''):
+            self._log_write(text + '\n', tag)
+
+        def _refresh_open_btn(self):
+            html = self._last_html.get()
+            self._open_btn.config(state='normal' if (html and os.path.isfile(html)) else 'disabled')
+
+        def _on_generate(self):
+            csv_path = self._csv_var.get().strip()
+            out_dir  = self._out_var.get().strip()
+            if not csv_path:
+                messagebox.showerror('Missing input', 'Please select a CSV or archive file.')
+                return
+            if not os.path.isfile(csv_path):
+                messagebox.showerror('File not found', f'Cannot find:\n{csv_path}')
+                return
+            if not out_dir:
+                messagebox.showerror('Missing output', 'Please select an output folder.')
+                return
+            if out_dir.lower().endswith('.html') or os.path.isfile(out_dir):
+                out_dir = os.path.dirname(out_dir)
+            os.makedirs(out_dir, exist_ok=True)
+            out_html = os.path.join(out_dir, 'vcccont-bin8-analysis.html')
+
+            self._log.config(state='normal'); self._log.delete('1.0', 'end'); self._log.config(state='disabled')
+            self._gen_btn.config(state='disabled')
+            self._cancel_btn.config(state='normal')
+            self._pb.start(12)
+            self._tmp_dir = None
+
+            def _worker():
+                try:
+                    resolved_csv, self._tmp_dir = _gui_resolve_csv(csv_path, lambda m: self._log_line(m, 'dim'))
+                    self._log_line(f'Input:  {resolved_csv}', 'dim')
+                    self._log_line(f'Output: {out_html}', 'dim')
+                    self._log_line('─' * 60, 'dim')
+
+                    prog_dir      = self._prog_var.get().strip()
+                    prog_root_dir = self._prog_root_var.get().strip()
+                    cmd = [sys.executable, os.path.abspath(__file__),
+                           '--csv', resolved_csv, '--out', out_html, '--no-gui']
+                    if prog_root_dir: cmd += ['--prog-root', prog_root_dir]
+                    elif prog_dir:    cmd += ['--prog', prog_dir]
+                    if self._live_mode_var.get(): cmd += ['--live-mode']
+
+                    self._proc = __import__('subprocess').Popen(
+                        cmd, stdout=__import__('subprocess').PIPE,
+                        stderr=__import__('subprocess').STDOUT,
+                        text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+
+                    for line in self._proc.stdout:
+                        line = line.rstrip(); ll = line.lower()
+                        tag = ('err'  if ('error' in ll or 'traceback' in ll or 'exception' in ll) else
+                               'warn' if ('warning' in ll or 'warn' in ll) else
+                               'ok'   if 'dashboard written' in ll else
+                               'dim'  if (line.startswith('  [') or line.startswith('  Done')) else '')
+                        self._log_line(line, tag)
+
+                    rc = self._proc.wait()
+
+                    def _done():
+                        self._pb.stop()
+                        self._gen_btn.config(state='normal')
+                        self._cancel_btn.config(state='disabled')
+                        if rc == 0:
+                            _index = os.path.join(out_dir, 'index.html')
+                            _open_target = _index if os.path.isfile(_index) else out_html
+                            self._last_html.set(_open_target)
+                            self._log_line(''); self._log_line(f'✔  Dashboard written: {out_html}', 'ok')
+                            self._refresh_open_btn()
+                        else:
+                            self._log_line(f'✘  Process exited with code {rc}', 'err')
+                        if self._tmp_dir and os.path.isdir(self._tmp_dir):
+                            shutil.rmtree(self._tmp_dir, ignore_errors=True)
+                    self.after(0, _done)
+                except Exception as exc:
+                    def _err():
+                        self._pb.stop(); self._gen_btn.config(state='normal')
+                        self._cancel_btn.config(state='disabled')
+                        self._log_line(f'✘  {exc}', 'err')
+                    self.after(0, _err)
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+        def _on_cancel(self):
+            if self._proc and self._proc.poll() is None:
+                self._proc.terminate()
+                self._log_line('⚠  Cancelled by user.', 'warn')
+            self._pb.stop()
+            self._gen_btn.config(state='normal')
+            self._cancel_btn.config(state='disabled')
+
+        def _on_open(self):
+            html = self._last_html.get()
+            if not html or not os.path.isfile(html):
+                messagebox.showinfo('Not found', 'Generate the dashboard first.')
+                return
+            os.startfile(html)
+
+    def _launch_gui():
+        app = _App()
+        s = ttk.Style()
+        s.theme_use('clam')
+        s.configure('TScrollbar', background=_BG3, troughcolor=_BG2, bordercolor=_BORDER, arrowcolor=_FG_DIM)
+        s.configure('TProgressbar', troughcolor=_BG2, background=_ACCENT, bordercolor=_BORDER,
+                    lightcolor=_ACCENT, darkcolor=_ACCENT)
+        app.update_idletasks()
+        w, h = 680, 560
+        sw, sh = app.winfo_screenwidth(), app.winfo_screenheight()
+        app.geometry(f'{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}')
+        app.mainloop()
+
+
 if __name__ == "__main__":
-    main()
+    # Launch GUI when run with no arguments (or only --setup); otherwise run headless
+    _cli_args = [a for a in sys.argv[1:] if not a.startswith('--setup')]
+    if not _cli_args and _TK_AVAILABLE:
+        _launch_gui()
+    else:
+        main()
