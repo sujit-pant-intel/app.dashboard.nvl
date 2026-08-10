@@ -120,13 +120,15 @@ def _show_run_options_dialog(n_wafers: int, saved: dict) -> dict:
         return {'focus_mode': _auto, 'focus_wafers': _def_thr}
 
 
-# Trace bridge: app.yield.nvl/code/utilities/trace/ (4 up to C:\scripts, then into app.yield.nvl)
-_TRACE_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                            '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'trace'))
+# Resolve wafer_tools: try relative path first, fall back to C:\scripts canonical location
+_WT_REL  = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'wafer_tools'))
+_WT_ABS  = r'C:\scripts\app.yield.nvl\code\utilities\wafer_tools'
+_WP_DIR  = _WT_REL if os.path.isdir(os.path.join(_WT_REL, 'wafer_map')) else _WT_ABS
 
-# wafer_tools — app.yield.nvl/code/utilities/wafer_tools/
-_WP_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                         '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'wafer_tools'))
+_AYN_ROOT  = os.path.dirname(os.path.dirname(_WP_DIR))  # …/app.yield.nvl
+_TRACE_DIR = os.path.join(_AYN_ROOT, 'utilities', 'trace')
+
 if _WP_DIR not in sys.path:
     sys.path.insert(0, _WP_DIR)
 from wafer_pattern_analysis import score_wafer, WaferPattern, WpaHtmlBuilder
