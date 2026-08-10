@@ -120,24 +120,31 @@ def _show_run_options_dialog(n_wafers: int, saved: dict) -> dict:
         return {'focus_mode': _auto, 'focus_wafers': _def_thr}
 
 
-# Resolve wafer_tools: try relative path, then scan candidate roots across drives/folders
-_WT_REL  = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                          '..', '..', '..', 'app.yield.nvl', 'code', 'utilities', 'wafer_tools'))
+# Resolve wafer_tools: walk up from this file checking shared/utilities and utilities subfolders,
+# then fall back to sibling app.yield.nvl repo and common drive/script roots.
 def _find_wafer_tools():
-    if os.path.isdir(os.path.join(_WT_REL, 'wafer_map')):
-        return _WT_REL
+    _here = os.path.dirname(os.path.abspath(__file__))
+    # Walk up to 6 levels, checking shared/utilities and utilities at each ancestor
+    _cur = _here
+    for _ in range(6):
+        for _rel in ('shared/utilities/wafer_tools', 'utilities/wafer_tools'):
+            _cand = os.path.normpath(os.path.join(_cur, _rel))
+            if os.path.isdir(os.path.join(_cand, 'wafer_map')):
+                return _cand
+        _parent = os.path.dirname(_cur)
+        if _parent == _cur:
+            break
+        _cur = _parent
+    # Sibling app.yield.nvl repo (same scripts root, any drive)
     _ayn_tail = os.path.join('app.yield.nvl', 'code', 'utilities', 'wafer_tools')
-    # candidate roots: env-derived + common drive letters + sibling of this file's drive root
     _roots = []
     for _ev in ('SCRIPTS_ROOT', 'TOOLS_ROOT'):
         _v = os.environ.get(_ev)
         if _v: _roots.append(_v)
     for _drv in ('C', 'D', 'E', 'Y'):
         _roots += [_drv + r':\scripts', _drv + r':\tools\scripts']
-    # also try the same scripts folder this repo lives in, regardless of drive
-    _roots.append(os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                 '..', '..', '..')))
-    for _r in dict.fromkeys(_roots):  # preserve order, deduplicate
+    _roots.append(os.path.normpath(os.path.join(_here, '..', '..', '..')))
+    for _r in dict.fromkeys(_roots):
         _cand = os.path.join(_r, _ayn_tail)
         if os.path.isdir(os.path.join(_cand, 'wafer_map')):
             return _cand
