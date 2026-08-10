@@ -135,20 +135,7 @@ def _find_wafer_tools():
         if _parent == _cur:
             break
         _cur = _parent
-    # Sibling app.yield.nvl repo (same scripts root, any drive)
-    _ayn_tail = os.path.join('app.yield.nvl', 'code', 'utilities', 'wafer_tools')
-    _roots = []
-    for _ev in ('SCRIPTS_ROOT', 'TOOLS_ROOT'):
-        _v = os.environ.get(_ev)
-        if _v: _roots.append(_v)
-    for _drv in ('C', 'D', 'E', 'Y'):
-        _roots += [_drv + r':\scripts', _drv + r':\tools\scripts']
-    _roots.append(os.path.normpath(os.path.join(_here, '..', '..', '..')))
-    for _r in dict.fromkeys(_roots):
-        _cand = os.path.join(_r, _ayn_tail)
-        if os.path.isdir(os.path.join(_cand, 'wafer_map')):
-            return _cand
-    return os.path.join(_roots[0] if _roots else '', _ayn_tail)  # best-guess fallback
+    return ''  # not found
 _WP_DIR  = _find_wafer_tools()
 
 _AYN_ROOT  = os.path.dirname(os.path.dirname(_WP_DIR))  # …/app.yield.nvl
