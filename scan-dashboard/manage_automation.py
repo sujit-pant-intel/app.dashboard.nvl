@@ -60,6 +60,7 @@ _CFG_NAME  = "scan_setup_config.json"
 _CFG_DIR   = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard"
 _EMAIL_TO  = "sujit.n.pant@intel.com"
 _TASK_NAME = "NVL-BLLC Scan Automation"  # base; actual name is per-product
+_LAUNCH_BAT_DIR = _HERE / "launch-bat"  # where scheduled-task .bat launchers live
 
 _DEFAULT_PRODUCT_CFG = lambda: {
     "base_dir":        str(_BASE_DIR),
@@ -3952,7 +3953,8 @@ class AutomationManager(tk.Frame):
         """Write a .bat launcher so /tr stays under 261 chars."""
         import sys as _sys
         safe_label = re.sub(r'[^\w]', '_', self._task_name)
-        bat_path   = _HERE / f"_launch_{safe_label}.bat"
+        _LAUNCH_BAT_DIR.mkdir(parents=True, exist_ok=True)
+        bat_path   = _LAUNCH_BAT_DIR / f"_launch_{safe_label}.bat"
         product    = self._product_var.get()
         line = (f'"{_PYTHON}" "{_SELF}"'
                 f' --base-dir "{self.base_dir}" --product "{product}"')
@@ -4172,9 +4174,10 @@ class AutomationManager(tk.Frame):
 def _write_startup_bat() -> None:
     """Regenerate all per-product launcher .bat files on startup."""
     cfg = _load_config(_CFG_DIR / _CFG_NAME)
+    _LAUNCH_BAT_DIR.mkdir(parents=True, exist_ok=True)
     for product_name, prod_cfg in cfg.get("products", {}).items():
         safe_label   = re.sub(r'[^\w]', '_', f"{product_name} Scan Automation")
-        bat_path     = _HERE / f"_launch_{safe_label}.bat"
+        bat_path     = _LAUNCH_BAT_DIR / f"_launch_{safe_label}.bat"
         product_base = prod_cfg.get("base_dir", str(_BASE_DIR))
         line = (f'"{_PYTHON}" "{_SELF}"'
                 f' --base-dir "{product_base}" --product "{product_name}"')
