@@ -45,8 +45,47 @@ _SHARED_MATERIAL = _REPO_ROOT / "shared" / "material"
 _WAFER_TOOLS    = Path(r"C:\scripts\app.yield.nvl\code\utilities\wafer_tools")
 
 
+def _sniff_csv_header(input_csv: str | Path, nrows: int = 100):
+    """Read the first few rows of a CSV/GZ/ZIP/7Z file for header sniffing (no full load).
+
+    Mirrors the decompression logic in process() so devrevstep detection works
+    regardless of the input archive format. Returns None if unreadable.
+    """
+    import pandas as _pd
+    p = Path(input_csv)
+    ext = p.suffix.lower()
+    try:
+        if ext == ".gz":
+            import gzip
+            with gzip.open(p, "rt", encoding="utf-8", errors="replace") as fh:
+                return _pd.read_csv(fh, nrows=nrows, low_memory=False)
+        if ext == ".zip":
+            import zipfile
+            with zipfile.ZipFile(p) as zf:
+                names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
+                if not names:
+                    return None
+                with zf.open(names[0]) as fh:
+                    return _pd.read_csv(fh, nrows=nrows, low_memory=False)
+        if ext == ".7z":
+            import tempfile, subprocess
+            with tempfile.TemporaryDirectory(prefix="scan_sniff_") as tmp:
+                _7z_exe = shutil.which("7z") or shutil.which("7za") or r"C:\Program Files\7-Zip\7z.exe"
+                if not _7z_exe or not os.path.exists(_7z_exe):
+                    return None
+                subprocess.run([_7z_exe, "e", str(p), f"-o{tmp}", "-y"],
+                               check=True, capture_output=True)
+                csvs = sorted(Path(tmp).glob("*.[cC][sS][vV]"))
+                if not csvs:
+                    return None
+                return _pd.read_csv(csvs[0], nrows=nrows, low_memory=False)
+        return _pd.read_csv(p, nrows=nrows, low_memory=False)
+    except Exception:
+        return None
+
+
 def _find_default_config(input_csv: str | Path | None = None) -> Path | None:
-    """Return the HRY config CSV whose name starts with the devrevstep prefix of the input.
+    """Return the HRY config/decoder CSV whose name starts with the devrevstep prefix of the input.
 
     Falls back to the first *.csv alphabetically if no match or input not given.
     Excludes yield-estimate-per-fault-count.csv (not an HRY config).
@@ -59,18 +98,17 @@ def _find_default_config(input_csv: str | Path | None = None) -> Path | None:
         return None
     if input_csv is not None:
         # Sniff devrevstep prefix (first 6 chars) from the first DevRevStep* column
-        try:
-            import pandas as _pd, re as _re_drc
-            _df_hdr = _pd.read_csv(str(input_csv), nrows=100, low_memory=False)
+        _df_hdr = _sniff_csv_header(input_csv)
+        if _df_hdr is not None:
             _drc = next((c for c in _df_hdr.columns if c.upper().startswith('DEVREVSTEP')), None)
             if _drc:
-                _prefix = str(_df_hdr[_drc].dropna().iloc[0])[:6].upper()
-                _match = next((p for p in csvs if p.name.upper().startswith(_prefix)), None)
-                if _match:
-                    print(f"[pipeline] HRY config auto-selected by devrevstep '{_prefix}': {_match.name}")
-                    return _match
-        except Exception:
-            pass
+                _vals = _df_hdr[_drc].dropna()
+                if not _vals.empty:
+                    _prefix = str(_vals.iloc[0])[:6].upper()
+                    _match = next((p for p in csvs if p.name.upper().startswith(_prefix)), None)
+                    if _match:
+                        print(f"[pipeline] HRY config auto-selected by devrevstep '{_prefix}': {_match.name}")
+                        return _match
     return csvs[0]
 
 
