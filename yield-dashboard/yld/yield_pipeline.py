@@ -9002,7 +9002,9 @@ if __name__ == '__main__':
             try:
                 import pandas as _mpd_mat
                 import glob as _matglob
-                _mdf = _mpd_mat.read_csv(_sort_csv, low_memory=False)
+                # dtype=str avoids pandas' automatic numeric inference, which can raise
+                # OverflowError on huge int-like values in unrelated columns (e.g. die IDs).
+                _mdf = _mpd_mat.read_csv(_sort_csv, low_memory=False, dtype=str)
                 # Detect lot/wafer columns — prefer SORT_LOT
                 _sort_lot_col = next(
                     (c for c in _mdf.columns if c == 'SORT_LOT'), None)
@@ -9029,7 +9031,7 @@ if __name__ == '__main__':
                     _mat_frames = []
                     _seen_csv = set()
                     for _mcp in _all_mat_csv:
-                        _df_m = _mpd_mat.read_csv(_mcp, low_memory=False)
+                        _df_m = _mpd_mat.read_csv(_mcp, low_memory=False, dtype=str)
                         _df_m.columns = [c.strip() for c in _df_m.columns]
                         # Accept 'Intel WaferID' as an alias for 'WaferID'
                         if 'WaferID' not in _df_m.columns and 'Intel WaferID' in _df_m.columns:

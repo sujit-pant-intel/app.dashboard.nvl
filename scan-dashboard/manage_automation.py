@@ -2382,7 +2382,7 @@ def run_automation_main() -> None:
         # ── Auto-cleanup old runs for this letter ──────────────────────────────
         if _keep_runs > 0:
             _log(f"\nAuto-cleanup {_letter} (keep={_keep_runs})…")
-            _cleanup_old_runs(base_dir, _letter, keep=_keep_runs, dry_run=args.dry_run)
+            _cleanup_old_runs(base_dir, _letter, keep=_keep_runs, dry_run=args.dry_run, run_prefix=_run_prefix)
 
     # ── Send single consolidated email after all letters are processed ─────────
     _pcfg = _load_prod_cfg()
@@ -2467,16 +2467,19 @@ def _open_html(path) -> None:
     subprocess.Popen(["cmd", "/c", "start", "msedge", uri])
 
 
-def _discover_keys(base_dir: Path, program_series: str = "H61") -> list[str]:
-    """Discover TP keys from run folder subfolders for the given program_series."""
+def _discover_keys(base_dir: Path, program_series: str = "H61", run_prefix: str = "NVL") -> list[str]:
+    """Discover TP keys from run folder subfolders under base_dir/output.
+
+    base_dir already scopes to a single product, so any dir ending in a
+    run timestamp (_YYYYMMDD_HHMMSS) is treated as a run folder — no
+    dependency on the exact product prefix/program_series digits.
+    """
     keys: set[str] = set()
     output_dir = base_dir / "output"
     if output_dir.exists():
-        _sd = re.search(r'(\d+)$', program_series)
-        _dstr = _sd.group(1) if _sd else '61'
-        pattern = re.compile(rf'^NVL_[A-Za-z]{re.escape(_dstr)}[A-Za-z]_', re.IGNORECASE)
+        pattern = re.compile(r'_\d{8}_\d{6}$')
         for run_dir in output_dir.iterdir():
-            if run_dir.is_dir() and pattern.match(run_dir.name):
+            if run_dir.is_dir() and pattern.search(run_dir.name):
                 for sub in run_dir.iterdir():
                     if sub.is_dir():
                         keys.add(sub.name)
@@ -2552,6 +2555,9 @@ class AutomationManager(tk.Frame):
         self.program_series = self.cfg.get("program_series", "H61")
         self.excluded       = set(self.cfg.get("excluded_keys", []))
         self.excluded_ops   = set(str(o) for o in self.cfg.get("excluded_ops", []))
+        # Run-folder prefix (e.g. 'NVLG' for 'NVLG-512') — must match run_automation_main()'s _run_prefix
+        _rp_m = re.match(r'([A-Za-z]+)', label)
+        self._run_prefix = _rp_m.group(1) if _rp_m else "NVL"
 
     def _select_product_btn(self, label: str) -> None:
         self._product_var.set(label)
@@ -2781,7 +2787,7 @@ class AutomationManager(tk.Frame):
             w.destroy()
         self.check_vars.clear()
 
-        keys   = _discover_keys(self.base_dir, self.program_series)
+        keys   = _discover_keys(self.base_dir, self.program_series, run_prefix=self._run_prefix)
         groups = _group_keys(keys, self.program_series)
 
         if not keys:
@@ -3017,12 +3023,11 @@ class AutomationManager(tk.Frame):
             m = re.search(r'(\d{8})[_T](\d{6})', d.name)
             return (m.group(1) + m.group(2)) if m else d.name
 
-        _sd = re.search(r'(\d+)$', self.program_series)
-        _dstr = _sd.group(1) if _sd else '61'
-        pattern = re.compile(rf'^NVL_[A-Za-z]{re.escape(_dstr)}[A-Za-z]_', re.IGNORECASE)
+        # base_dir already scopes to this product's output/ — show any run folder
+        pattern = re.compile(r'_\d{8}_\d{6}$')
         folders = sorted(
             [d for d in output_dir.iterdir()
-             if d.is_dir() and pattern.match(d.name)],
+             if d.is_dir() and pattern.search(d.name)],
             key=_folder_ts, reverse=self._hist_sort_desc,
         )
 
@@ -3074,12 +3079,14 @@ class AutomationManager(tk.Frame):
             self.hist_status.set("No run selected.")
             return
 
+        _sd_oh = re.search(r'(\d+)$', self.program_series)
+        _dstr_oh = _sd_oh.group(1) if _sd_oh else '61'
         links: list[str] = []
         for iid in sel:
             run_dir = Path(iid)
             # Look for dashboard/index.html inside each TP subfolder
             for sub in sorted(run_dir.iterdir()):
-                if sub.is_dir() and re.search(r'61[A-Za-z]', sub.name):
+                if sub.is_dir() and re.search(_dstr_oh + r'[A-Za-z]', sub.name):
                     dash = sub / "dashboard" / "index.html"
                     if dash.exists():
                         links.append(str(dash))
@@ -3213,12 +3220,10 @@ class AutomationManager(tk.Frame):
 
         # ── Preview: find latest run per prog_key ─────────────────────────────
         prog_preview: dict = {}
-        _sd2 = re.search(r'(\d+)$', self.program_series)
-        _dstr2 = _sd2.group(1) if _sd2 else '61'
         for d in out_dir.iterdir():
             if not d.is_dir():
                 continue
-            m = re.search(rf'NVL_([A-Za-z]{re.escape(_dstr2)}[A-Za-z])_(\d{{8}}_\d{{6}})', d.name)
+            m = re.search(r'([A-Za-z]\d{2}[A-Za-z])_(\d{8}_\d{6})$', d.name)
             if not m:
                 continue
             prog_key = m.group(1).upper()
@@ -3228,7 +3233,7 @@ class AutomationManager(tk.Frame):
 
         if not prog_preview:
             messagebox.showinfo("No runs",
-                                "No NVL_*61* run folders found in output/.")
+                                f"No run folders found in {out_dir}.")
             return
 
         sorted_keys = sorted(prog_preview.keys())
@@ -3333,13 +3338,12 @@ class AutomationManager(tk.Frame):
             messagebox.showinfo("Cleanup", "No output/ folder found.")
             return
 
-        _sd3 = re.search(r'(\d+)$', self.program_series)
-        _dstr3 = _sd3.group(1) if _sd3 else '61'
-        pattern = re.compile(rf'^NVL_([A-Za-z]{re.escape(_dstr3)}[A-Za-z])_', re.IGNORECASE)
+        # base_dir already scopes to this product's output/ — group any run folder
+        pattern = re.compile(r'([A-Za-z]\d{2}[A-Za-z])_\d{8}_\d{6}$')
         letter_groups: dict[str, list] = {}
         for d in output_dir.iterdir():
             if d.is_dir():
-                m = pattern.match(d.name)
+                m = pattern.search(d.name)
                 if m:
                     letter = m.group(1).upper()  # full group key e.g. H61G
                     letter_groups.setdefault(letter, []).append(d)

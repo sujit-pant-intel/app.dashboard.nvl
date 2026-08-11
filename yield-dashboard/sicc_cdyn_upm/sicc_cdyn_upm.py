@@ -17,8 +17,8 @@ Run as GUI:
 Headless (called by yield pipeline):
   python sicc_cdyn_upm.py --headless --csv-file <f> --output-dir <d> ...
 
-External dependency (shared with yld/src/bin_distribution_html.py):
-  _filter_lot_wafer.py  — lot/wafer filter CSS + JS
+External dependency (shared with yield-dashboard/yld/yield_analysis.py):
+  shared/utilities/dashboard_common/_filter_lot_wafer.py  — lot/wafer filter CSS + JS
 """
 import sys
 sys.dont_write_bytecode = True
@@ -37,11 +37,24 @@ import tkinter as tk
 import numpy as np
 import pandas as pd
 
-# ── Shared filter-by-Lot/Wafer dependency (lives in yld/src/) ────────────────
+# ── Shared filter-by-Lot/Wafer dependency (lives in shared/utilities/dashboard_common/) ──
 _THIS_DIR = Path(__file__).parent
-_YLD_SRC = str((_THIS_DIR / "../yld").resolve())
-if _YLD_SRC not in sys.path:
-    sys.path.insert(0, _YLD_SRC)
+
+def _find_repo_root(start: Path) -> Path:
+    """Walk up from `start` to the ancestor containing a shared/ dir (robust to repo reshuffles)."""
+    current = Path(start).resolve()
+    for _ in range(12):
+        if (current / "shared").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return current
+
+_DASHBOARD_COMMON = str(_find_repo_root(_THIS_DIR) / "shared" / "utilities" / "dashboard_common")
+if _DASHBOARD_COMMON not in sys.path:
+    sys.path.insert(0, _DASHBOARD_COMMON)
 
 from _filter_lot_wafer import (   # noqa: E402
     FILTER_TABLE_CSS as _FILTER_CSS,

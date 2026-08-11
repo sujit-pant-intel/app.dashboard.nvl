@@ -16,6 +16,24 @@ import sys
 from pathlib import Path
 import re as _re
 import pandas as pd
+
+# ── Shared filter-by-Lot/Wafer dependency (lives in shared/utilities/dashboard_common/) ──
+def _find_repo_root(start: Path) -> Path:
+    """Walk up from `start` to the ancestor containing a shared/ dir (robust to repo reshuffles)."""
+    current = Path(start).resolve()
+    for _ in range(12):
+        if (current / "shared").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return current
+
+_DASHBOARD_COMMON = str(_find_repo_root(Path(__file__).parent) / "shared" / "utilities" / "dashboard_common")
+if _DASHBOARD_COMMON not in sys.path:
+    sys.path.insert(0, _DASHBOARD_COMMON)
+
 from _filter_lot_wafer import FILTER_TABLE_CSS, FILTER_DD_JS, make_filter_js
 
 

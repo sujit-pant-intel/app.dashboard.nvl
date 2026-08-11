@@ -2800,8 +2800,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
+def _find_repo_root(start: Path) -> Path:
+    """Walk up from `start` to the ancestor containing a shared/ dir (robust to repo reshuffles)."""
+    current = Path(start).resolve()
+    for _ in range(12):
+        if (current / "shared").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return current
+
+
 _HERE = Path(__file__).resolve().parent
-_REPO_ROOT = _HERE.parent.parent.parent.parent   # app.yield.nvl/
+_REPO_ROOT = _find_repo_root(_HERE)   # app.dashboard.nvl/
 
 # ── CONFIG (override via CLI args) ─────────────────────────────────────────────
 _AQUA_EXE_GAR   = r"\\PGSAPP3301.gar.corp.intel.com\Installer\AquaHbase\AquaCMDClient\Client\AquaCmdLine.exe"
@@ -3093,9 +3106,9 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE      = Path(__file__).resolve().parent
-_REPO_ROOT = _HERE.parent.parent.parent.parent   # app.yield.nvl/
+_REPO_ROOT = _find_repo_root(_HERE)   # app.dashboard.nvl/
 
-_PIPELINE_PY  = _REPO_ROOT / "code" / "dashboard" / "yield-dashboard" / "yld" / "yield_pipeline.py"
+_PIPELINE_PY  = _HERE / "yield_pipeline.py"
 _AQUA_EXE_GAR = r"\\PGSAPP3301.gar.corp.intel.com\Installer\AquaHbase\AquaCMDClient\Client\AquaCmdLine.exe"
 _AQUA_EXE_AMR = r"\\FMSAPP3301.amr.corp.intel.com\Installer\AquaHbase\AquaCMDClient\Client\AquaCmdLine.exe"
 
@@ -3668,7 +3681,7 @@ from tkinter import messagebox, ttk
 
 # ── defaults (same as run_automation.py) ──────────────────────────────────────
 _HERE        = Path(__file__).resolve().parent
-_REPO_ROOT   = _HERE.parent.parent.parent.parent   # app.yield.nvl/
+_REPO_ROOT   = _find_repo_root(_HERE)   # app.dashboard.nvl/
 _BASE_DIR    = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\yield")
 _CFG_NAME    = "email_config.json"
 _CFG_DIR     = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard"
@@ -4290,7 +4303,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE        = Path(__file__).resolve().parent
-_REPO_ROOT   = _HERE.parent.parent   # app.dashboard.nvl/
+_REPO_ROOT   = _find_repo_root(_HERE)   # app.dashboard.nvl/
 _PIPELINE    = _REPO_ROOT / "yield-dashboard" / "yld" / "yield_pipeline.py"
 _COMPARE_RUNS = _HERE / "compare_runs.py"
 _AQUA_CFG   = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard" / "NVL_Sort_Yield - AutoPull.txt"

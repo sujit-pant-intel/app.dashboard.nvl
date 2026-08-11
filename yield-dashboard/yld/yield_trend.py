@@ -3335,13 +3335,26 @@ def load_product_config(cfg_path: str | Path) -> dict[str, Any]:
     }
 
 
+def _find_repo_root(start: Path) -> Path:
+    """Walk up from `start` to the ancestor containing a shared/ dir (robust to repo reshuffles)."""
+    current = Path(start).resolve()
+    for _ in range(12):
+        if (current / "shared").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return current
+
+
 def _find_auto_config(devrevstep: str = '') -> Path | None:
     """Search shared/setup/yield-dashboard/ for a matching .json.
     If devrevstep is given (e.g. '8PF5CV'), prefer a file whose name starts with it.
     Falls back to 'default' file, then first .json found.
     """
     here = Path(__file__).resolve().parent
-    d = here.parents[1] / 'shared' / 'setup' / 'config' / 'yield-dashboard'
+    d = _find_repo_root(here) / 'shared' / 'setup' / 'config' / 'yield-dashboard'
     if not d.exists():
         return None
     jsons = sorted(d.glob('*.json'))
@@ -4537,7 +4550,7 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
     pareto_table_html = _build_pareto_table(pareto_table_rows or [])
 
     # ── Plotly JS: embed inline (no CDN/network dependency) ─────────────────
-    _lib_dir = Path(__file__).resolve().parents[3] / 'shared' / 'library'
+    _lib_dir = _find_repo_root(Path(__file__).parent) / 'shared' / 'library'
     _plotly_js_files = sorted(_lib_dir.glob('plotly*.min.js')) if _lib_dir.exists() else []
     if _plotly_js_files:
         _plotly_js_content = _plotly_js_files[-1].read_text(encoding='utf-8')
