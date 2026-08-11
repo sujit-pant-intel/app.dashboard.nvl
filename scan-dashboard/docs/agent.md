@@ -10,10 +10,11 @@ table, filter tree).
 
 ```
 scan-dashboard/
+  manage_automation.py  # GUI (schedule/email/history/data) + automation engine (AQUA pull, run log, reports index)
   src/
     scan-dashboard.py    # Combined: HRYFrame GUI tab + headless RAWSTR pipeline + HRYApp launcher
-    run_automation.py    # Scheduled AQUA-pull automation + reports/ index builder
     index.html           # Dashboard HTML template
+  launch-bat/            # Scheduled-task launcher .bat files
   collateral/
     Partition_Info.csv
     reticle/            # Reticle CSV files matched by DERVREVSTEP[:6]
