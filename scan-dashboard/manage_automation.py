@@ -689,7 +689,7 @@ def run_pipeline_for_tp(
         _hry_cfg = None
         try:
             import pandas as _pd2
-            _cfg_dir = _PIPELINE.parent.parent.parent / "shared" / "setup" / "config" / "scan-dashboard"
+            _cfg_dir = _REPO_ROOT / "shared" / "setup" / "config" / "scan-dashboard"
             _cfg_csvs = [p for p in sorted(_cfg_dir.glob("*.csv"))
                          if p.name != "yield-estimate-per-fault-count.csv"] if _cfg_dir.exists() else []
             if _cfg_csvs:
