@@ -18,7 +18,7 @@ Workflow
 2.  For each changed TP:
     - Extract the accumulated CSV from .7z to a temp dir
     - Write run_config.json: {"input": [csv_path], "output": "<output_dir>"}
-    - Run scan_dashboard.py --run-config run_config.json
+    - Run scan-dashboard.py --run-config run_config.json
     - Parse output data.js for scan summary stats
 
 3.  Update run_log.html (cumulative, one section per run).
@@ -78,7 +78,7 @@ if hasattr(sys.stderr, "reconfigure"):
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _HERE        = Path(__file__).resolve().parent
 _REPO_ROOT   = _HERE.parent.parent          # app.dashboard.nvl/
-_PIPELINE    = _REPO_ROOT / "scan-dashboard" / "src" / "scan_dashboard.py"
+_PIPELINE    = _REPO_ROOT / "scan-dashboard" / "src" / "scan-dashboard.py"
 _AQUA_CFG    = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard" / "NVL_Sort_Scan - Dashboard.txt"
 _YIELD_TGT   = _REPO_ROOT / "shared" / "setup" / "config" / "scan-dashboard" / "yield-estimate-per-fault-count.csv"
 

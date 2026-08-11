@@ -10,13 +10,10 @@ table, filter tree).
 
 ```
 scan-dashboard/
-  dashboard.py          # Tkinter GUI entry point
   src/
-    hry_frame.py        # HRYFrame tab — all GUI logic, settings load/save, run/open
-    pipeline.py         # Headless Python pipeline (all processing + dashboard build)
-  dashboard/
-    index.html          # Dashboard HTML template
-    data.js             # Placeholder — overwritten by pipeline with real data
+    scan-dashboard.py    # Combined: HRYFrame GUI tab + headless RAWSTR pipeline + HRYApp launcher
+    run_automation.py    # Scheduled AQUA-pull automation + reports/ index builder
+    index.html           # Dashboard HTML template
   collateral/
     Partition_Info.csv
     reticle/            # Reticle CSV files matched by DERVREVSTEP[:6]
@@ -27,16 +24,16 @@ scan-dashboard/
 
 ### GUI (interactive)
 ```
-python dashboard.py
-python dashboard.py U:/path/to/input.json    # pre-populates all fields from JSON
+python src/scan-dashboard.py
+python src/scan-dashboard.py U:/path/to/input.json    # pre-populates all fields from JSON
 ```
 
 ### Headless pipeline
 ```
-python src/pipeline.py --input data.csv --output ./results
-python src/pipeline.py --from-json input.json              # load all settings from JSON
-python src/pipeline.py --from-json input.json --standalone  # also produce single-file HTML
+python src/scan-dashboard.py --input data.csv --output ./results
+python src/scan-dashboard.py --run-config run_config.json
 ```
+
 
 ## Settings JSON format (input.json / *.scancfg.json)
 Supports both old (`inputs`/`output`) and new (`input_files`/`output_dir`) key names:
