@@ -58,7 +58,7 @@ def _sniff_csv_header(input_csv: str | Path, nrows: int = 100):
         if ext == ".gz":
             import gzip
             with gzip.open(p, "rt", encoding="utf-8", errors="replace") as fh:
-                return _pd.read_csv(fh, nrows=nrows, low_memory=False)
+                return _pd.read_csv(fh, nrows=nrows, low_memory=False, dtype=str)
         if ext == ".zip":
             import zipfile
             with zipfile.ZipFile(p) as zf:
@@ -66,7 +66,7 @@ def _sniff_csv_header(input_csv: str | Path, nrows: int = 100):
                 if not names:
                     return None
                 with zf.open(names[0]) as fh:
-                    return _pd.read_csv(fh, nrows=nrows, low_memory=False)
+                    return _pd.read_csv(fh, nrows=nrows, low_memory=False, dtype=str)
         if ext == ".7z":
             import tempfile, subprocess
             with tempfile.TemporaryDirectory(prefix="scan_sniff_") as tmp:
@@ -78,8 +78,8 @@ def _sniff_csv_header(input_csv: str | Path, nrows: int = 100):
                 csvs = sorted(Path(tmp).glob("*.[cC][sS][vV]"))
                 if not csvs:
                     return None
-                return _pd.read_csv(csvs[0], nrows=nrows, low_memory=False)
-        return _pd.read_csv(p, nrows=nrows, low_memory=False)
+                return _pd.read_csv(csvs[0], nrows=nrows, low_memory=False, dtype=str)
+        return _pd.read_csv(p, nrows=nrows, low_memory=False, dtype=str)
     except Exception:
         return None
 
