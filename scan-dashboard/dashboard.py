@@ -10,7 +10,7 @@ _SRC_DIR    = os.path.join(_SCRIPT_DIR, 'src')
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
-from hry_frame import HRYFrame
+from scan_dashboard import HRYFrame
 
 BG   = '#1a252f'
 BG2  = '#2c3e50'
