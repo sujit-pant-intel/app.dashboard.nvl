@@ -15,21 +15,26 @@ Both consumers import:
 
 ``FILTER_TABLE_CSS``  — append to your page CSS string.
 ``FILTER_DD_JS``      — inject into the page <script> providing ``_ftDdCreate(opts)``.
-``make_filter_js(on_change_calls, sel_var, toggle_fn)``
+``make_filter_js(on_change_calls, sel_var, toggle_fn, metric_cols=None, extra_text_cols=None)``
                       — returns the COMPLETE filter JS (rFilter, sortFilter,
                         toggleRow, selectAllRows, clearRows, ftDdOpen).
-                        Parameterized so both dashboards share the exact same logic.
+                        Parameterized so all dashboards share the exact same logic.
+                        ``metric_cols`` / ``extra_text_cols`` let a consumer swap in
+                        its own sortable numeric columns / extra text columns instead
+                        of the default FF% / FF+DF% / Total (see docstring below).
 
 DATA CONTRACT
 -------------
-Both dashboards must provide a ``DATA`` JS object with:
+All dashboards must provide a ``DATA`` JS object with:
   { rows: [...],        // array of row objects
     hasMaterial: bool,  // true if rows have non-empty material field
     hasDate:     bool,  // true if rows have non-empty date field
     hasUpmMed:   bool,  // true if rows have upmMed array
   }
 
-Each row must have: program, lot, wafer, material, date, upmMed (list), binCounts (dict), total.
+Each row must have: program, lot, wafer, material, date, upmMed (list), plus
+whatever fields the metric_cols/extra_text_cols reference. The default
+metric_cols needs: binCounts (dict), total.
 """
 
 # ── Shared CSS (bin_distribution_html.py is the master definition) ───────────
@@ -124,24 +129,72 @@ function _ftDdClose_(){
 function _ftDdOutside_(e){if(_ftDdInst_&&!_ftDdInst_.panel.contains(e.target)){_ftDdInst_.apply();}}
 """
 
+import json as _json
+
+# ── Default metric columns (bin_distribution_html.py's FF% / FF+DF% / Total) ─
+# get(row)    → number used both for display and for sorting (0-safe fallback)
+# fmt(v, row) → display string (may render '—' for the zero-total case)
+_DEFAULT_METRIC_COLS = [
+    {
+        'key': 'ff', 'label': 'FF%',
+        'get': "var bc=row.binCounts||{};return row.total>0?"
+               "(((bc['1']||0)+(bc['2']||0))/row.total*100):0;",
+        'fmt': "return row.total>0?v.toFixed(1)+'%':'\\u2014';",
+    },
+    {
+        'key': 'ffdf', 'label': 'FF+DF%',
+        'get': "var bc=row.binCounts||{};var ff=(bc['1']||0)+(bc['2']||0);"
+               "return row.total>0?((ff+(bc['3']||0)+(bc['4']||0))/row.total*100):0;",
+        'fmt': "return row.total>0?v.toFixed(1)+'%':'\\u2014';",
+    },
+    {
+        'key': 'total', 'label': 'Total',
+        'get': "return row.total||0;",
+        'fmt': "return v.toLocaleString();",
+    },
+]
+
+
+def _metric_entry_js(m):
+    return (
+        '{k:' + _json.dumps(m['key']) + ',l:' + _json.dumps(m['label'])
+        + ',get:function(row){' + m['get'] + '}'
+        + ',fmt:function(v,row){' + m['fmt'] + '}}'
+    )
+
 
 # ── Complete filter JS template ───────────────────────────────────────────────
 # Placeholders substituted by make_filter_js():
-#   __SEL__       → JS Set variable name  (e.g. 'sR' or 'SEL_WFR')
-#   __FN_NS__     → namespace prefix for onclick helpers (e.g. 'IC.' or '')
-#   __TOGGLE_FN__ → full toggleRow reference (e.g. 'IC.toggleRow' or 'toggleRow')
-#   __ON_CHANGE__ → JS calls after any filter/selection change
+#   __SEL__            → JS Set variable name  (e.g. 'sR' or 'SEL_WFR')
+#   __FN_NS__          → namespace prefix for onclick helpers (e.g. 'IC.' or '')
+#   __TOGGLE_FN__      → full toggleRow reference (e.g. 'IC.toggleRow' or 'toggleRow')
+#   __ON_CHANGE__      → JS calls after any filter/selection change
+#   __EXTRA_TEXT_DEFS__→ JS array literal [{k:...,l:...}, ...] of extra dropdown-filterable
+#                        text columns rendered after MaterialType (e.g. Stepping)
+#   __METRICS__        → JS array literal of {k,l,get,fmt} sortable numeric columns
+#                        rendered after Date Tested (default: FF% / FF+DF% / Total)
 _FILTER_COMPLETE_JS_TEMPLATE = r"""
 // ── Filter-by-Lot/Wafer complete JS (master: bin_distribution_html.py) ──────
 var _ftDdState={};
 var _ftSortCol=null,_ftSortDir=-1;
 var _ftIdxs=DATA.rows.map(function(_,i){return i;});
 var _ftLR=-1;
+var _FT_EXTRA_TXT=__EXTRA_TEXT_DEFS__;
+var _FT_METRICS=__METRICS__;
+function _ftTextDefs(){
+  var d=[{k:'program',l:'TestProgram'},{k:'lot',l:'Lot'},{k:'wafer',l:'Wafer'}];
+  if(DATA.hasMaterial)d.push({k:'material',l:'MaterialType'});
+  _FT_EXTRA_TXT.forEach(function(e){d.push(e);});
+  return d;
+}
+function _ftRowTextVals(row){
+  return _ftTextDefs().map(function(d){return row[d.k]!=null?row[d.k]:'';});
+}
 function _visibleFtIdxs(){
   var vis=[];
   _ftIdxs.forEach(function(i){
     var row=DATA.rows[i];
-    var cols=[row.program,row.lot,row.wafer].concat(DATA.hasMaterial?[row.material||'']:[]);
+    var cols=_ftRowTextVals(row);
     var ok=Object.keys(_ftDdState).every(function(ci){var s=_ftDdState[ci];return !s||s.has(String(cols[parseInt(ci)]||''));});
     if(ok)vis.push(i);
   });
@@ -150,22 +203,21 @@ function _visibleFtIdxs(){
 function _buildFilterThead(){
   var th=document.getElementById('filter-thead');if(!th||th.innerHTML)return;
   var h='<tr>';
-  h+='<th>TestProgram <button class="flt-btn" id="ft-fb-0" onclick="event.stopPropagation();__FN_NS__ftDdOpen(0,this)" title="Filter">&#9660;</button></th>';
-  h+='<th>Lot <button class="flt-btn" id="ft-fb-1" onclick="event.stopPropagation();__FN_NS__ftDdOpen(1,this)" title="Filter">&#9660;</button></th>';
-  h+='<th>Wafer <button class="flt-btn" id="ft-fb-2" onclick="event.stopPropagation();__FN_NS__ftDdOpen(2,this)" title="Filter">&#9660;</button></th>';
-  if(DATA.hasMaterial)h+='<th>MaterialType <button class="flt-btn" id="ft-fb-3" onclick="event.stopPropagation();__FN_NS__ftDdOpen(3,this)" title="Filter">&#9660;</button></th>';
+  _ftTextDefs().forEach(function(d,i){
+    h+='<th>'+d.l+' <button class="flt-btn" id="ft-fb-'+i+'" onclick="event.stopPropagation();__FN_NS__ftDdOpen('+i+',this)" title="Filter">&#9660;</button></th>';
+  });
   if(DATA.hasUpmMed)h+='<th class="num" onclick="event.stopPropagation();__FN_NS__sortFilter(\'upmmed\')" style="cursor:pointer">UPM (Med) <span id="ft-sh-upmmed"></span></th>';
-  h+='<th onclick="event.stopPropagation();__FN_NS__sortFilter(\'date\')" style="cursor:pointer">Date Tested <span id="ft-sh-date"></span></th>';
-  h+='<th class="num" onclick="event.stopPropagation();__FN_NS__sortFilter(\'ff\')" style="cursor:pointer">FF% <span id="ft-sh-ff"></span></th>';
-  h+='<th class="num" onclick="event.stopPropagation();__FN_NS__sortFilter(\'ffdf\')" style="cursor:pointer">FF+DF% <span id="ft-sh-ffdf"></span></th>';
-  h+='<th class="num" onclick="event.stopPropagation();__FN_NS__sortFilter(\'total\')" style="cursor:pointer">Total <span id="ft-sh-total"></span></th>';
+  if(DATA.hasDate)h+='<th onclick="event.stopPropagation();__FN_NS__sortFilter(\'date\')" style="cursor:pointer">Date Tested <span id="ft-sh-date"></span></th>';
+  _FT_METRICS.forEach(function(m){
+    h+='<th class="num" onclick="event.stopPropagation();__FN_NS__sortFilter(\''+m.k+'\')" style="cursor:pointer">'+m.l+' <span id="ft-sh-'+m.k+'"></span></th>';
+  });
   h+='</tr>';
   th.innerHTML=h;
 }
 function ftDdOpen(col,btn){
   var allVals=[];var seen=new Set();
   DATA.rows.forEach(function(row){
-    var cols=[row.program,row.lot,row.wafer].concat(DATA.hasMaterial?[row.material||'']:[]);
+    var cols=_ftRowTextVals(row);
     var v=String(cols[col]||'');
     if(!seen.has(v)){seen.add(v);allVals.push(v);}
   });
@@ -190,41 +242,34 @@ function rFilter(){
     _ftIdxs.sort(function(a,b){
       var ra=DATA.rows[a],rb=DATA.rows[b];
       if(_ftSortCol==='date'){var av=ra.date||'',bv=rb.date||'';return _ftSortDir*(av<bv?-1:av>bv?1:0);}
-      var ffA=(ra.binCounts&&ra.binCounts['1']||0)+(ra.binCounts&&ra.binCounts['2']||0);
-      var ffB=(rb.binCounts&&rb.binCounts['1']||0)+(rb.binCounts&&rb.binCounts['2']||0);
-      var ffdfA=ffA+(ra.binCounts&&ra.binCounts['3']||0)+(ra.binCounts&&ra.binCounts['4']||0);
-      var ffdfB=ffB+(rb.binCounts&&rb.binCounts['3']||0)+(rb.binCounts&&rb.binCounts['4']||0);
-      var av2,bv2;
-      if(_ftSortCol==='ff'){av2=ra.total>0?ffA/ra.total:0;bv2=rb.total>0?ffB/rb.total:0;}
-      else if(_ftSortCol==='ffdf'){av2=ra.total>0?ffdfA/ra.total:0;bv2=rb.total>0?ffdfB/rb.total:0;}
-      else if(_ftSortCol==='upmmed'){av2=(ra.upmMed&&ra.upmMed[0]!=null)?ra.upmMed[0]:-Infinity;bv2=(rb.upmMed&&rb.upmMed[0]!=null)?rb.upmMed[0]:-Infinity;}
-      else{av2=ra.total;bv2=rb.total;}
-      return _ftSortDir*(av2-bv2);
+      if(_ftSortCol==='upmmed'){
+        var au=(ra.upmMed&&ra.upmMed[0]!=null)?ra.upmMed[0]:-Infinity,bu=(rb.upmMed&&rb.upmMed[0]!=null)?rb.upmMed[0]:-Infinity;
+        return _ftSortDir*(au-bu);
+      }
+      var mm=null;
+      for(var mi=0;mi<_FT_METRICS.length;mi++){if(_FT_METRICS[mi].k===_ftSortCol){mm=_FT_METRICS[mi];break;}}
+      if(mm)return _ftSortDir*(mm.get(ra)-mm.get(rb));
+      return 0;
     });
   }
   var html='';
   _ftIdxs.forEach(function(i){
     var row=DATA.rows[i];
-    var cols=[row.program,row.lot,row.wafer].concat(DATA.hasMaterial?[row.material||'']:[]);
+    var cols=_ftRowTextVals(row);
     var show=Object.keys(_ftDdState).every(function(ci){
       var s=_ftDdState[ci];return !s||s.has(String(cols[parseInt(ci)]||''));
     });
     if(!show)return;
     var sel=__SEL__.has(i);
     html+='<tr class="fr'+(sel?' frs':'')+'" onclick="__TOGGLE_FN__('+i+',event)">';
-    var bc=row.binCounts||{};
-    var ffCnt=(bc['1']||0)+(bc['2']||0);
-    var ffdfCnt=ffCnt+(bc['3']||0)+(bc['4']||0);
-    var ffPct=row.total>0?(ffCnt/row.total*100).toFixed(1)+'%':'\u2014';
-    var ffdfPct=row.total>0?(ffdfCnt/row.total*100).toFixed(1)+'%':'\u2014';
-    html+='<td>'+esc(row.program||'')+'</td><td>'+esc(row.lot||'')+'</td><td>'+esc(row.wafer||'')+'</td>';
-    if(DATA.hasMaterial)html+='<td>'+esc(row.material||'')+'</td>';
+    cols.forEach(function(c){html+='<td>'+esc(String(c||''))+'</td>';});
     if(DATA.hasUpmMed&&row.upmMed)(row.upmMed||[]).forEach(function(v){html+='<td class="num">'+(v!=null?v.toFixed(2):'\u2014')+'</td>';});
     if(DATA.hasDate)html+='<td>'+esc(row.date||'')+'</td>';
-    html+='<td class="num">'+ffPct+'</td><td class="num">'+ffdfPct+'</td>';
-    html+='<td class="num">'+row.total.toLocaleString()+'</td></tr>';
+    _FT_METRICS.forEach(function(m){var v=m.get(row);html+='<td class="num">'+m.fmt(v,row)+'</td>';});
+    html+='</tr>';
   });
-  ['date','ff','ffdf','total','upmmed'].forEach(function(k){
+  var sortKeys=['date','upmmed'].concat(_FT_METRICS.map(function(m){return m.k;}));
+  sortKeys.forEach(function(k){
     var sh=document.getElementById('ft-sh-'+k);
     if(sh)sh.innerHTML=(_ftSortCol===k)?(_ftSortDir>0?'&#9650;':'&#9660;'):'';
   });
@@ -256,7 +301,8 @@ function clearRows(){__SEL__.clear();_ftLR=-1;rFilter();__ON_CHANGE__}
 """
 
 
-def make_filter_js(on_change_calls, sel_var='sR', toggle_fn='IC.toggleRow'):
+def make_filter_js(on_change_calls, sel_var='sR', toggle_fn='IC.toggleRow',
+                    metric_cols=None, extra_text_cols=None):
     """Return complete filter-by-Lot/Wafer JS parameterized for the calling dashboard.
 
     on_change_calls : JS executed after any filter or selection change.
@@ -266,14 +312,43 @@ def make_filter_js(on_change_calls, sel_var='sR', toggle_fn='IC.toggleRow'):
                       bin_dist: 'sR'   |  SICC: 'SEL_WFR'
     toggle_fn       : Full JS function reference for row onclick.
                       bin_dist: 'IC.toggleRow'  |  SICC: 'toggleRow'
+    metric_cols     : Optional list of sortable numeric columns rendered after
+                      Date Tested, each a dict {'key','label','get','fmt'} where
+                      'get' is a JS function BODY (must `return` a number, given
+                      `row`) and 'fmt' is a JS function body (must `return` a
+                      display string, given `v` = get's result and `row`).
+                      Defaults to the original FF% / FF+DF% / Total columns.
+                      Example (scan-dashboard Total/Fail/%Fail):
+                        [{'key': 'total', 'label': 'Total',
+                          'get': 'return row.total||0;',
+                          'fmt': "return v?v.toLocaleString():'\\u2014';"},
+                         {'key': 'fail', 'label': 'Fail',
+                          'get': 'return row.fail||0;',
+                          'fmt': 'return String(v);'},
+                         {'key': 'pfail', 'label': '% Fail',
+                          'get': 'return row.total?(row.fail/row.total*100):0;',
+                          'fmt': "return row.total?v.toFixed(2)+'%':'\\u2014';"}]
+    extra_text_cols : Optional list of extra dropdown-filterable text columns
+                      rendered after MaterialType, each a dict {'key','label'}
+                      (e.g. [{'key': 'stepping', 'label': 'Step'}]).
 
     The returned JS references DATA.rows, DATA.hasMaterial, DATA.hasDate,
     DATA.hasUpmMed — the caller must define a DATA object before this JS runs.
+    Each row must additionally provide whatever fields metric_cols/extra_text_cols
+    reference (default metric_cols needs `binCounts` + `total`).
     """
     fn_ns = (toggle_fn.rsplit('.', 1)[0] + '.') if '.' in toggle_fn else ''
+    metric_cols = metric_cols if metric_cols is not None else _DEFAULT_METRIC_COLS
+    extra_text_cols = extra_text_cols or []
+    metrics_js = '[' + ','.join(_metric_entry_js(m) for m in metric_cols) + ']'
+    extra_text_js = _json.dumps(
+        [{'k': c['key'], 'l': c['label']} for c in extra_text_cols]
+    )
     js = _FILTER_COMPLETE_JS_TEMPLATE
     js = js.replace('__SEL__', sel_var)
     js = js.replace('__FN_NS__', fn_ns)
     js = js.replace('__TOGGLE_FN__', toggle_fn)
     js = js.replace('__ON_CHANGE__', on_change_calls)
+    js = js.replace('__EXTRA_TEXT_DEFS__', extra_text_js)
+    js = js.replace('__METRICS__', metrics_js)
     return js

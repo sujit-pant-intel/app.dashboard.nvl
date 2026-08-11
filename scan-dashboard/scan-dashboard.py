@@ -1026,6 +1026,59 @@ def write_dashboard(result: dict, output_dir: Path, standalone: bool = False):
     except Exception as _wme:
         print(f"[pipeline] WARN: WAFERMAP_JS not injected: {_wme}")
 
+    # Inject the shared Filter-by-Lot/Wafer table (yield-dashboard/yld/_filter_lot_wafer.py)
+    # so scan-dashboard's sidebar table shares one implementation with the other dashboards.
+    try:
+        _flw_dir = str(_REPO_ROOT / "yield-dashboard" / "yld")
+        if _flw_dir not in sys.path:
+            sys.path.insert(0, _flw_dir)
+        from _filter_lot_wafer import FILTER_TABLE_CSS, FILTER_DD_JS, make_filter_js
+        _scan_metric_cols = [
+            {'key': 'total', 'label': 'Total', 'get': 'return row.total||0;',
+             'fmt': "return v?v.toLocaleString():'\u2014';"},
+            {'key': 'fail', 'label': 'Fail', 'get': 'return row.fail||0;',
+             'fmt': 'return String(v);'},
+            {'key': 'pfail', 'label': '% Fail', 'get': 'return row.total?(row.fail/row.total*100):0;',
+             'fmt': "return row.total?v.toFixed(2)+'%':'\u2014';"},
+        ]
+        _scan_extra_text_cols = [{'key': 'stepping', 'label': 'Step'}]
+        _scan_filter_js = make_filter_js(
+            on_change_calls='applyFilters();',
+            sel_var='SEL_WFR',
+            toggle_fn='toggleRow',
+            metric_cols=_scan_metric_cols,
+            extra_text_cols=_scan_extra_text_cols,
+        )
+        _html = dst_html.read_text(encoding="utf-8")
+        # Density override: shared module's default sizing is tuned for the bigger
+        # yield-dashboard sidebar -- scale it back down to scan-dashboard's compact UI.
+        _density_css = (
+            '<style>\n#wfr-panel .ftbl{font-size:9.1px}\n'
+            '#wfr-panel .ftbl th{padding:3px 6px}\n'
+            '#wfr-panel .ftbl td{padding:2px 6px}\n'
+            '#wfr-panel .flt-btn{font-size:9px}\n'
+        )
+        _html = _html.replace('<style>', _density_css, 1)
+        _style_marker = '</style>'
+        if _style_marker in _html:
+            _html = _html.replace(_style_marker, FILTER_TABLE_CSS + _style_marker, 1)
+        _script_marker = '\n<script>\n"use strict";'
+        # Placeholder DATA/esc() so the filter JS's top-level `DATA.rows.map(...)`
+        # doesn't throw before the main script (below) rebuilds DATA from M/D.
+        _flw_preamble = (
+            'var DATA={rows:[],hasMaterial:false,hasDate:false,hasUpmMed:false};\n'
+            'function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}\n'
+        )
+        _flw_js = '\n<script>\n' + _flw_preamble + FILTER_DD_JS + _scan_filter_js + '</script>\n'
+        if _script_marker in _html:
+            _html = _html.replace(_script_marker, _flw_js + _script_marker, 1)
+        else:
+            _html = _html.replace("</body>", _flw_js + "\n</body>", 1)
+        dst_html.write_text(_html, encoding="utf-8")
+        print("[pipeline] Shared Filter-by-Lot/Wafer JS injected")
+    except Exception as _flwe:
+        print(f"[pipeline] WARN: Filter-by-Lot/Wafer JS not injected: {_flwe}")
+
     # Copy Plotly library
     if _PLOTLY_JS.exists():
         shutil.copy2(_PLOTLY_JS, dash_dir / _PLOTLY_JS.name)

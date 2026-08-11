@@ -141,26 +141,8 @@ body{font-family:Arial,sans-serif;background:#f0f2f5;color:#2c3e50;font-size:9.7
 .part-dd-item{display:flex;align-items:center;gap:5px;padding:2px 3px;border-radius:3px;cursor:pointer;font-size:8.25px;color:#1a252f;user-select:none}
 .part-dd-item:hover{background:#d0e8ff}
 .part-dd-item input{accent-color:#0071C5;cursor:pointer;flex-shrink:0;width:11px;height:11px}
-/* ---- Lot/wafer table ---- */
+/* ---- Lot/wafer table (shared _filter_lot_wafer.py module; .ftbl injected at build time) ---- */
 .wfr-tbl-wrap{flex:1;overflow-y:auto;overflow-x:auto;min-height:60px}
-.wfr-tbl{border-collapse:collapse;width:auto;font-size:9.1px;white-space:nowrap}
-.wfr-tbl th{background:#1f3a50;color:#fff;padding:3px 10px;text-align:left;position:sticky;top:0;z-index:2;white-space:nowrap}
-.wfr-tbl td{padding:2px 10px;border-bottom:1px solid #d0dce8;cursor:pointer;white-space:nowrap;color:#111}
-.wfr-tbl .num{text-align:right}
-.wfr-tbl tbody tr.fr:nth-child(even) td{background:#f0f6ff}
-.wfr-tbl .fr:hover td{background:#d0e8ff!important}
-.wfr-tbl .frs td{background:#b3d7f5!important;font-weight:bold;color:#0c2d48!important}
-.wfr-tbl .frs:hover td{background:#85bfe8!important}
-.lot-hdr-row td{background:#daeaf8!important;font-weight:bold;cursor:pointer;border-bottom:1px solid #a8c4db}
-.lot-hdr-row:hover td{background:#c8def4!important}
-.wfr-filter-row th{background:#16304a;padding:2px 4px}
-.lwtf-inp{font-size:8px;padding:1px 4px;border:1px solid #b3c6de;border-radius:10px;width:100%;box-sizing:border-box;outline:none;background:#fff;color:#1a252f}
-.lwtf-inp:focus{border-color:#0071C5;box-shadow:0 0 0 1px #0071C5}
-.wfr-tbl .fr.lw-hidden{display:none}
-.col-rsz{position:absolute;right:0;top:0;width:5px;height:100%;cursor:col-resize;user-select:none;z-index:3;background:transparent}
-.col-rsz:hover,.col-rsz.dragging{background:rgba(255,255,255,0.35)}
-.col-rsz{position:absolute;right:0;top:0;width:5px;height:100%;cursor:col-resize;user-select:none;z-index:3;background:transparent}
-.col-rsz:hover,.col-rsz.dragging{background:rgba(255,255,255,0.35)}
 /* ---- Tab content ---- */
 .tab-content{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
 .tab-panel{display:none;flex-direction:column;overflow-y:auto;padding:10px 14px;gap:10px;flex:1;min-height:0}
@@ -214,7 +196,7 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
       <div class="wfr-hdr">
         <span>&#128269; Filter by Lot / Wafer</span>
         <span style="display:flex;align-items:center;gap:4px">
-          <span class="row-info" id="row-info"></span>
+          <span class="row-info" id="row-sel-info"></span>
           <button class="collapse-btn" id="wfr-collapse-btn" onclick="togglePanel()">&#9650;</button>
         </span>
       </div>
@@ -240,11 +222,11 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
       </div>
       <div style="display:flex;align-items:center;gap:5px;padding:2px 7px 3px;background:#1a2e42;border-bottom:1px solid #1e3050">
         <span style="font-size:8px;color:#6a8a9a">Select:</span>
-        <button class="cb" onclick="selAll()" style="font-size:8px;padding:1px 6px">All</button>
-        <button class="cb" onclick="clrAll()" style="font-size:8px;padding:1px 4px">None</button>
+        <button class="cb" onclick="selectAllRows()" style="font-size:8px;padding:1px 6px">All</button>
+        <button class="cb" onclick="clearRows()" style="font-size:8px;padding:1px 4px">None</button>
       </div>
       <div class="wfr-tbl-wrap">
-        <table class="wfr-tbl"><thead id="wfr-thead"></thead><tbody id="wfr-tbody"></tbody></table>
+        <table class="ftbl"><thead id="filter-thead"></thead><tbody id="filter-tbody"></tbody></table>
       </div>
     </div>
   </div>
@@ -512,8 +494,7 @@ var _rvIBFilter=new Set();
 var _rvFBFilter=new Set();
 var _rvRetFilter=new Set();
 var SEL_TESTS=new Set(); var _allTestKeys=[];
-var UNIQ_WFR=[];var SEL_WFR=new Set();var _FSRCH={lot:'',wafer:'',program:''};var _lastWfr=-1;
-var _WFR_SORT={col:'lot',dir:1};
+var SEL_WFR=new Set();
 var _blkIpToReg={};  /* 'blk|ip' → region (built from D.per_ip) */
 var _blkRegToPart={};/* 'blk|reg' → partition */
 var _singularLevels={blk:false,part:false};  /* true = only 1 unique value → omit from path */
@@ -624,152 +605,52 @@ function toggleTFBar(){
   if(arr)arr.innerHTML=hidden?'&#9650;':'&#9660;';
 }
 
-/* ── Lot/Wafer table ───────────────────────────────────────────────── */
-function buildWfrTable(){
-  /* Build UNIQ_WFR once */
-  if(!UNIQ_WFR.length){
-    var tdpw=M.total_dies_per_wafer||{};var mat=M.lot_material||{};
-    function _normLot(v){
-      return String(v==null?'':v).replace(/\s+/g,' ').trim().toUpperCase();
-    }
-    function _normWfr(v){
-      var s=String(v==null?'':v).trim().replace(/^W/i,'');
-      if(/^\d+$/.test(s))return String(parseInt(s,10));
-      return s.toUpperCase();
-    }
-    function _normLWKey(lot,wafer){
-      return _normLot(lot)+'|'+_normWfr(wafer);
-    }
-    var tdpwNorm={};
-    Object.keys(tdpw).forEach(function(k){
-      var p=k.split('|');if(p.length<2)return;
-      tdpwNorm[_normLWKey(p[0],p.slice(1).join('|'))]=tdpw[k];
-    });
-    var matNorm={};
-    Object.keys(mat).forEach(function(k){
-      var p=k.split('|');if(p.length<2)return;
-      matNorm[_normLWKey(p[0],p.slice(1).join('|'))]=mat[k];
-    });
-    var seen={},tmp=[];
-    D.per_ip.forEach(function(r){
-      var k=_normLWKey(r.LOT,r.WAFER);
-      if(seen[k]===undefined){
-        var mi=matNorm[k]||{};
-        seen[k]=tmp.length;
-        tmp.push({lot:_normLot(r.LOT),wafer:_normWfr(r.WAFER),total:tdpwNorm[k]||0,dies:new Set(),key:k,
-          program:mi.program||'',material:mi.material||'',
-          stepping:mi.stepping||'',aio_bb:mi.aio_bb||'',lot_num:mi.lot_num||''});
-      }
-      tmp[seen[k]].dies.add(r.VISUAL_ID);
-    });
-    UNIQ_WFR=tmp.map(function(w){
-      return{lot:w.lot,wafer:w.wafer,total:w.total,fail:w.dies.size,key:w.key,
-             program:w.program,material:w.material,stepping:w.stepping,
-             aio_bb:w.aio_bb,lot_num:w.lot_num};
-    });
-    UNIQ_WFR.forEach(function(_,i){SEL_WFR.add(i);});
+/* ── Lot/Wafer table (shared _filter_lot_wafer.py module renders/filters/sorts it) ── */
+function _buildWfrData(){
+  var tdpw=M.total_dies_per_wafer||{};var mat=M.lot_material||{};
+  function _normLot(v){
+    return String(v==null?'':v).replace(/\s+/g,' ').trim().toUpperCase();
   }
-  var _hasMat=(M.has_material_files||false)||UNIQ_WFR.some(function(w){return w.material;});
-  var _si=function(c){return _WFR_SORT.col===c?(_WFR_SORT.dir>0?'\u25b2':'\u25bc'):'\u25b3';};
-  document.getElementById("wfr-thead").innerHTML=
-    "<tr>"
-    +(_hasMat?"<th class='sort-hdr' onclick='sortWfr(\"program\")'>Program<span class='sort-ind'>"+_si('program')+"</span></th>":"")
-    +"<th class='sort-hdr' onclick='sortWfr(\"lot\")'>Lot<span class='sort-ind'>"+_si('lot')+"</span></th>"
-    +"<th class='sort-hdr' onclick='sortWfr(\"wafer\")'>Wafer<span class='sort-ind'>"+_si('wafer')+"</span></th>"
-    +(_hasMat?"<th class='sort-hdr' onclick='sortWfr(\"material\")'>Material<span class='sort-ind'>"+_si('material')+"</span></th>"
-             +"<th class='sort-hdr' onclick='sortWfr(\"stepping\")'>Step<span class='sort-ind'>"+_si('stepping')+"</span></th>":"")
-    +"<th class='sort-hdr num' onclick='sortWfr(\"total\")'>Total<span class='sort-ind'>"+_si('total')+"</span></th>"
-    +"<th class='sort-hdr num' onclick='sortWfr(\"fail\")'>Fail<span class='sort-ind'>"+_si('fail')+"</span></th>"
-    +"<th class='sort-hdr num' onclick='sortWfr(\"pct\")'>% Fail<span class='sort-ind'>"+_si('pct')+"</span></th></tr>"
-    +"<tr class='wfr-filter-row'>"
-    +(_hasMat?"<th><input class='lwtf-inp' id='lwtf-prog' placeholder='prog\u2026' oninput='onSearch(\"program\",this.value)'></th>":"")
-    +"<th><input class='lwtf-inp' id='lwtf-lot' placeholder='lot\u2026' oninput='onSearch(\"lot\",this.value)'></th>"
-    +"<th><input class='lwtf-inp' id='lwtf-wafer' placeholder='wfr\u2026' oninput='onSearch(\"wafer\",this.value)'></th>"
-    +(_hasMat?"<th></th><th></th><th></th>":"")
-    +"<th class='num'></th><th class='num'></th>"
-    +"<th class='num' style='white-space:nowrap;padding:2px 6px'><button class='cb' onclick='selAll()' style='font-size:8px;padding:1px 6px'>All</button>&nbsp;<button class='cb' onclick='clrAll()' style='font-size:8px;padding:1px 4px'>None</button></th></tr>";
-  buildWfrList();
-  setTimeout(colResizeInit,0);
-}
-var _COL_WIDTHS=[];
-function colResizeInit(){
-  var tbl=document.querySelector('.wfr-tbl');if(!tbl)return;
-  var ths=Array.from(tbl.querySelectorAll('thead tr:first-child th'));
-  if(!ths.length)return;
-  ths.forEach(function(th,i){
-    var w=_COL_WIDTHS[i]||th.offsetWidth||60;
-    th.style.minWidth=w+'px';
-    if(th.querySelector('.col-rsz'))return;
-    var hdl=document.createElement('div');hdl.className='col-rsz';
-    (function(idx,cell){
-      hdl.addEventListener('mousedown',function(e){
-        e.stopPropagation();e.preventDefault();
-        hdl.classList.add('dragging');
-        var startX=e.clientX,startW=cell.offsetWidth;
-        function onMove(ev){var nw=Math.max(30,startW+(ev.clientX-startX));cell.style.minWidth=nw+'px';_COL_WIDTHS[idx]=nw;}
-        function onUp(){hdl.classList.remove('dragging');document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
-        document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
-      });
-    })(i,th);
-    th.appendChild(hdl);
+  function _normWfr(v){
+    var s=String(v==null?'':v).trim().replace(/^W/i,'');
+    if(/^\d+$/.test(s))return String(parseInt(s,10));
+    return s.toUpperCase();
+  }
+  function _normLWKey(lot,wafer){
+    return _normLot(lot)+'|'+_normWfr(wafer);
+  }
+  var tdpwNorm={};
+  Object.keys(tdpw).forEach(function(k){
+    var p=k.split('|');if(p.length<2)return;
+    tdpwNorm[_normLWKey(p[0],p.slice(1).join('|'))]=tdpw[k];
   });
-}
-function _visIndices(){
-  var out=[];
-  UNIQ_WFR.forEach(function(w,i){
-    if(_FSRCH.lot&&w.lot.toLowerCase().indexOf(_FSRCH.lot.toLowerCase())<0)return;
-    if(_FSRCH.wafer&&String(w.wafer).toLowerCase().indexOf(_FSRCH.wafer.toLowerCase())<0)return;
-    if(_FSRCH.program&&w.program.toLowerCase().indexOf(_FSRCH.program.toLowerCase())<0)return;
-    out.push(i);
+  var matNorm={};
+  Object.keys(mat).forEach(function(k){
+    var p=k.split('|');if(p.length<2)return;
+    matNorm[_normLWKey(p[0],p.slice(1).join('|'))]=mat[k];
   });
-  var col=_WFR_SORT.col,dir=_WFR_SORT.dir;
-  out.sort(function(a,b){
-    var wa=UNIQ_WFR[a],wb=UNIQ_WFR[b];
-    var primary;
-    if(col==='total'||col==='fail')primary=dir*((wa[col]||0)-(wb[col]||0));
-    else if(col==='pct'){var pa=wa.total?wa.fail/wa.total:0,pb=wb.total?wb.fail/wb.total:0;primary=dir*(pa-pb);}
-    else if(col==='wafer')primary=dir*(parseInt(wa.wafer,10)-parseInt(wb.wafer,10));
-    else{var va=String(wa[col]||'').toLowerCase(),vb=String(wb[col]||'').toLowerCase();primary=dir*(va<vb?-1:va>vb?1:0);}
-    if(primary!==0)return primary;
-    // secondary: lot asc, then wafer asc
-    var la=wa.lot.toLowerCase(),lb=wb.lot.toLowerCase();
-    var lotCmp=la<lb?-1:la>lb?1:0;
-    if(lotCmp!==0)return lotCmp;
-    return parseInt(wa.wafer,10)-parseInt(wb.wafer,10);
+  var seen={},tmp=[];
+  D.per_ip.forEach(function(r){
+    var k=_normLWKey(r.LOT,r.WAFER);
+    if(seen[k]===undefined){
+      var mi=matNorm[k]||{};
+      seen[k]=tmp.length;
+      tmp.push({lot:_normLot(r.LOT),wafer:_normWfr(r.WAFER),total:tdpwNorm[k]||0,dies:new Set(),key:k,
+        program:mi.program||'',material:mi.material||'',
+        stepping:mi.stepping||'',aio_bb:mi.aio_bb||'',lot_num:mi.lot_num||''});
+    }
+    tmp[seen[k]].dies.add(r.VISUAL_ID);
   });
-  return out;
-}
-function buildWfrList(){
-  var _hasMat=(M.has_material_files||false)||UNIQ_WFR.some(function(w){return w.material;});
-  var vis=_visIndices();
-  var html='';
-  vis.forEach(function(wi){
-    var w=UNIQ_WFR[wi],isSel=SEL_WFR.has(wi);
-    var tot=w.total||'\u2014',pct=w.total?(w.fail/w.total*100).toFixed(2)+'%':'\u2014';
-    var matTip=w.lot_num?(w.lot_num+(w.material?' \u2014 '+w.material:'')):(w.material||'');
-    html+='<tr class="fr'+(isSel?' frs':'')+'" onclick="toggleWfr('+wi+',event)">'
-      +(_hasMat?'<td style="font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+w.program+'">'+w.program+'</td>':'')
-      +'<td>'+w.lot+'</td><td>'+w.wafer+'</td>'
-      +(_hasMat?'<td style="font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+matTip+'">'+w.material+'</td>'
-               +'<td style="font-size:8px">'+w.stepping+'</td>':'')
-      +'<td class="num">'+tot+'</td><td class="num">'+w.fail+'</td><td class="num">'+pct+'</td></tr>';
+  var rows=tmp.map(function(w){
+    return{program:w.program,lot:w.lot,wafer:w.wafer,material:w.material,stepping:w.stepping,
+           total:w.total,fail:w.dies.size,key:w.key,aio_bb:w.aio_bb,lot_num:w.lot_num};
   });
-  var tbody=document.getElementById('wfr-tbody');if(tbody)tbody.innerHTML=html;
-  updateRowInfo();
+  var hasMat=(M.has_material_files||false)||rows.some(function(w){return w.material;});
+  DATA={rows:rows,hasMaterial:hasMat,hasDate:false,hasUpmMed:false};
+  SEL_WFR=new Set(rows.map(function(_,i){return i;}));
+  rFilter();
 }
-function toggleWfr(wi,ev){
-  var vis=_visIndices();
-  if(ev&&ev.shiftKey&&_lastWfr>=0){
-    var lo=Math.min(wi,_lastWfr),hi=Math.max(wi,_lastWfr);
-    for(var i=lo;i<=hi;i++){if(vis.indexOf(i)>=0)SEL_WFR.add(i);}
-  }else{if(SEL_WFR.has(wi))SEL_WFR.delete(wi);else SEL_WFR.add(wi);}
-  _lastWfr=wi;buildWfrList();applyFilters();
-}
-function onSearch(field,val){_FSRCH[field]=val||'';buildWfrList();applyFilters();}
-function sortWfr(col){if(_WFR_SORT.col===col){_WFR_SORT.dir*=-1;}else{_WFR_SORT.col=col;_WFR_SORT.dir=1;}buildWfrTable();}
-function updateRowInfo(){var s=SEL_WFR.size,t=UNIQ_WFR.length;document.getElementById('row-info').textContent=s+' / '+t+' selected';}
-function selAll(){_visIndices().forEach(function(i){SEL_WFR.add(i);});buildWfrList();applyFilters();}
-function clrAll(){_visIndices().forEach(function(i){SEL_WFR.delete(i);});buildWfrList();applyFilters();}
+function _selLW(){return new Set(Array.from(SEL_WFR).map(function(wi){return DATA.rows[wi]?DATA.rows[wi].key:null;}).filter(Boolean));}
 function togglePanel(){const p=document.getElementById("wfr-panel");const btn=document.getElementById("wfr-collapse-btn");p.classList.toggle("collapsed");btn.innerHTML=p.classList.contains("collapsed")?"&#9660;":"&#9650;";}
 
 /* ── Hierarchical filter: Module → Partition → [Region →] IP-L0..N ── */
@@ -1056,7 +937,6 @@ document.addEventListener('click',function(e){
 });
 function toggleGrpBy(val){const i=GRP_BY.indexOf(val);if(i>=0)GRP_BY.splice(i,1);else GRP_BY.push(val);applyFilters();}
 function _grpKey(r){if(!GRP_BY.length)return'All';return GRP_BY.map(f=>f+"="+String(r[f]||'\u2014')).join(' | ');}
-function _selLW(){return new Set(Array.from(SEL_WFR).map(function(wi){return UNIQ_WFR[wi]?UNIQ_WFR[wi].key:null;}).filter(Boolean));}
 
 /* ── Core filter ────────────────────────────────────────────────────── */
 function getFiltered(){
@@ -2657,7 +2537,7 @@ if(D.per_ip&&D.per_ip.length){
   _singularLevels.part=_cfgParts.length<=1;
   /* Hide IP Fail Details tab when no IP decoder data available */
   if(!D.per_ip.length){var _ipTabBtn=document.getElementById('wm-dtab-ip');if(_ipTabBtn)_ipTabBtn.style.display='none';}
-  buildInfoBar();buildXfChips();buildTestFilter();buildWfrTable();setTimeout(applyFilters,0);
+  buildInfoBar();buildXfChips();buildTestFilter();_buildWfrData();setTimeout(applyFilters,0);
 }
 else{document.getElementById("info-bar").innerHTML='<span style="color:#e74c3c">No data loaded. Run the pipeline first.</span>';}
 </script>
