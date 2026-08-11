@@ -1326,7 +1326,7 @@ class AutomationManager(tk.Frame):
         pad = dict(padx=14, pady=6)
 
         _python = _PYTHON
-        _script = str(_HERE / "automation" / "run_automation.py")
+        _script = str(_HERE / "src" / "run_automation.py")
 
         frm_st = tk.LabelFrame(p, text="  Task Status  ", font=FONT_UI,
                                bg=BG, fg=ACCENT, bd=1, relief="groove")
@@ -1458,7 +1458,7 @@ class AutomationManager(tk.Frame):
         safe_label = re.sub(r'[^\w]', '_', self._task_name)
         bat_path   = _HERE / f"_launch_{safe_label}.bat"
         product    = self._product_var.get()
-        line = (f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+        line = (f'"{_PYTHON}" "{_HERE / "src" / "run_automation.py"}"'
                 f' --base-dir "{self.base_dir}" --product "{product}"')
         bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
         return bat_path
@@ -1472,7 +1472,7 @@ class AutomationManager(tk.Frame):
                 or not (0 <= int(mm) <= 59)):
             messagebox.showerror("Invalid time", f"Invalid time value: {hh}:{mm}")
             return
-        tr  = (f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+        tr  = (f'"{_PYTHON}" "{_HERE / "src" / "run_automation.py"}"'
                f' --base-dir "{self.base_dir}" --product "{self._product_var.get()}"')
         if len(tr) > 261:
             bat = self._write_launcher_bat()
@@ -1503,7 +1503,7 @@ class AutomationManager(tk.Frame):
                                    "This kicks off a full AQUA pull + pipeline run.\n"
                                    "A console window will open showing live progress."):
             return
-        script = str(_HERE / "automation" / "run_automation.py")
+        script = str(_HERE / "src" / "run_automation.py")
         try:
             _sp.Popen(
                 [_PYTHON, script, "--base-dir", str(self.base_dir),
@@ -1602,7 +1602,7 @@ class AutomationManager(tk.Frame):
         def _do_run():
             keys_val = keys_var.get().strip()
             csv_val  = csv_var.get().strip()
-            cmd = [_PYTHON, str(_HERE / "automation" / "run_automation.py"), "--force",
+            cmd = [_PYTHON, str(_HERE / "src" / "run_automation.py"), "--force",
                    "--base-dir", str(self.base_dir),
                    "--product", self._product_var.get()]
             if keys_val:
@@ -1680,7 +1680,7 @@ def _write_startup_bat() -> None:
         safe_label   = re.sub(r'[^\w]', '_', f"{product_name} Scan Automation")
         bat_path     = _HERE / f"_launch_{safe_label}.bat"
         product_base = prod_cfg.get("base_dir", str(_BASE_DIR))
-        line = (f'"{_PYTHON}" "{_HERE / "automation" / "run_automation.py"}"'
+        line = (f'"{_PYTHON}" "{_HERE / "src" / "run_automation.py"}"'
                 f' --base-dir "{product_base}" --product "{product_name}"')
         bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
 
