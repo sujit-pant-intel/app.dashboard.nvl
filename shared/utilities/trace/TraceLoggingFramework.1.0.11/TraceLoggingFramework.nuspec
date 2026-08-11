@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>TraceLoggingFramework</id>
+    <version>1.0.11</version>
+    <title>Trace Logging Framework</title>
+    <authors>TRACE Team</authors>
+    <icon>Trace.png</icon>
+    <projectUrl>https://wiki.ith.intel.com/pages/viewpage.action?spaceKey=traceteam&amp;title=Logger+Documentation</projectUrl>
+    <description>Logging Framework providing all TRACE Logging capabilities</description>
+    <copyright>Intel Confidential</copyright>
+    <repository type="git" commit="ce3c374f9776f3aba1e17d06153b7b5628d822e6" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1">
+        <dependency id="Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel" version="2.22.0" exclude="Build,Analyzers" />
+        <dependency id="Microsoft.Extensions.Configuration" version="8.0.0" exclude="Build,Analyzers" />
+        <dependency id="Microsoft.Extensions.Configuration.Abstractions" version="8.0.0" exclude="Build,Analyzers" />
+        <dependency id="Microsoft.Extensions.Logging" version="8.0.0" exclude="Build,Analyzers" />
+        <dependency id="Serilog" version="3.1.1" exclude="Build,Analyzers" />
+        <dependency id="Serilog.Settings.AppSettings" version="2.2.2" exclude="Build,Analyzers" />
+        <dependency id="Serilog.Settings.Configuration" version="8.0.0" exclude="Build,Analyzers" />
+        <dependency id="Serilog.Sinks.ApplicationInsights" version="4.0.0" exclude="Build,Analyzers" />
+        <dependency id="Serilog.Sinks.File" version="5.0.0" exclude="Build,Analyzers" />
+        <dependency id="System.Diagnostics.DiagnosticSource" version="8.0.1" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

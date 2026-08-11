@@ -26,6 +26,17 @@ __pycache__/
 *.pyd
 *.pdb
 
+# ── .NET build output / vendored package extraction ──────────────────────────
+**/bin/
+**/obj/
+**/extracted/
+
+# ── Stray backups (editor/manual copies) ──────────────────────────────────────
+*.bak
+*.bak[0-9]
+* - ORIG.*
+* - Copy.*
+
 # ── OS / editor ───────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

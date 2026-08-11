@@ -316,6 +316,12 @@ _COL_RE = re.compile(
     r'(\w+_(?:SERIAL_V2|PARALLEL_EDC|SERIAL_EDC))'
     r'_((?:HC|VLC|HV|LC)\d+.+?)_(\d+)$'
 )
+# NVL-G format: TPI_VCC::CONT_{cs}_{VSIM|ISVM}_{K|E}_{flow_kw}_X_X_{ver}_X_{phase}_PARALLEL[_DC]_{pin}_{runid}
+_COL_RE_NGX = re.compile(
+    r'TPI_VCC::CONT_(\w+?)_(VSIM|ISVM)_([KE])_(\w+?)_X_X_\w+_X_'
+    r'((?:PRESURGE|POSTSURGE|SDTSTART|SDTFINAL|STRESS)_PARALLEL(?:_DC)?)'
+    r'_(.+)_(\d+)$'
+)
 
 def parse_col(col):
     """Returns (cs, mode, flow_kw, cond, pin) or None."""
@@ -323,12 +329,23 @@ def parse_col(col):
     if m:
         cs, mode, flow_kw, cond, pin, _ = m.groups()
         return cs, mode, flow_kw, cond, pin
+    m = _COL_RE_NGX.match(col)
+    if m:
+        cs, _method, mode, flow_kw, cond, pin, _ = m.groups()
+        return cs, mode, flow_kw, cond, pin
     return None
 
 def load_limits(jpath):
     lim = {}
     if not jpath or not os.path.exists(jpath): return lim
-    data = json.load(open(jpath, encoding='utf-8'))
+    try:
+        data = json.load(open(jpath, encoding='utf-8'))
+    except json.JSONDecodeError:
+        # NVL-G JSON files may have trailing commas — strip them before parsing
+        import re as _re
+        txt = open(jpath, encoding='utf-8').read()
+        txt = _re.sub(r',(\s*[}\]])', r'\1', txt)
+        data = json.loads(txt)
     for cs, entries in data.get('ConfigSets', {}).items():
         for e in entries:
             pin = e.get('Pin', '')
@@ -572,7 +589,11 @@ def analyze_program(df_prog, prog_dir, args_json=None, focus_mode=False):
     print(f'\n-- Analyzing {prog_name} ({len(df_prog)} rows, prog_dir={prog_dir or "(none)"}, focus_mode={focus_mode}) --')
 
     json_dir  = os.path.join(prog_dir, 'Modules', 'TPI_VCC', 'InputFiles') if prog_dir else ''
-    isvm_json = os.path.join(json_dir, 'VCC_SDS_ISVM.json') if json_dir else ''
+    _isvm_candidates = ('VCC_SDS_ISVM.json', 'vcc_isvmstart.json')
+    isvm_json = next(
+        (os.path.join(json_dir, f) for f in _isvm_candidates if os.path.isfile(os.path.join(json_dir, f))),
+        os.path.join(json_dir, 'VCC_SDS_ISVM.json') if json_dir else ''
+    )
     _ISVM_JSON_PATHS = [isvm_json]
 
     # ── Limits ──────────────────────────────────────────────────────────────
@@ -582,10 +603,14 @@ def analyze_program(df_prog, prog_dir, args_json=None, focus_mode=False):
     lim = {}
     lim_by_flow = {}
     _JSON_FLOW_MAP = [
-        ('VCC_SDS_VSIM_START.json',  ('START',)),
+        ('VCC_SDS_VSIM_START.json',  ('START',)),    # NCX
+        ('vcc_start.json',           ('START',)),    # NVL-G
         ('VCC_SDS_VSIM_STRESS.json', ('STRESS',)),
+        ('vcc_roomstress_adtl.json', ('STRESS',)),   # NVL-G
         ('VCC_SDS_VSIM_FINAL.json',  ('FINAL',)),
+        ('VCC_final_adtl.json',      ('FINAL',)),    # NVL-G
         ('VCC_SDTSTART_VSIM.json',   ('SDTSTART',)),
+        ('vcc_sdtstart.json',        ('SDTSTART',)), # NVL-G
         ('VCC_SDTFINAL_VSIM.json',   ('SDTFINAL',)),
     ]
     if json_dir and os.path.isdir(json_dir):
@@ -785,7 +810,7 @@ def analyze_program(df_prog, prog_dir, args_json=None, focus_mode=False):
     # Build flat force_by_cs {cs: force_str} from POSTSURGE_SERIAL_V2 level blocks
     _cs_to_setup = {}
     for _inst_name, _inst in _mtpl_setup.items():
-        if 'POSTSURGE_SERIAL_V2' in _inst_name and _inst.get('levels_tc'):
+        if ('POSTSURGE_SERIAL_V2' in _inst_name or 'POSTSURGE_PARALLEL' in _inst_name) and _inst.get('levels_tc'):
             for _cs in ('VLC', 'LC', 'HC', 'HV'):
                 if f'CONT_{_cs}DPS' in _inst_name and _cs not in _cs_to_setup:
                     _cs_to_setup[_cs] = _inst
@@ -2216,24 +2241,38 @@ def build_flow_data(dies, force_by_cs=None, lim=None, lim_by_flow=None, prog_dir
     # Reference: vcccont_mimcap flow comment:
     #   Pre-Surge → Post-Surge(SDS-Start) → Stress → SDS-Final → SDT-Start → SDT-Final
     FLOW_ORDER = [
-        ('ISVM_EDC',                    'ISVM-EDC',     '#5aabff'),
-        ('VSIM_PRESURGE_600MV_V2',      'Pre-Surge',    '#4ecdc4'),
-        ('VSIM_POSTSURGE_NOM_V2',       'Post-Surge',   '#48cae4'),
-        ('VSIM_STRESS_V2',              'Stress',       '#ffd166'),
-        ('VSIM_FINAL_V2',               'SDS-Final',    '#ff6b6b'),
-        ('VSIM_SDTSTART_V2',            'SDT-Start',    '#c77dff'),
-        ('VSIM_SDTFINAL_V2',            'SDT-Final',    '#a06fdd'),
+        ('ISVM_EDC',                    'ISVM-EDC',     '#5aabff'),  # NCX
+        ('START_DEBUG',                 'ISVM-EDC',     '#5aabff'),  # NVL-G
+        ('VSIM_PRESURGE_600MV_V2',      'Pre-Surge',    '#4ecdc4'),  # NCX
+        ('PRESURGE',                    'Pre-Surge',    '#4ecdc4'),  # NVL-G
+        ('VSIM_POSTSURGE_NOM_V2',       'Post-Surge',   '#48cae4'),  # NCX
+        ('POSTSURGE',                   'Post-Surge',   '#48cae4'),  # NVL-G
+        ('VSIM_STRESS_V2',              'Stress',       '#ffd166'),  # NCX
+        ('VSIM_STRESS',                 'Stress',       '#ffd166'),  # NVL-G
+        ('VSIM_FINAL_V2',               'SDS-Final',    '#ff6b6b'),  # NCX
+        ('TPI_VCC_FINAL',               'SDS-Final',    '#ff6b6b'),  # NVL-G
+        ('VSIM_SDTSTART_V2',            'SDT-Start',    '#c77dff'),  # NCX
+        ('SDTSTART_CONTINUITY',         'SDT-Start',    '#c77dff'),  # NVL-G
+        ('VSIM_SDTFINAL_V2',            'SDT-Final',    '#a06fdd'),  # NCX
+        ('SDTFINAL_CONTINUITY',         'SDT-Final',    '#a06fdd'),  # NVL-G
     ]
     GROUP_LABELS = {
         'VSIM_PRESURGE_600MV_V2':      'Pre-Surge VSIM (600mV)',
+        'PRESURGE':                    'Pre-Surge VSIM',
         'VSIM_POSTSURGE_NOM_V2':       'Post-Surge VSIM (nom)',
+        'POSTSURGE':                   'Post-Surge VSIM',
         'VSIM_STRESS_V2':              'Stress VSIM',
+        'VSIM_STRESS':                 'Stress VSIM',
         'VSIM_FINAL_V2':               'SDS-Final VSIM',
+        'TPI_VCC_FINAL':               'SDS-Final VSIM',
         'VSIM_SDTSTART_V2':            'SDT-Start VSIM',
+        'SDTSTART_CONTINUITY':         'SDT-Start VSIM',
         'VSIM_SDTFINAL_V2':            'SDT-Final VSIM',
+        'SDTFINAL_CONTINUITY':         'SDT-Final VSIM',
         'ISVM_EDC':                    'EDC ISVM',
+        'START_DEBUG':                 'EDC ISVM',
     }
-    EDC_GROUPS = {'ISVM_EDC'}
+    EDC_GROUPS = {'ISVM_EDC', 'START_DEBUG'}
 
     # 1. Parse FLW → group → test list
     group_tests = _dd(list)

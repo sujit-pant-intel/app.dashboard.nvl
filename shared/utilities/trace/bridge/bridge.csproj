@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <RootNamespace>TraceBridge</RootNamespace>
+    <AssemblyName>trace-bridge</AssemblyName>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <RestoreAdditionalProjectSources>..\;\\amr.corp.intel.com\ec\proj\MDO\Global\MIG\TRACE\Nuget\Prod;https://api.nuget.org/v3/index.json</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TraceApi" Version="11.9.4-master.20260513.1" />
+    <PackageReference Include="TraceLoggingFramework" Version="1.0.11" />
+  </ItemGroup>
+</Project>

@@ -34,7 +34,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 # ---------------------------------------------------------------------------
 # Default paths (relative to this script → shared area)
 # ---------------------------------------------------------------------------
-_HERE_DIR     = Path(__file__).parent                             # scan-dashboard/
+_HERE_DIR     = Path(__file__).resolve().parent                   # scan-dashboard/
 _REPO_ROOT    = _HERE_DIR.parent                                  # app.dashboard.nvl/
 _SHARED_CFG   = _REPO_ROOT / "shared" / "setup" / "config" / "scan-dashboard"
 _SHARED_OUT   = _SHARED_CFG                                       # default output dir
@@ -42,7 +42,26 @@ _TEMPLATE_DIR = _HERE_DIR                                         # template ind
 _PLOTLY_JS      = _REPO_ROOT / "shared" / "library" / "plotly-2.32.0.min.js"
 _SHARED_RETICLE = _REPO_ROOT / "shared" / "reticle"
 _SHARED_MATERIAL = _REPO_ROOT / "shared" / "material"
-_WAFER_TOOLS    = Path(r"C:\scripts\app.yield.nvl\code\utilities\wafer_tools")
+
+
+def _find_wafer_tools() -> str:
+    """Walk up to 6 levels from this file, checking shared/utilities and utilities
+    subfolders at each ancestor, for a wafer_tools package (mirrors
+    parametric/vcc_cont/generate_dashboard.py's _find_wafer_tools())."""
+    _cur = _HERE_DIR
+    for _ in range(6):
+        for _rel in ("shared/utilities/wafer_tools", "utilities/wafer_tools"):
+            _cand = _cur / _rel
+            if (_cand / "wafer_map").is_dir():
+                return str(_cand)
+        _parent = _cur.parent
+        if _parent == _cur:
+            break
+        _cur = _parent
+    return ""  # not found
+
+
+_WAFER_TOOLS = _find_wafer_tools()
 
 
 def _sniff_csv_header(input_csv: str | Path, nrows: int = 100):
@@ -988,10 +1007,11 @@ def write_dashboard(result: dict, output_dir: Path, standalone: bool = False):
 
     # Inject WAFERMAP_JS (SVG renderer) into the HTML
     try:
+        if not _WAFER_TOOLS:
+            raise FileNotFoundError("wafer_tools not found within 6 levels up from this script")
         import sys as _sys
-        _wt = str(_WAFER_TOOLS)
-        if _wt not in _sys.path:
-            _sys.path.insert(0, _wt)
+        if _WAFER_TOOLS not in _sys.path:
+            _sys.path.insert(0, _WAFER_TOOLS)
         from wafer_map import WAFERMAP_JS
         _html = dst_html.read_text(encoding="utf-8")
         # Inject BEFORE the main <script> block so wmRender is defined before

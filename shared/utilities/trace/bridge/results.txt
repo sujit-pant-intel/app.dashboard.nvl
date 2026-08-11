@@ -1,0 +1,6 @@
+command|status|key_result
+search Q603S6T03 sort-source AMR|empty|No results
+search Q603S6T03 sort-source GER|empty|No results
+search Q603S6T03 sort-source GAR|empty|No results
+bin-dist by lot Q603S6T03 op 119325 site JF datasource CLASSHDMT bin-kind interface|empty|No results
+bin-dist by program NCXSDJXL0H61B002619 site JF datasource CLASSHDMT bin-kind interface|empty|No results
