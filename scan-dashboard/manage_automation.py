@@ -91,7 +91,7 @@ FONT_GROUP = ("Segoe UI", 10, "bold")
 # ═════════════════════════════════════════════════════════════════════════
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-_PIPELINE    = _REPO_ROOT / "scan-dashboard" / "src" / "scan-dashboard.py"
+_PIPELINE    = _REPO_ROOT / "scan-dashboard" / "scan-dashboard.py"
 _AQUA_CFG    = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard" / "NVL_Sort_Scan - Dashboard.txt"
 _YIELD_TGT   = _REPO_ROOT / "shared" / "setup" / "config" / "scan-dashboard" / "yield-estimate-per-fault-count.csv"
 

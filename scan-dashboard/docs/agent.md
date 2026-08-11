@@ -11,9 +11,8 @@ table, filter tree).
 ```
 scan-dashboard/
   manage_automation.py  # GUI (schedule/email/history/data) + automation engine (AQUA pull, run log, reports index)
-  src/
-    scan-dashboard.py    # Combined: HRYFrame GUI tab + headless RAWSTR pipeline + HRYApp launcher
-    index.html           # Dashboard HTML template
+  scan-dashboard.py      # Combined: HRYFrame GUI tab + headless RAWSTR pipeline + HRYApp launcher
+  index.html             # Dashboard HTML template
   launch-bat/            # Scheduled-task launcher .bat files
   collateral/
     Partition_Info.csv
@@ -25,14 +24,14 @@ scan-dashboard/
 
 ### GUI (interactive)
 ```
-python src/scan-dashboard.py
-python src/scan-dashboard.py U:/path/to/input.json    # pre-populates all fields from JSON
+python scan-dashboard.py
+python scan-dashboard.py U:/path/to/input.json    # pre-populates all fields from JSON
 ```
 
 ### Headless pipeline
 ```
-python src/scan-dashboard.py --input data.csv --output ./results
-python src/scan-dashboard.py --run-config run_config.json
+python scan-dashboard.py --input data.csv --output ./results
+python scan-dashboard.py --run-config run_config.json
 ```
 
 

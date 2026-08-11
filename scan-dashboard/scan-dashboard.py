@@ -34,12 +34,11 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 # ---------------------------------------------------------------------------
 # Default paths (relative to this script → shared area)
 # ---------------------------------------------------------------------------
-_SRC_DIR      = Path(__file__).parent
-_SCRIPT_DIR   = _SRC_DIR.parent                                   # scan-dashboard/
-_REPO_ROOT    = _SRC_DIR.parents[1]                               # app.dashboard.nvl/
+_HERE_DIR     = Path(__file__).parent                             # scan-dashboard/
+_REPO_ROOT    = _HERE_DIR.parent                                  # app.dashboard.nvl/
 _SHARED_CFG   = _REPO_ROOT / "shared" / "setup" / "config" / "scan-dashboard"
 _SHARED_OUT   = _SHARED_CFG                                       # default output dir
-_TEMPLATE_DIR = _SRC_DIR                                          # template index.html
+_TEMPLATE_DIR = _HERE_DIR                                         # template index.html
 _PLOTLY_JS      = _REPO_ROOT / "shared" / "library" / "plotly-2.32.0.min.js"
 _SHARED_RETICLE = _REPO_ROOT / "shared" / "reticle"
 _SHARED_MATERIAL = _REPO_ROOT / "shared" / "material"
