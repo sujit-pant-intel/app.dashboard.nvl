@@ -60,6 +60,7 @@ function _wmrContrast(hex){
 //   bgColor       SVG background fill; default 'none'
 //   borderColor   wafer circle stroke; default '#bdc3c7'
 //   shotColor     shot outline stroke; default '#2471a3'
+//   shotColors    optional array of per-shot stroke colors (overrides shotColor per index)
 //
 function wmRender(containerId, cfg){
   var el = (typeof containerId === 'string')
@@ -81,6 +82,7 @@ function wmRender(containerId, cfg){
   var bgColor     = cfg.bgColor     || 'none';
   var borderColor = cfg.borderColor || '#bdc3c7';
   var shotColor   = cfg.shotColor   || '#2471a3';
+  var shotColors  = cfg.shotColors  || null;   // optional per-shot color array
   var shotStrokeW = cfg.shotStrokeWidth != null ? cfg.shotStrokeWidth : 1.5;
 
   if(!dies.length){
@@ -171,8 +173,10 @@ function wmRender(containerId, cfg){
     var sy = (pad + (yMax - s[3])*csy).toFixed(1);
     var sw = ((s[2] - s[0] + 1)*cs).toFixed(1);
     var sh = ((s[3] - s[1] + 1)*csy).toFixed(1);
+    var sc = (shotColors && shotColors[si] != null) ? shotColors[si] : shotColor;
+    var sw2 = (shotColors && shotColors[si] != null) ? shotStrokeW * 2.5 : shotStrokeW;
     parts.push('<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh
-      +'" fill="none" stroke="'+shotColor+'" stroke-width="'+shotStrokeW+'" opacity="0.85"/>');
+      +'" fill="none" stroke="'+sc+'" stroke-width="'+sw2+'" opacity="0.92"/>');
   });
 
   parts.push('</g>');

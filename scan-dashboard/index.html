@@ -320,6 +320,8 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
           <span style="color:#2a4060;margin:0 2px">|</span>
           <label style="font-size:10px;color:#c77dff;background:#1a1a2a;padding:2px 7px;border-radius:4px;border:1px solid #6a3aaa;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
             <input type="checkbox" id="rv-site-chk" checked onchange="rvToggleSection('rv-site-section',this.checked)" style="accent-color:#c77dff;cursor:pointer"> ReticleDetails</label>
+          <label style="font-size:10px;color:#5b8dee;background:#0d1525;padding:2px 7px;border-radius:4px;border:1px solid #1a3a70;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
+            <input type="checkbox" id="rv-shot-chk" checked onchange="rvToggleSection('rv-shot-section',this.checked)" style="accent-color:#5b8dee;cursor:pointer"> ShotAnalysis</label>
           <label style="font-size:10px;color:#f39c12;background:#1a160a;padding:2px 7px;border-radius:4px;border:1px solid #7a5a00;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0">
             <input type="checkbox" id="rv-pat-chk" checked onchange="rvToggleSection('rv-pattern-section',this.checked)" style="accent-color:#f39c12;cursor:pointer"> Pattern</label>
           <span style="color:#2a4060;margin:0 2px">|</span>
@@ -351,7 +353,12 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
               <div style="font-size:10px;font-weight:700;color:#c77dff;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #1e3050">Reticle Site Analysis</div>
               <div id="rv-site-body" style="font-size:9px;color:#c0ccd8"></div>
             </div>
-            <div class="rv-hhandle" id="rv-pane3-hhandle" onmousedown="rvStartResizeV(event,'rv-site-section','rv-pattern-section')" style="height:5px;cursor:ns-resize;background:#1a2a40;flex-shrink:0"></div>
+            <div class="rv-hhandle" onmousedown="rvStartResizeV(event,'rv-site-section','rv-shot-section')" style="height:5px;cursor:ns-resize;background:#1a2a40;flex-shrink:0"></div>
+            <div id="rv-shot-section" style="height:180px;min-height:60px;overflow:auto;padding:6px 10px;flex-shrink:0">
+              <div style="font-size:10px;font-weight:700;color:#5b8dee;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #1e3050">Reticle Shot Analysis</div>
+              <div id="rv-shot-body" style="font-size:9px;color:#c0ccd8"></div>
+            </div>
+            <div class="rv-hhandle" id="rv-pane3-hhandle" onmousedown="rvStartResizeV(event,'rv-shot-section','rv-pattern-section')" style="height:5px;cursor:ns-resize;background:#1a2a40;flex-shrink:0"></div>
             <div id="rv-pattern-section" style="height:210px;min-height:60px;overflow:auto;padding:6px 10px;flex-shrink:0">
               <div style="font-size:10px;font-weight:700;color:#f39c12;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #1e3050">Fail Pattern Score</div>
               <div id="rv-pattern-body" style="font-size:9px;color:#c0ccd8"></div>
@@ -485,7 +492,7 @@ var GRP_BY=[],BLK_BY_MOD=false,TT_GRP_REGION=false,SHOW_PCT=false;
 var TT_SHOW=new Set(M.testtypes||TT_ALL);
 var WM_TT_SHOW=new Set(TT_ALL);
 var WM_COLOR_MODE='fail';
-var WM_F_DLOC='';var WM_F_SHOTS=null;var WM_F_BLOCKS=null;var WM_F_SITES=null;var WM_F_EXCL_DLOCS=null;var WM_IP_SEARCH='';var WM_OPEN_DD=null;
+var WM_F_DLOC='';var WM_F_SHOTS=null;var WM_F_BLOCKS=null;var WM_F_SITES=null;var WM_F_EXCL_DLOCS=null;var WM_IP_SEARCH='';var WM_OPEN_DD=null;var WM_SEL_SHOT=null;
 var _xftIpRegMap={}; /* mod → ip → Set('blk|reg') for IP visibility */
 /* IB/FB + pattern score filter state */
 var _rvFiltersInited=false;
@@ -1862,6 +1869,7 @@ function drawWaferMap(){
     retSiteNum:bg&&bg.ret_site_num?bg.ret_site_num:{},
     retShotLabels:false,
     bgColor:'#0d1520',borderColor:'#5dade2',shotColor:'#2471a3',
+    shotColors:_wmBuildShotColors(bg),
     extraDefs:_extraDefs,
   };
   _wmRenderComposite();
@@ -2108,6 +2116,8 @@ function drawWaferMap(){
       _leg.innerHTML=legHtml;
     }
   }
+  /* Reticle Shot Analysis */
+  _rvBuildShotTable(wmFiltAgg,bg,wfrKeys.length);
   /* Fail Pattern Score */
   _rvBuildPatternScore(wmFiltAgg,bg,wfrKeys.length);
 
@@ -2412,6 +2422,93 @@ function _rvTogglePill(btn,type){
   drawWaferMap();
 }
 /* ── Fail Pattern Score ─────────────────────────────────────── */
+function _wmBuildShotColors(bg2){
+  if(WM_SEL_SHOT===null)return null;
+  var shots=bg2&&bg2.ret_shots?bg2.ret_shots:[];
+  if(!shots.length)return null;
+  var arr=[];
+  for(var i=0;i<shots.length;i++)arr.push(i===WM_SEL_SHOT?'#c0392b':null);
+  return arr;
+}
+function _rvSelectShot(si){
+  WM_SEL_SHOT=(WM_SEL_SHOT===si)?null:si;
+  drawWaferMap();
+}
+function _rvBuildShotTable(filtAgg,bg2,nW){
+  var shotBody=document.getElementById('rv-shot-body');
+  if(!shotBody)return;
+  var retMap2=bg2&&bg2.ret_map?bg2.ret_map:{};
+  var retShots2=bg2&&bg2.ret_shots?bg2.ret_shots:[];
+  if(!retShots2.length){shotBody.innerHTML='<span style="color:#445566">No reticle shot data (DevRevStep required)</span>';return;}
+  /* precompute dies per shot from ret_shots layout */
+  var retMapArr=Object.values(retMap2);
+  var shotDieTotals={};
+  retMapArr.forEach(function(v){var sk=String(v[2]);shotDieTotals[sk]=(shotDieTotals[sk]||0)+1;});
+  var shotMap={},totalHits=0,unmapped=0;
+  filtAgg.forEach(function(d){
+    if(!d._fc)return;
+    var rm=retMap2[d.x+','+d.y];
+    var si=(rm!=null)?rm[2]:null;
+    if(si===null||si===undefined)unmapped+=d._fc;
+    var sk=(si!=null)?String(si):'?';
+    if(!shotMap[sk])shotMap[sk]={count:0,pos:0,si:si,wfrs:new Set(),worstK:d.x+','+d.y,worstHits:d._fc};
+    shotMap[sk].count+=d._fc;
+    shotMap[sk].pos++;
+    if(d._wfrs)d._wfrs.forEach(function(w){shotMap[sk].wfrs.add(w);});
+    else shotMap[sk].wfrs.add('w?');
+    if(d._fc>shotMap[sk].worstHits){shotMap[sk].worstK=d.x+','+d.y;shotMap[sk].worstHits=d._fc;}
+    totalHits+=d._fc;
+  });
+  if(!totalHits){shotBody.innerHTML='<span style="color:#445566">No fail data in current filter</span>';return;}
+  var rows=Object.keys(shotMap).map(function(sk){
+    var sm=shotMap[sk],si=sm.si;
+    var sb=retShots2[si];
+    var bboxStr=sb?'('+sb[0]+','+sb[1]+')→('+sb[2]+','+sb[3]+')':'&mdash;';
+    var nWfrs=sm.wfrs.has('w?')?'?':sm.wfrs.size;
+    return{sk:sk,si:si,count:sm.count,pos:sm.pos,nTotal:shotDieTotals[sk]||0,
+           nWfrs:nWfrs,wPct:typeof nWfrs==='number'?nWfrs/nW:0,bbox:bboxStr,worst:sm.worstK};
+  }).sort(function(a,b){return(typeof b.nWfrs==='number'?b.nWfrs:0)-(typeof a.nWfrs==='number'?a.nWfrs:0)||b.count-a.count;});
+  var topWPct=rows[0]?rows[0].wPct:0;
+  var maxWPct=Math.max(topWPct,0.01);
+  var html='';
+  if(topWPct>=0.5)html+='<div style="background:#2a1a0a;border-left:3px solid #e67e22;padding:5px 8px;font-size:9px;color:#ffd166;margin-bottom:5px;border-radius:0 4px 4px 0">&#9888; Shot <b>'+(rows[0].si!=null?rows[0].si+1:rows[0].sk)+'</b>: <b>'+Math.round(topWPct*100)+'%</b> of wafers &mdash; field-level defect likely.</div>';
+  else if(topWPct>=0.3)html+='<div style="background:#0d1a2a;border-left:3px solid #2471a3;padding:5px 8px;font-size:9px;color:#8ab4d4;margin-bottom:5px;border-radius:0 4px 4px 0">Shot <b>'+(rows[0].si!=null?rows[0].si+1:rows[0].sk)+'</b> leads at '+Math.round(topWPct*100)+'% &mdash; partial field concentration.</div>';
+  else html+='<div style="background:#0d1a2a;border-left:3px solid #27ae60;padding:5px 8px;font-size:9px;color:#8ab4d4;margin-bottom:5px;border-radius:0 4px 4px 0">Fails spread across shots &mdash; not single-field.</div>';
+  html+='<table style="border-collapse:collapse;width:100%;font-size:9px"><thead>'
+    +'<tr style="background:#0d1a2a;color:#8ab4d4">'
+    +'<th style="padding:2px 6px;text-align:left">Shot#</th>'
+    +'<th style="padding:2px 6px;text-align:right">Wfrs w/Fail</th>'
+    +'<th style="padding:2px 6px;text-align:right">%Wfrs</th>'
+    +'<th style="padding:2px 6px;text-align:right">Hits</th>'
+    +'<th style="padding:2px 6px;text-align:right">DieCov</th>'
+    +'<th style="padding:2px 6px;text-align:left">Field (die XY)</th>'
+    +'<th style="padding:2px 6px">Bar</th></tr></thead><tbody>';
+  rows.forEach(function(r,i){
+    var bg3=i%2===0?'#0d1520':'#111a28';
+    var wPct=r.wPct;
+    var barW=Math.round(wPct/maxWPct*70);
+    var barCol=wPct>=0.5?'#e67e22':(wPct>=0.3?'#f1c40f':'#5b8dee');
+    var shotNum=(r.si!=null)?String(r.si+1):r.sk;
+    var shotCol=r.sk==='?'?'#556677':'#5b8dee';
+    var covStr=r.nTotal>0?(r.pos+'/'+r.nTotal):(r.pos+'/?');
+    var covCol=r.nTotal>0&&r.pos>=r.nTotal?'#e67e22':(r.nTotal>0&&r.pos>=r.nTotal*0.5?'#f1c40f':'#9ab4cc');
+    var isSel=(WM_SEL_SHOT!==null&&r.si===WM_SEL_SHOT);
+    var rowBg=isSel?'#2a0a0a':bg3;
+    html+='<tr style="background:'+rowBg+';'+(isSel?'outline:1px solid #c0392b;':'')+'cursor:pointer" title="Click to highlight shot boundary on wafer map" onclick="_rvSelectShot('+r.si+');">'
+      +'<td style="padding:2px 6px;color:'+shotCol+';font-weight:bold">'+(isSel?'&#9654;&nbsp;':'')+shotNum+'</td>'
+      +'<td style="padding:2px 6px;text-align:right;color:#e67e22">'+(typeof r.nWfrs==='number'?r.nWfrs+'/'+nW:'?')+'</td>'
+      +'<td style="padding:2px 6px;text-align:right;color:#ffd166">'+Math.round(wPct*100)+'%</td>'
+      +'<td style="padding:2px 6px;text-align:right;color:#9ab4cc">'+r.count+'</td>'
+      +'<td style="padding:2px 6px;text-align:right;color:'+covCol+'">'+covStr+'</td>'
+      +'<td style="padding:2px 6px;color:#7a9ab8;font-size:8px">'+r.bbox+'</td>'
+      +'<td style="padding:2px 6px"><div style="width:'+barW+'px;height:6px;background:'+barCol+';border-radius:2px"></div></td></tr>';
+  });
+  html+='</tbody></table>';
+  html+='<div style="margin-top:4px;font-size:8px;color:#445566">'
+    +rows.length+' shot'+(rows.length!==1?'s':'')+' · '+totalHits+' total hits'
+    +(unmapped?' · <span style="color:#556677">'+unmapped+' unmapped</span>':'')+'</div>';
+  shotBody.innerHTML=html;
+}
 function _rvBuildPatternScore(wmFiltAggDies,bg2,nWTotal2){
   var body=document.getElementById('rv-pattern-body');if(!body)return;
   var totFc=0,totChain=0,totSA=0,totAS=0,totDiag=0,totPos=0,totLayout=0;

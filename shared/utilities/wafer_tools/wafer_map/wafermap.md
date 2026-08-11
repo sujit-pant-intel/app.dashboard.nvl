@@ -51,22 +51,56 @@ if _WT not in sys.path: sys.path.insert(0, _WT)
 from wafer_map import WAFERMAP_JS
 ```
 
-Then inject **once** before `</body>`:
+**Option C — walk-up discovery (scan-dashboard / vcc_cont style, preferred):**
+
+Walks up from the script's own directory checking `shared/utilities/wafer_tools`
+and `utilities/wafer_tools` at each ancestor level.  Robust to any working
+directory and to future repo restructuring.  Use `Path(__file__).resolve().parent`
+— not `Path(__file__).parent` — so walk-up works when invoked with a relative path.
 
 ```python
-html = html.replace('</body>', WAFERMAP_JS + '\n</body>', 1)
+from pathlib import Path
+import sys
+
+def _find_wafer_tools(start: Path, max_levels: int = 6) -> str:
+    cur = start.resolve()
+    for _ in range(max_levels):
+        for rel in ("shared/utilities/wafer_tools", "utilities/wafer_tools"):
+            cand = cur / rel
+            if (cand / "wafer_map").is_dir():
+                return str(cand)
+        parent = cur.parent
+        if parent == cur:
+            break
+        cur = parent
+    return ""
+
+_WAFER_TOOLS = _find_wafer_tools(Path(__file__).resolve().parent)
+if _WAFER_TOOLS and _WAFER_TOOLS not in sys.path:
+    sys.path.insert(0, _WAFER_TOOLS)
+from wafer_map import WAFERMAP_JS
+```
+
+Then inject **once** into the template HTML.  Inject **before** the main dashboard
+`<script>` block (preferred) so `wmRender` is defined before any page-load JS runs.
+Fall back to `</body>` only when the main-script marker is absent:
+
+```python
+_marker = '\n<script>\n"use strict";'
+if _marker in html:
+    html = html.replace(_marker, '\n' + WAFERMAP_JS + _marker, 1)
+else:
+    html = html.replace('</body>', WAFERMAP_JS + '\n</body>', 1)
 ```
 
 `WAFERMAP_JS` is a self-contained `<script>` block.  It defines one global:
 `wmRender(containerId, cfg)`.  No other globals are created.
 
-> **Critical ordering rule**: `WAFERMAP_JS` must be the **last** `<script>`
-> block before `</body>`.  Any code that calls `wmRender()` at page-load
-> time (e.g. an auto-open composite overlay) must also run *after*
-> `WAFERMAP_JS` — either inject it as a second `<script>` immediately after
-> `WAFERMAP_JS`, or use a `hashchange`/`DOMContentLoaded` listener.  Calling
-> `wmRender` from a script block that appears earlier in the file (before
-> WAFERMAP_JS is injected) will throw `wmRender is not defined`.
+> **Critical ordering rule**: `WAFERMAP_JS` must be injected **before** any
+> script block that calls `wmRender()`.  Prefer injecting before the
+> `<script>\n"use strict";` main block; fall back to before `</body>` when
+> that marker is absent.  Calling `wmRender` from a script that appears
+> earlier in the HTML will throw `wmRender is not defined`.
 
 ---
 
@@ -339,8 +373,12 @@ To replace it with `wmRender`:
 ```python
 from utilities.wafer_map import WAFERMAP_JS
 
-# Inject once before </body>
-html = html.replace('</body>', WAFERMAP_JS + '\n</body>', 1)
+# Inject before the main script block (preferred); fall back to </body>
+_marker = '\n<script>\n"use strict";'
+if _marker in html:
+    html = html.replace(_marker, '\n' + WAFERMAP_JS + _marker, 1)
+else:
+    html = html.replace('</body>', WAFERMAP_JS + '\n</body>', 1)
 ```
 
 ### JS (inside the dashboard template)
