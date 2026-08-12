@@ -288,12 +288,15 @@ def load_config(cfg_path: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # old: TESTTYPE_BLOCK_HRY_K_SUBFLOW_DFT_VRAIL_VCORNER_FREQ_STEP_POR_HRY_RAWSTR_ID
 _COL_RE_OLD = re.compile(
-    r"^(SCN_\w+)::(CHAIN|STUCKAT|ATSPEED|DIAG)_(\w+)_HRY_([KE])_(\w+)_\w+_\w+_(\w+)_(\w+)_\w+_POR_HRY_RAWSTR_(\d+)$",
+    r"^(SCN_\w+)::(CHAIN|STUCKAT|ATSPEED|DIAG|CTRL)_(\w+)_HRY_([KE])_(\w+)_\w+_\w+_(\w+)_(\w+)_\w+_POR_HRY_RAWSTR_(\d+)$",
     re.IGNORECASE,
 )
 # new: TESTTYPE_ALL_BLOCK_K_SUBFLOW_DFT_VRAIL_VCORNER_FREQ[_STEP]_HRY_RAWSTR_ID
+# CTRL columns (e.g. CTRL_X_GFXAGG_K_BEGIN_X_X_X_X_X_EVALUATE_HRY_RAWSTR_ID) fit
+# this same shape — the config join falls back to matching on MODULE alone
+# (see cfg_sub below) so CTRL/GFXAGG is decoded the same way GFXSB already is.
 _COL_RE_NEW = re.compile(
-    r"^(SCN_\w+)::(CHAIN|STUCKAT|ATSPEED|DIAG)_\w+_(\w+)_([KE])_(\w+)_\w+_\w+_(\w+)_(\w+)(?:_\w+)?_HRY_RAWSTR_(\d+)$",
+    r"^(SCN_\w+)::(CHAIN|STUCKAT|ATSPEED|DIAG|CTRL)_\w+_(\w+)_([KE])_(\w+)_\w+_\w+_(\w+)_(\w+)(?:_\w+)?_HRY_RAWSTR_(\d+)$",
     re.IGNORECASE,
 )
 
@@ -459,7 +462,7 @@ def build_reticle_layouts() -> dict:
 # ---------------------------------------------------------------------------
 # Die-map builder (aggregate per_ip records into per-die summary)
 # ---------------------------------------------------------------------------
-_TT_KEYS = ("CHAIN", "STUCKAT", "ATSPEED", "DIAG")
+_TT_KEYS = ("CHAIN", "STUCKAT", "ATSPEED", "DIAG", "CTRL")
 
 def build_die_map(records: list) -> list:
     """Aggregate per_ip failure records into per-(lot,wafer,die) objects for wafer map."""
@@ -479,7 +482,7 @@ def build_die_map(records: list) -> list:
                 "Layout": r.get("LAYOUT") or str(lot)[:6].upper(),
                 "IB": None,
                 "FB": None,
-                "CHAIN": 0, "STUCKAT": 0, "ATSPEED": 0, "DIAG": 0,
+                "CHAIN": 0, "STUCKAT": 0, "ATSPEED": 0, "DIAG": 0, "CTRL": 0,
                 "_fails": {tt: set() for tt in _TT_KEYS},
             }
         d = dm[key]
@@ -703,14 +706,25 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
         if not scn_cols:
             raise ValueError("No SCN columns remain after applying test filter.")
 
+    # Distinct raw columns can share module/testtype/block/subflow (e.g. GT vs
+    # VNNAON rail scans of the same block) — the DFT/VRAIL/VCORNER/FREQ tokens
+    # in between aren't reliably splittable by regex alone (SUBFLOW's \w+ can
+    # swallow a variable number of them). Assign a stable per-tuple sequential
+    # "variant" index instead, so columns are never silently merged.
+    _variant_seen: dict = {}
+    for c in scn_cols:
+        tk = (c["module"], c["testtype"], c["block"], c["subflow"])
+        c["variant"] = _variant_seen.get(tk, 0)
+        _variant_seen[tk] = c["variant"] + 1
+
     # metadata
     lots   = sorted(id_df["LOT"].dropna().unique().tolist())   if "LOT"   in id_df else []
     wafers = sorted(id_df["WAFER"].dropna().unique().tolist()) if "WAFER" in id_df else []
-    # col_names: map from "MODULE|TESTTYPE|BLOCK|SUBFLOW" → sorted list of original CSV column names
+    # col_names: map from "MODULE|TESTTYPE|BLOCK|SUBFLOW|variant" → sorted list of original CSV column names
     # Stored once in meta (not per record) so the JSON stays compact.
     _cn: dict = {}
     for c in scn_cols:
-        tk = f"{c['module'].replace('SCN_','',1)}|{c['testtype']}|{c['block']}|{c['subflow']}"
+        tk = f"{c['module'].replace('SCN_','',1)}|{c['testtype']}|{c['block']}|{c['subflow']}|{c['variant']}"
         _cn.setdefault(tk, set()).add(c["col"])
     col_names = {k: sorted(v) for k, v in _cn.items()}
 
@@ -840,6 +854,7 @@ def process(csv_path: str, cfg_path: str, keep_tests=None) -> dict:
                     "TESTTYPE":  col_info["testtype"],
                     "BLOCK":     block,
                     "SUBFLOW":   col_info["subflow"],
+                    "VARIANT":   col_info["variant"],
                     "VCORNER":   col_info["vcorner"],
                     "FREQ":      col_info["freq"],
                     "PARTITION": partition,

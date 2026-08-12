@@ -277,6 +277,8 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
             <input type="checkbox" data-tt="ATSPEED" checked onchange="toggleTTShow('ATSPEED',this.checked)" style="accent-color:#1CA44A;cursor:pointer;width:11px;height:11px"> <span style="color:#58d68d">ATSPEED</span></label>
           <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#2d1a3a;border:1px solid #8B5CF6;border-radius:4px;padding:2px 7px">
             <input type="checkbox" data-tt="DIAG" checked onchange="toggleTTShow('DIAG',this.checked)" style="accent-color:#8B5CF6;cursor:pointer;width:11px;height:11px"> <span style="color:#a78bfa">DIAG</span></label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#3d2a0d;border:1px solid #E67E22;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="CTRL" checked onchange="toggleTTShow('CTRL',this.checked)" style="accent-color:#E67E22;cursor:pointer;width:11px;height:11px"> <span style="color:#f0a860">CTRL</span></label>
         </div>
         <div class="card-body"><div class="tscroll"><div id="tbl-testtype"></div></div></div>
       </div>
@@ -297,6 +299,8 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
             <input type="checkbox" id="chk-wm-atspeed" checked onchange="toggleWMShow('ATSPEED',this.checked)" style="width:13px;height:13px;accent-color:#1CA44A;cursor:pointer"> ATSPEED</label>
           <label style="font-size:11px;font-weight:700;color:#a78bfa;background:#2d1a3a;padding:2px 7px;border-radius:4px;border:1.5px solid #8B5CF6;cursor:pointer;display:flex;align-items:center;gap:4px">
             <input type="checkbox" id="chk-wm-diag" checked onchange="toggleWMShow('DIAG',this.checked)" style="width:13px;height:13px;accent-color:#8B5CF6;cursor:pointer"> DIAG</label>
+          <label style="font-size:11px;font-weight:700;color:#f0a860;background:#3d2a0d;padding:2px 7px;border-radius:4px;border:1.5px solid #E67E22;cursor:pointer;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="chk-wm-ctrl" checked onchange="toggleWMShow('CTRL',this.checked)" style="width:13px;height:13px;accent-color:#E67E22;cursor:pointer"> CTRL</label>
           <span style="color:#2a4060;margin:0 2px">|</span>
           <!-- IB dropdown -->
           <div style="position:relative;display:inline-flex;align-items:center" id="rv-ib-dd-wrap">
@@ -450,6 +454,8 @@ footer{text-align:center;font-size:8.25px;color:#aed6f1;padding:5px;background:#
             <input type="checkbox" data-tt="ATSPEED" checked onchange="toggleTTShow('ATSPEED',this.checked)" style="accent-color:#1CA44A;cursor:pointer;width:11px;height:11px"> <span style="color:#58d68d">ATSPEED</span></label>
           <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#2d1a3a;border:1px solid #8B5CF6;border-radius:4px;padding:2px 7px">
             <input type="checkbox" data-tt="DIAG" checked onchange="toggleTTShow('DIAG',this.checked)" style="accent-color:#8B5CF6;cursor:pointer;width:11px;height:11px"> <span style="color:#a78bfa">DIAG</span></label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:8px;background:#3d2a0d;border:1px solid #E67E22;border-radius:4px;padding:2px 7px">
+            <input type="checkbox" data-tt="CTRL" checked onchange="toggleTTShow('CTRL',this.checked)" style="accent-color:#E67E22;cursor:pointer;width:11px;height:11px"> <span style="color:#f0a860">CTRL</span></label>
         </div>
         <div class="card-body"><div class="tscroll"><div id="tbl-fpf"></div></div></div>
       </div>
@@ -486,8 +492,8 @@ function _wmBuildPatterns(colors){
       +'</pattern>';
   }).join('');
 }
-const TT_COLORS={"CHAIN":"#0071C5","STUCKAT":"#E8421C","ATSPEED":"#1CA44A","DIAG":"#8B5CF6"};
-const TT_ALL=["CHAIN","STUCKAT","ATSPEED","DIAG"];
+const TT_COLORS={"CHAIN":"#0071C5","STUCKAT":"#E8421C","ATSPEED":"#1CA44A","DIAG":"#8B5CF6","CTRL":"#E67E22"};
+const TT_ALL=["CHAIN","STUCKAT","ATSPEED","DIAG","CTRL"];
 var GRP_BY=[],BLK_BY_MOD=false,TT_GRP_REGION=false,SHOW_PCT=false;
 var TT_SHOW=new Set(M.testtypes||TT_ALL);
 var WM_TT_SHOW=new Set(TT_ALL);
@@ -547,11 +553,11 @@ function buildInfoBar(){
 
 /* ── Test Filter (applies to all tabs) ─────────────────────────────── */
 function buildTestFilter(){
-  var TF_COLORS={CHAIN:'#5dade2',STUCKAT:'#f0857a',ATSPEED:'#58d68d',DIAG:'#a78bfa'};
-  var TT_ORDER=['CHAIN','STUCKAT','ATSPEED','DIAG'];
+  var TF_COLORS={CHAIN:'#5dade2',STUCKAT:'#f0857a',ATSPEED:'#58d68d',DIAG:'#a78bfa',CTRL:'#e67e22'};
+  var TT_ORDER=['CHAIN','STUCKAT','ATSPEED','DIAG','CTRL'];
   var keyMap={};
   D.per_ip.forEach(function(r){
-    var tk=(r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'');
+    var tk=(r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'')+'|'+(r.VARIANT!=null?r.VARIANT:0);
     if(!keyMap[tk])keyMap[tk]={module:r.MODULE||'',testtype:(r.TESTTYPE||'').toUpperCase(),block:r.BLOCK||'',subflow:r.SUBFLOW||''};
   });
   _allTestKeys=Object.keys(keyMap).sort();
@@ -569,13 +575,15 @@ function buildTestFilter(){
     html+='</div>';
     ttMap[tt].forEach(function(e){
       var t=e.t;
-      var label=t.testtype+' \xb7 '+t.module+' \xb7 '+t.block+(t.subflow?' \xb7 '+t.subflow:'');
-      html+='<label class="tf-row" style="display:flex;align-items:center;gap:4px;padding:1px 2px 1px 8px;cursor:pointer;border-radius:2px">';
-      html+='<input type="checkbox" class="tf-cb" data-key="'+e.key+'" data-tt="'+tt+'" checked onchange="_tfChange(this)" style="accent-color:'+color+';cursor:pointer;width:9px;height:9px;flex-shrink:0">';
       var _cols=(D.meta.col_names&&D.meta.col_names[e.key])||[];
-      var _colStr=_cols.length?'\n\nCSV columns:\n  '+_cols.join('\n  '):'';
-      var ttip='MODULE:   '+t.module+'\nTESTTYPE: '+t.testtype+'\nBLOCK:    '+t.block+(t.subflow?'\nSUBFLOW:  '+t.subflow:'')+_colStr;
-      html+='<span style="font-size:8px;color:#c0ccd8;font-family:Consolas,monospace;white-space:nowrap" title="'+ttip+'">'+label+'</span>';
+      // Show the actual CSV RAWSTR column name(s) directly — a parsed key can
+      // collapse multiple raw columns (e.g. different VRAIL) into one row.
+      var shortLabel=t.testtype+' \xb7 '+t.module+' \xb7 '+t.block+(t.subflow?' \xb7 '+t.subflow:'');
+      var fullLabel=_cols.length?_cols.join('<br>'):shortLabel;
+      var ttip='MODULE:   '+t.module+'\nTESTTYPE: '+t.testtype+'\nBLOCK:    '+t.block+(t.subflow?'\nSUBFLOW:  '+t.subflow:'');
+      html+='<label class="tf-row" style="display:flex;align-items:flex-start;gap:4px;padding:2px 2px 2px 8px;cursor:pointer;border-radius:2px">';
+      html+='<input type="checkbox" class="tf-cb" data-key="'+e.key+'" data-tt="'+tt+'" checked onchange="_tfChange(this)" style="accent-color:'+color+';cursor:pointer;width:9px;height:9px;flex-shrink:0;margin-top:2px">';
+      html+='<span style="font-size:7.5px;color:#c0ccd8;font-family:Consolas,monospace;white-space:normal;word-break:break-all;line-height:1.35" title="'+ttip+'">'+fullLabel+'</span>';
       html+='</label>';
     });
   });
@@ -707,7 +715,7 @@ function buildXfChips(){
     html+='<div class="xft-col" id="xft-col-'+_xfId(mod)+'" data-mod="'+mod+'">';
     html+='<div class="xft-mod"><div class="xft-mod-sum">';
     html+='<input type="checkbox" class="xft-chk" id="'+modId+'" data-level="mod" data-mod="'+mod+'" checked onchange="_xftParentChange(this)">';
-    html+='<span onclick="_xftLblClick(\''+modId+'\')" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+mod+'</span>';
+    html+='<span onclick="_xftLblClick(\''+modId+'\')" title="'+mod+'" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+mod+'</span>';
     html+='<button class="xft-mod-popup-btn" onclick="event.stopPropagation();_xftPopup(\''+mod+'\')" title="Expand in popup">&#8663;</button>';
     html+='<span class="xft-mod-acts"><button onclick="_xftMod(true,\''+mod+'\')">All</button><button onclick="_xftMod(false,\''+mod+'\')">None</button></span>';
     html+='</div><div class="xft-col-body"><div class="xft-mod-body">';
@@ -956,7 +964,7 @@ function getFiltered(){
   const totalMipN=document.querySelectorAll('.xft-mip').length;
   return D.per_ip.filter(r=>{
     if(!selLW.has(r.LOT+'|'+r.WAFER))return false;
-    if(SEL_TESTS.size>0&&SEL_TESTS.size<_allTestKeys.length&&!SEL_TESTS.has((r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'')))return false;
+    if(SEL_TESTS.size>0&&SEL_TESTS.size<_allTestKeys.length&&!SEL_TESTS.has((r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'')+'|'+(r.VARIANT!=null?r.VARIANT:0)))return false;
     if(totalRegN>0&&selRegKeys.size<totalRegN&&!selRegKeys.has((r.MODULE||'?')+'|'+(r.PARTITION||'?')+'|'+(r.REGION||'?')))return false;
     const _ip=r.IP||'';
     if(totalMipN>0&&selMipKeys.size<totalMipN&&_ip&&!selMipKeys.has((r.MODULE||'?')+'|'+_ip))return false;
@@ -1087,8 +1095,8 @@ function drawTestType(){
     d=(a.region||'').localeCompare(b.region||'');if(d)return d;
     return a.ip.localeCompare(b.ip);
   });
-  const TT_BASE={CHAIN:'#0071C5',STUCKAT:'#E8421C',ATSPEED:'#1CA44A',DIAG:'#8B5CF6'};
-  const TT_OPA={CHAIN:0.75,STUCKAT:0.85,ATSPEED:1.0,DIAG:0.9};
+  const TT_BASE={CHAIN:'#0071C5',STUCKAT:'#E8421C',ATSPEED:'#1CA44A',DIAG:'#8B5CF6',CTRL:'#E67E22'};
+  const TT_OPA={CHAIN:0.75,STUCKAT:0.85,ATSPEED:1.0,DIAG:0.9,CTRL:0.85};
   // filter rows to those checked in the table (null = all checked)
   const plotRows=_ttChecked?rows.filter(r=>_ttChecked.has(r._rk)):rows;
   // vertical grouped bar with horizontal scroll — reliable across all IP counts
@@ -1327,7 +1335,7 @@ function drawFaultPerFault(){
     plot_bgcolor:'#fff',paper_bgcolor:'#fff',hoverlabel:HL
   },{...CFG,responsive:true});
   // Sortable table: Module | [Block | Region] | IP-L* | IP | Fault Count | TT cols | Fail Dies | % Fail
-  const TT_BASE={CHAIN:'#0071C5',STUCKAT:'#E8421C',ATSPEED:'#1CA44A',DIAG:'#8B5CF6'};
+  const TT_BASE={CHAIN:'#0071C5',STUCKAT:'#E8421C',ATSPEED:'#1CA44A',DIAG:'#8B5CF6',CTRL:'#E67E22'};
   const _ss=_fpfSortState||{col:null,asc:true};
   let trows=[...rows];
   const _fcs=_fpfColSearch;
@@ -1608,27 +1616,29 @@ function _getWmDies(){
     var dm={};
     D.per_ip.forEach(function(r){
       if(!selLW.has(r.LOT+'|'+r.WAFER))return;
-      var tk=(r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'');
+      var tk=(r.MODULE||'')+'|'+(r.TESTTYPE||'').toUpperCase()+'|'+(r.BLOCK||'')+'|'+(r.SUBFLOW||'')+'|'+(r.VARIANT!=null?r.VARIANT:0);
       if(!SEL_TESTS.has(tk))return;
       var k=r.LOT+'|'+r.WAFER+'|'+r.X+'|'+r.Y;
       if(!dm[k])dm[k]={LOT:r.LOT,WAFER:r.WAFER,X:r.X,Y:r.Y,VISUAL_ID:r.VISUAL_ID,
         Layout:r.LAYOUT||String(r.LOT||'').substring(0,6).toUpperCase(),
         IB:r.IB||'',FB:r.FB||'',Reticle:'',
-        CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,
-        _cf:new Set(),_sf:new Set(),_af:new Set(),_df:new Set(),_all:new Set()};
+        CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,CTRL:0,
+        _cf:new Set(),_sf:new Set(),_af:new Set(),_df:new Set(),_ctf:new Set(),_all:new Set()};
       var d=dm[k],tt=(r.TESTTYPE||'').toUpperCase();
       var pair=(r.BLOCK||'')+':'+(r.REGION||'')+':'+(r.IP||'');
       if(tt==='CHAIN')d._cf.add(pair);
       else if(tt==='STUCKAT')d._sf.add(pair);
       else if(tt==='ATSPEED')d._af.add(pair);
       else if(tt==='DIAG')d._df.add(pair);
+      else if(tt==='CTRL')d._ctf.add(pair);
       d._all.add(pair);
     });
     var derived=Object.values(dm);
     derived.forEach(function(d){
-      d.CHAIN=d._cf.size;d.STUCKAT=d._sf.size;d.ATSPEED=d._af.size;d.DIAG=d._df.size;
+      d.CHAIN=d._cf.size;d.STUCKAT=d._sf.size;d.ATSPEED=d._af.size;d.DIAG=d._df.size;d.CTRL=d._ctf.size;
       d.fails_chain=[...d._cf].join(',');d.fails_stuckat=[...d._sf].join(',');
       d.fails_atspeed=[...d._af].join(',');d.fails_diag=[...d._df].join(',');
+      d.fails_ctrl=[...d._ctf].join(',');
       d.fails=[...d._all].join(',');
     });
     return derived.filter(function(d){
@@ -1708,7 +1718,7 @@ function drawWaferMap(){
   const xyMap={};
   filtDies.forEach(d=>{
     const k=d.X+'|'+d.Y;
-    if(!xyMap[k])xyMap[k]={x:d.X,y:d.Y,_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,_wfrs:[],_failPairs:new Set(),_apCr:{}};
+    if(!xyMap[k])xyMap[k]={x:d.X,y:d.Y,_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,CTRL:0,_wfrs:[],_failPairs:new Set(),_apCr:{}};
     const a=xyMap[k];
     TT_ALL.forEach(tt=>{if(WM_TT_SHOW.has(tt))a[tt]+=(d[tt]||0);});
     const wl=d.LOT+'/W'+d.WAFER;if(a._wfrs.indexOf(wl)<0)a._wfrs.push(wl);
@@ -1722,7 +1732,7 @@ function drawWaferMap(){
   /* Compute _fc: filtered by selected IPs when a filter is active, else raw TT sum */
   aggDies.forEach(function(a){
     if(_allMipsOn||!a._failPairs.size){
-      a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0);
+      a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0)+(WM_TT_SHOW.has('CTRL')?a.CTRL:0);
     }else{
       var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var partKey=(_blkRegToPart[pts[0]+'|'+pts[1]]||pts[0])+'|'+pts[1]+'|'+pts[2];if(pts[2]?_selMipSet.has(partKey):true)fc++;});
       a._fc=fc;
@@ -1739,13 +1749,13 @@ function drawWaferMap(){
       const _rm=bg.ret_map[d.x+','+d.y];
       const _sn=_rm?bg.ret_site_num[_rm[0]+','+_rm[1]]:null;
       if(_sn!=null&&!_rvRetFilter.has(String(_sn)))
-        return Object.assign({},d,{_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,_failPairs:new Set(),_wfrs:[]});
+        return Object.assign({},d,{_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,CTRL:0,_failPairs:new Set(),_wfrs:[]});
     }
     /* Fade dies unchecked in Reticle Loc Analysis table (same visual as Sites) */
     if(WM_F_EXCL_DLOCS){
       var _dk=Math.round(d.x)+','+Math.round(d.y);
       if(WM_F_EXCL_DLOCS.has(_dk))
-        return Object.assign({},d,{_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,_failPairs:new Set(),_wfrs:[],_excl:true});
+        return Object.assign({},d,{_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,CTRL:0,_failPairs:new Set(),_wfrs:[],_excl:true});
     }
     return d;
   });
@@ -1917,7 +1927,7 @@ function drawWaferMap(){
     const wxyMap={};
     wDies.forEach(d=>{
       const k=d.X+','+d.Y;
-      if(!wxyMap[k])wxyMap[k]={x:d.X,y:d.Y,_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set(),_apCr:{}};
+      if(!wxyMap[k])wxyMap[k]={x:d.X,y:d.Y,_fc:0,CHAIN:0,STUCKAT:0,ATSPEED:0,DIAG:0,CTRL:0,_wfrs:[wk],_failPairs:new Set(),_ibSet:new Set(),_fbSet:new Set(),_apCr:{}};
       const a=wxyMap[k];
       TT_ALL.forEach(tt=>{if(WM_TT_SHOW.has(tt))a[tt]+=(d[tt]||0);});
       TT_ALL.forEach(tt=>{if(WM_TT_SHOW.has(tt))(d['fails_'+tt.toLowerCase()]||'').split(',').filter(Boolean).forEach(p=>a._failPairs.add(p));});
@@ -1927,15 +1937,15 @@ function drawWaferMap(){
     });
     const wAgg=Object.values(wxyMap);
     wAgg.forEach(function(a){
-      if(_allMipsOnC||!a._failPairs.size){a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0);}
+      if(_allMipsOnC||!a._failPairs.size){a._fc=(WM_TT_SHOW.has('CHAIN')?a.CHAIN:0)+(WM_TT_SHOW.has('STUCKAT')?a.STUCKAT:0)+(WM_TT_SHOW.has('ATSPEED')?a.ATSPEED:0)+(WM_TT_SHOW.has('DIAG')?a.DIAG:0)+(WM_TT_SHOW.has('CTRL')?a.CTRL:0);}
       else{var fc=0;a._failPairs.forEach(function(p){var pts=p.split(':');var partKey=(_blkRegToPart[pts[0]+'|'+pts[1]]||pts[0])+'|'+pts[1]+'|'+pts[2];if(pts[2]?(_selMipSetC&&_selMipSetC.has(partKey)):true)fc++;});a._fc=fc;}
     });
     /* Apply site-checkbox and die-loc-checkbox fading to per-tile dies (mirrors composite map) */
     if(_rvRetFilter.size>0&&bg&&bg.ret_map&&bg.ret_site_num){
-      wAgg.forEach(function(a){var _rm=bg.ret_map[a.x+','+a.y];var _sn=_rm?bg.ret_site_num[_rm[0]+','+_rm[1]]:null;if(_sn!=null&&!_rvRetFilter.has(String(_sn)))a._fc=a.CHAIN=a.STUCKAT=a.ATSPEED=a.DIAG=0;});
+      wAgg.forEach(function(a){var _rm=bg.ret_map[a.x+','+a.y];var _sn=_rm?bg.ret_site_num[_rm[0]+','+_rm[1]]:null;if(_sn!=null&&!_rvRetFilter.has(String(_sn)))a._fc=a.CHAIN=a.STUCKAT=a.ATSPEED=a.DIAG=a.CTRL=0;});
     }
     if(WM_F_EXCL_DLOCS){
-      wAgg.forEach(function(a){var _dk=Math.round(a.x)+','+Math.round(a.y);if(WM_F_EXCL_DLOCS.has(_dk)){a._fc=a.CHAIN=a.STUCKAT=a.ATSPEED=a.DIAG=0;a._excl=true;}});
+      wAgg.forEach(function(a){var _dk=Math.round(a.x)+','+Math.round(a.y);if(WM_F_EXCL_DLOCS.has(_dk)){a._fc=a.CHAIN=a.STUCKAT=a.ATSPEED=a.DIAG=a.CTRL=0;a._excl=true;}});
     }
     const wMaxFc=Math.max(1,...wAgg.map(d=>d._fc));
     const wComposMap={};
@@ -2132,10 +2142,10 @@ function _wmDrawTable(){
   const sorted=[...fd].sort((a,b)=>{const av=_getSv(a,_wms.col),bv=_getSv(b,_wms.col);const c=typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||''));return _wms.asc?c:-c;});
   const tblRows=sorted.slice(0,500);
   const _wmth=(c,l)=>'<th onclick="wmSort(\''+c+'\')"'+(c===_wms.col?' class="sarr '+(_wms.asc?'asc':'desc')+'"':'')+'>'+l+'</th>';
-  let tHtml='<table class="dt" id="tbl-wmap-inner"><thead><tr>'+_wmth('x','X')+_wmth('y','Y')+_wmth('CHAIN','CHAIN')+_wmth('STUCKAT','STUCKAT')+_wmth('ATSPEED','ATSPEED')+_wmth('DIAG','DIAG')+_wmth('_fc','Total')+_wmth('_wl','Wafers')+'</tr></thead><tbody>';
+  let tHtml='<table class="dt" id="tbl-wmap-inner"><thead><tr>'+_wmth('x','X')+_wmth('y','Y')+_wmth('CHAIN','CHAIN')+_wmth('STUCKAT','STUCKAT')+_wmth('ATSPEED','ATSPEED')+_wmth('DIAG','DIAG')+_wmth('CTRL','CTRL')+_wmth('_fc','Total')+_wmth('_wl','Wafers')+'</tr></thead><tbody>';
   tblRows.forEach(d=>{
     const _isSel=_wmSelDie&&_wmSelDie[0]===d.x&&_wmSelDie[1]===d.y;
-    tHtml+='<tr data-wmd-x="'+d.x+'" data-wmd-y="'+d.y+'" onclick="_wmClickDie(this,'+d.x+','+d.y+')" style="cursor:pointer'+(_isSel?';background:#fde8e8;outline:2px solid #e53e3e;outline-offset:-1px':'')+'"><td>'+d.x+'</td><td>'+d.y+'</td><td class="n">'+(d.CHAIN||0)+'</td><td class="n">'+(d.STUCKAT||0)+'</td><td class="n">'+(d.ATSPEED||0)+'</td><td class="n">'+(d.DIAG||0)+'</td><td class="n" style="font-weight:bold">'+d._fc+'</td><td style="font-size:7.5px">'+d._wfrs.join(', ')+'</td></tr>';
+    tHtml+='<tr data-wmd-x="'+d.x+'" data-wmd-y="'+d.y+'" onclick="_wmClickDie(this,'+d.x+','+d.y+')" style="cursor:pointer'+(_isSel?';background:#fde8e8;outline:2px solid #e53e3e;outline-offset:-1px':'')+'"><td>'+d.x+'</td><td>'+d.y+'</td><td class="n">'+(d.CHAIN||0)+'</td><td class="n">'+(d.STUCKAT||0)+'</td><td class="n">'+(d.ATSPEED||0)+'</td><td class="n">'+(d.DIAG||0)+'</td><td class="n">'+(d.CTRL||0)+'</td><td class="n" style="font-weight:bold">'+d._fc+'</td><td style="font-size:7.5px">'+d._wfrs.join(', ')+'</td></tr>';
   });
   tHtml+='</tbody></table>';
   document.getElementById('tbl-wmap').innerHTML=tHtml;
@@ -2292,12 +2302,12 @@ function _downloadDieCsv(){
   /* Build a CSV from the currently-filtered failing dies (last drawWaferMap call), including AP/CR columns. */
   var filtDies=window._wmAllDies||[];
   var _GO=['AP0','AP1','AP2','AP3','CR0','CR1','CR2','CR3'];
-  var hdr=['LOT','WAFER','X','Y','IB','FB','CHAIN','STUCKAT','ATSPEED','DIAG'].concat(_GO);
+  var hdr=['LOT','WAFER','X','Y','IB','FB','CHAIN','STUCKAT','ATSPEED','DIAG','CTRL'].concat(_GO);
   var rows=[hdr.join(',')];
   filtDies.forEach(function(d){
     var apcr=d.ap_cr||{};
     var base=[d.LOT,d.WAFER,d.X,d.Y,d.IB!=null?d.IB:'',d.FB!=null?d.FB:'',
-              d.CHAIN||0,d.STUCKAT||0,d.ATSPEED||0,d.DIAG||0];
+              d.CHAIN||0,d.STUCKAT||0,d.ATSPEED||0,d.DIAG||0,d.CTRL||0];
     var grpVals=_GO.map(function(g){var v=apcr[g];return v?'"'+String(v).replace(/"/g,'""')+'"':'';});
     rows.push(base.concat(grpVals).join(','));
   });
@@ -2511,7 +2521,7 @@ function _rvBuildShotTable(filtAgg,bg2,nW){
 }
 function _rvBuildPatternScore(wmFiltAggDies,bg2,nWTotal2){
   var body=document.getElementById('rv-pattern-body');if(!body)return;
-  var totFc=0,totChain=0,totSA=0,totAS=0,totDiag=0,totPos=0,totLayout=0;
+  var totFc=0,totChain=0,totSA=0,totAS=0,totDiag=0,totCtrl=0,totPos=0,totLayout=0;
   var shotMap={};var fcArr=[];var failXY=[];
   var allBgX=[],allBgY=[];var nShotsTotal=0;
   var retMap2=bg2&&bg2.ret_map?bg2.ret_map:{};
@@ -2519,7 +2529,7 @@ function _rvBuildPatternScore(wmFiltAggDies,bg2,nWTotal2){
   if(bg2&&bg2.x){allBgX=[...bg2.x];allBgY=[...bg2.y];totLayout=allBgX.length;nShotsTotal=retShots2.length;}
   wmFiltAggDies.forEach(function(d){
     if(!d._fc)return;
-    totFc+=d._fc;totChain+=(d.CHAIN||0);totSA+=(d.STUCKAT||0);totAS+=(d.ATSPEED||0);totDiag+=(d.DIAG||0);totPos++;
+    totFc+=d._fc;totChain+=(d.CHAIN||0);totSA+=(d.STUCKAT||0);totAS+=(d.ATSPEED||0);totDiag+=(d.DIAG||0);totCtrl+=(d.CTRL||0);totPos++;
     fcArr.push(d._fc);failXY.push({x:d.x,y:d.y,fc:d._fc});
     var rm=retMap2[d.x+','+d.y];
     if(rm&&rm[2]!=null){var si=rm[2];if(!shotMap[si])shotMap[si]={fc:0,pos:0,idx:si};shotMap[si].fc+=d._fc;shotMap[si].pos++;}
@@ -2528,19 +2538,21 @@ function _rvBuildPatternScore(wmFiltAggDies,bg2,nWTotal2){
   fcArr.sort(function(a,b){return b-a;});
   var top10=fcArr.slice(0,Math.max(1,Math.ceil(fcArr.length*0.1)));
   var concPct=Math.round(top10.reduce(function(s,v){return s+v;},0)/totFc*100);
-  var ttTot=Math.max(1,totChain+totSA+totAS+totDiag);
-  var cw=Math.round(totChain/ttTot*100),sw=Math.round(totSA/ttTot*100),aw=Math.round(totAS/ttTot*100),dw=Math.round(totDiag/ttTot*100);
+  var ttTot=Math.max(1,totChain+totSA+totAS+totDiag+totCtrl);
+  var cw=Math.round(totChain/ttTot*100),sw=Math.round(totSA/ttTot*100),aw=Math.round(totAS/ttTot*100),dw=Math.round(totDiag/ttTot*100),ctw=Math.round(totCtrl/ttTot*100);
   var html='<div style="font-size:8.5px;color:#667788;margin-bottom:3px">Test Type Breakdown</div>';
   html+='<div style="display:flex;height:11px;border-radius:3px;overflow:hidden;margin-bottom:3px">';
   if(cw)html+='<div style="width:'+cw+'%;background:#0071C5" title="CHAIN '+cw+'%"></div>';
   if(sw)html+='<div style="width:'+sw+'%;background:#E8421C" title="STUCKAT '+sw+'%"></div>';
   if(aw)html+='<div style="width:'+aw+'%;background:#1CA44A" title="ATSPEED '+aw+'%"></div>';
   if(dw)html+='<div style="width:'+dw+'%;background:#8B5CF6" title="DIAG '+dw+'%"></div>';
+  if(ctw)html+='<div style="width:'+ctw+'%;background:#E67E22" title="CTRL '+ctw+'%"></div>';
   html+='</div><div style="display:flex;gap:8px;margin-bottom:7px;flex-wrap:wrap">';
   if(totChain)html+='<span style="font-size:8px;color:#5dade2">&#9632; CHAIN '+cw+'%</span>';
   if(totSA)html+='<span style="font-size:8px;color:#f0857a">&#9632; STUCKAT '+sw+'%</span>';
   if(totAS)html+='<span style="font-size:8px;color:#58d68d">&#9632; ATSPEED '+aw+'%</span>';
   if(totDiag)html+='<span style="font-size:8px;color:#a78bfa">&#9632; DIAG '+dw+'%</span>';
+  if(totCtrl)html+='<span style="font-size:8px;color:#e67e22">&#9632; CTRL '+ctw+'%</span>';
   html+='</div>';
   var concCol=concPct>=70?'#ff8080':concPct>=40?'#ffd166':'#58d68d';
   html+='<table style="border-collapse:collapse;width:100%;font-size:9px;margin-bottom:8px">';
