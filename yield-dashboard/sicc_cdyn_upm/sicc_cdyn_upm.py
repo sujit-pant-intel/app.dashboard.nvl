@@ -3001,6 +3001,13 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
          (allow slight overclock). Raw-frequency partners have medians in 1000s */
       var _uMed=(function(){if(!dp||!dp.u||!dp.u.length)return null;var s=dp.u.slice().sort(function(a,b){return a-b;});var m=s.length;return m%2?s[(m-1)/2]:(s[m/2-1]+s[m/2])/2;})();
       var dpUpmValid=_uMed!=null&&_uMed>=0&&_uMed<=105;
+      /* Voltage/Temp suffix for CDYN dies logged as cdyn%voltage%temp */
+      function _vtSuffix(di){
+        if(!isCdyn||!dp||!dp.v||!dp.t)return'';
+        var vv=dp.v[di],tt=dp.t[di];
+        if(vv==null||tt==null)return'';
+        return '<br>V: '+vv.toFixed(1)+'V &nbsp; T: '+tt.toFixed(1)+'\u00b0C';
+      }
       if(dp&&dp.s&&dp.s.length&&dpUpmValid){
         /* Per-die scatter: dp.u = UPM% per die (same UPM for SICC and CDYN on same die)
            Upper fence = median + 6 * MAD-based sigma (captures >99.9999% of valid data) */
@@ -3014,7 +3021,7 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
           if(dp.s[di]!=null&&dp.s[di]>0&&dp.u[di]!=null&&dp.u[di]>=0&&dp.u[di]<=_uFence){
             groups[gk].x.push(dp.u[di]);
             groups[gk].y.push(dp.s[di]);
-            groups[gk].t.push('<b>'+col+'</b><br>Wafer: '+wid+'<br>UPM%: '+dp.u[di].toFixed(1)+'<br>'+(isCdyn?'CDYN (nF)':'SICC')+': '+dp.s[di].toFixed(4));
+            groups[gk].t.push('<b>'+col+'</b><br>Wafer: '+wid+'<br>UPM%: '+dp.u[di].toFixed(1)+'<br>'+(isCdyn?'CDYN (nF)':'SICC')+': '+dp.s[di].toFixed(4)+_vtSuffix(di));
           }
         }
       }else if(dp&&dp.s&&dp.s.length){
@@ -3023,7 +3030,7 @@ function _drawPlotlyScatterSicc(active,cols,isCdyn){
           if(dp.s[di]!=null&&dp.s[di]>0){
             groups[gk].x.push(wid);
             groups[gk].y.push(dp.s[di]);
-            groups[gk].t.push('<b>'+col+'</b><br>Wafer: '+wid+'<br>'+(isCdyn?'CDYN (nF)':'SICC')+': '+dp.s[di].toFixed(4));
+            groups[gk].t.push('<b>'+col+'</b><br>Wafer: '+wid+'<br>'+(isCdyn?'CDYN (nF)':'SICC')+': '+dp.s[di].toFixed(4)+_vtSuffix(di));
           }
         }
       }
@@ -3376,7 +3383,23 @@ function render_upm_dist(){
   _drawPlotlyScatterSicc(active,cols,isCdyn);
   _renderSiccStats(active,cols,isCdyn);
   var ne=document.getElementById('sicc-scatter-note');
-  if(ne)ne.textContent=active.length+' wafer(s) | Parameter: '+cols.join(', ');
+  if(ne){
+    var _noteTxt=active.length+' wafer(s) | Parameter: '+cols.join(', ');
+    if(isCdyn&&cols.length){
+      var _vAll=[],_tAll=[];
+      active.forEach(function(i){
+        cols.forEach(function(c){
+          var dp=ROWS[i].die_pairs&&ROWS[i].die_pairs[c];
+          if(dp&&dp.v)dp.v.forEach(function(v){if(v!=null)_vAll.push(v);});
+          if(dp&&dp.t)dp.t.forEach(function(v){if(v!=null)_tAll.push(v);});
+        });
+      });
+      if(_vAll.length&&_tAll.length){
+        _noteTxt+=' | V(med): '+medArr(_vAll).toFixed(1)+'V, T(med): '+medArr(_tAll).toFixed(1)+'\u00b0C';
+      }
+    }
+    ne.textContent=_noteTxt;
+  }
   var pc=cols[0]||null;
   if(pc){
     var hs=document.getElementById('sicc-hist-section');
@@ -4048,6 +4071,29 @@ def _find_col(df_cols, pattern: str) -> Optional[str]:
     return None
 
 
+# CDYN values are sometimes logged encoded as '<prefix>:<cdyn>%<voltage>%<temp>',
+# e.g. '^GT:31.5929%0.7%19.6' -> cdyn=31.5929, voltage=0.7, temp=19.6
+_CDYN_ENCODED_RE = re.compile(r'^[^\d\-]*?(-?\d+(?:\.\d+)?)%(-?\d+(?:\.\d+)?)%(-?\d+(?:\.\d+)?)\s*$')
+
+
+def _parse_cdyn_encoded_column(raw: pd.Series):
+    """Return (cdyn, voltage, temp) numeric Series if *raw* looks like the
+    encoded 'cdyn%voltage%temp' format, else None (leave column untouched)."""
+    sample = raw.dropna().astype(str).head(50)
+    if sample.empty or sample.str.match(_CDYN_ENCODED_RE).mean() < 0.5:
+        return None
+
+    def _grp(v, idx):
+        if pd.isna(v):
+            return np.nan
+        m = _CDYN_ENCODED_RE.match(str(v))
+        return float(m.group(idx)) if m else np.nan
+
+    return (raw.map(lambda v: _grp(v, 1)),
+            raw.map(lambda v: _grp(v, 2)),
+            raw.map(lambda v: _grp(v, 3)))
+
+
 # ---------------------------------------------------------------------------
 # Config loading — supports .jsl and .json
 # ---------------------------------------------------------------------------
@@ -4327,6 +4373,23 @@ def process_csv(csv_path: str,
                (re.search(r'_og_', c, re.I) and re.search(r'_v1_', c, re.I))
         ]
 
+    # ── Step 4b: Parse CDYN values logged as 'cdyn%voltage%temp' ───────────
+    cdyn_volt_col_map: dict[str, str] = {}
+    cdyn_temp_col_map: dict[str, str] = {}
+    for c in cdyn_col_names:
+        if c not in df.columns:
+            continue
+        parsed = _parse_cdyn_encoded_column(df[c])
+        if not parsed:
+            continue
+        cdyn_vals, volt_vals, temp_vals = parsed
+        v_col, t_col = f'__{c}__V', f'__{c}__T'
+        df[c] = cdyn_vals
+        df[v_col] = volt_vals
+        df[t_col] = temp_vals
+        cdyn_volt_col_map[c] = v_col
+        cdyn_temp_col_map[c] = t_col
+
     # ── Step 5: Identify grouping / metadata columns ───────────────────────
     # Defragment DataFrame after repeated column insertions (SICC totals, UPM, CDYN)
     df = df.copy()
@@ -4589,17 +4652,22 @@ def process_csv(csv_path: str,
                 cdyn_meds[c] = round(float(np.median(vals)), 8)
                 if build_histograms:
                     hists[c] = _make_hist(vals)
-                # Populate die_pairs for CDYN columns too
+                # Populate die_pairs for CDYN columns too (+ Voltage/Temp when logged as cdyn%v%t)
                 upm_partner = _pair_map.get(c)
+                v_col = cdyn_volt_col_map.get(c)
+                t_col = cdyn_temp_col_map.get(c)
+                mask = grp[c].notna()
                 if upm_partner and upm_partner in grp.columns:
-                    mask = grp[c].notna() & grp[upm_partner].notna()
-                    s_vals = grp.loc[mask, c].values
-                    u_vals = grp.loc[mask, upm_partner].values
-                    if len(s_vals):
-                        die_pairs[c] = {
-                            's': [round(float(v), 8) for v in s_vals],
-                            'u': [round(float(v), 8) for v in u_vals],
-                        }
+                    mask = mask & grp[upm_partner].notna()
+                if mask.any():
+                    entry = {'s': [round(float(v), 8) for v in grp.loc[mask, c].values]}
+                    if upm_partner and upm_partner in grp.columns:
+                        entry['u'] = [round(float(v), 8) for v in grp.loc[mask, upm_partner].values]
+                    if v_col and v_col in grp.columns:
+                        entry['v'] = [None if pd.isna(v) else round(float(v), 2) for v in grp.loc[mask, v_col].values]
+                    if t_col and t_col in grp.columns:
+                        entry['t'] = [None if pd.isna(v) else round(float(v), 2) for v in grp.loc[mask, t_col].values]
+                    die_pairs[c] = entry
         # Die-level data for UPM columns so distribution can be rendered in browser
         for c in _upm_dist_cols:
             if c in grp.columns and c not in die_pairs:

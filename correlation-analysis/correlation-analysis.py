@@ -10,6 +10,7 @@ Install:
     pip install -r requirements.txt --proxy http://proxy-us.intel.com:911
 """
 import sys, os, re, zipfile, fnmatch, threading, traceback, json, datetime, html as _html
+import pandas as pd
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
@@ -1969,7 +1970,7 @@ class App(tk.Tk):
                 else:
                     out_dir = Path(self._csv_path).parent / "output"
                 out_dir.mkdir(parents=True, exist_ok=True)
-                out_csv = out_dir / "ideal_analysis_data.csv"
+                out_csv = out_dir / "analysis_data.csv"
                 results[0]["df"].to_csv(out_csv, index=False)
                 self._log_line(f"Saved CSV: {out_csv}")
                 self._last_report = {"results": results, "out_dir": out_dir}

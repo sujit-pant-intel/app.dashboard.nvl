@@ -115,5 +115,5 @@ IDW interpolation applies only when:
 |------|---------|
 | `output/correlation_report.html` | Single-target report (or sidebar wrapper for multi-target) |
 | `output/correlation_<target>.html` | Per-target report when multiple bins are analyzed |
-| `output/ideal_analysis_data.csv` | Merged analysis DataFrame for the first target |
+| `output/analysis_data.csv` | Merged analysis DataFrame for the first target |
 | `pipeline_timing.log` | Per-stage wall-clock timings |

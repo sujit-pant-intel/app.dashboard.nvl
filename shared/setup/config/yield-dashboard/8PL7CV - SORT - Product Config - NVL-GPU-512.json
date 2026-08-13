@@ -334,11 +334,11 @@
   "_comment_siccList": "1st column =  Display name  2nd column - test name",
   "siccList": [
     [
-      "PWR_SICC_GT_SDS_V1*",
+      "PTH_POWER*E_BEGIN*SICC_GT_V1_24A_VCCGT_HC*PC*",
       "SICC GT 0.7 - SDS"
     ],
     [
-      "PWR_SICC_GT_SDS_V2*",
+      "PTH_POWER*E_BEGIN*SICC_GT_V2_24A_VCCGT_HC*PC*",
       "SICC GT 0.95 - SDS"
     ],
     [

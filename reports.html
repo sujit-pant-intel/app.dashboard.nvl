@@ -140,6 +140,30 @@
     .badge-yield { background: #1565c0; color: #bbdefb; }
     .badge-scan  { background: #bf360c; color: #ffe0b2; }
     .badge-trend { background: #4a148c; color: #e1bee7; }
+    .badge-corr  { background: #e65100; color: #ffe0b2; }
+    .badge-vcc   { background: #1b5e20; color: #c8e6c9; }
+    .badge-cdie  { background: #1565c0; color: #bbdefb; }
+    .badge-gdie  { background: #00695c; color: #b2dfdb; }
+
+    /* Additional Reports — orange theme */
+    .additional .section-title  { background: linear-gradient(90deg, #e65100, #ff9800); color: #fff; }
+    .additional table thead     { background: #3e1f00; }
+    .additional table tbody tr:hover { background: #2e1700; }
+    .additional a.samba-path    { color: #ffcc80; border-bottom-color: rgba(255,204,128,0.4); }
+    .additional a.samba-path:hover { color: #fff; }
+    .additional a.open-btn      { background: #ff9800; color: #1a0a00; }
+
+    .sub-label {
+      padding: 8px 18px 6px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #ffcc80;
+      background: rgba(255,152,0,0.08);
+      border-top: 1px solid rgba(255,152,0,0.2);
+      border-bottom: 1px solid rgba(255,152,0,0.1);
+    }
 
     footer {
       text-align: center;
@@ -293,6 +317,102 @@
           <td>
             <a class="open-btn"
                href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\scan\NVLG-512\reports">
+              &#128193; Open Folder
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ───── Additional Reports ───── -->
+  <div class="section additional">
+    <div class="section-title">&#9679; Additional Reports</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Report</th>
+          <th>Path</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Bin Correlation -->
+        <tr><td colspan="3" class="sub-label">&#128200; Bin Correlation</td></tr>
+        <tr>
+          <td class="report-name">
+            <a class="report-link" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVL816-BLLC">NVL816-BLLC Bin Correlation</a>
+            <a class="badge badge-cdie" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVL816-BLLC">CDie</a>
+            <a class="badge badge-corr" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVL816-BLLC">CORR</a>
+          </td>
+          <td>
+            <a class="samba-path"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVL816-BLLC">
+              \\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVL816-BLLC
+            </a>
+          </td>
+          <td>
+            <a class="open-btn"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVL816-BLLC">
+              &#128193; Open Folder
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td class="report-name">
+            <a class="report-link" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVLG-512">NVLG-512 Bin Correlation</a>
+            <a class="badge badge-gdie" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVLG-512">GDie</a>
+            <a class="badge badge-corr" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVLG-512">CORR</a>
+          </td>
+          <td>
+            <a class="samba-path"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVLG-512">
+              \\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVLG-512
+            </a>
+          </td>
+          <td>
+            <a class="open-btn"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\correlation\NVLG-512">
+              &#128193; Open Folder
+            </a>
+          </td>
+        </tr>
+        <!-- VCC Cont -->
+        <tr><td colspan="3" class="sub-label">&#9889; VCC Cont</td></tr>
+        <tr>
+          <td class="report-name">
+            <a class="report-link" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVL816-BLLC">NVL816-BLLC VCC Cont</a>
+            <a class="badge badge-cdie" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVL816-BLLC">CDie</a>
+            <a class="badge badge-vcc" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVL816-BLLC">VCC</a>
+          </td>
+          <td>
+            <a class="samba-path"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVL816-BLLC">
+              \\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVL816-BLLC
+            </a>
+          </td>
+          <td>
+            <a class="open-btn"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVL816-BLLC">
+              &#128193; Open Folder
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td class="report-name">
+            <a class="report-link" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVLG-512">NVLG-512 VCC Cont</a>
+            <a class="badge badge-gdie" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVLG-512">GDie</a>
+            <a class="badge badge-vcc" href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVLG-512">VCC</a>
+          </td>
+          <td>
+            <a class="samba-path"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVLG-512">
+              \\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVLG-512
+            </a>
+          </td>
+          <td>
+            <a class="open-btn"
+               href="file://\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\parametric\vcc_cont\NVLG-512">
               &#128193; Open Folder
             </a>
           </td>
