@@ -4245,8 +4245,10 @@ def process_csv(csv_path: str,
     # ── Step 1: Rename SICC columns ────────────────────────────────────────
     rename_map   = {}   # original_col → new_name
     used_targets = {}   # new_name → count (for deduplication)
+    _inline_targets: dict = {}   # new_name.upper() → target, embedded as 3rd list element
 
-    for pat, new_name in rename_list:
+    for entry in rename_list:
+        pat, new_name = entry[0], entry[1]
         matched_cols = [col for col in col_names if col not in rename_map and _ordered_like(col, pat)]
         if not matched_cols:
             continue
@@ -4255,6 +4257,11 @@ def process_csv(csv_path: str,
         final_name = new_name if count == 0 else f'{new_name} ({count + 1})'
         rename_map[matched_cols[0]] = final_name
         used_targets[new_name] = count + 1
+        if len(entry) > 2 and entry[2] not in (None, ''):
+            try:
+                _inline_targets[final_name.upper()] = float(entry[2])
+            except (ValueError, TypeError):
+                pass
         # Track any additional matches (e.g. V1 vs V2 variants) for coalescing after rename
         if len(matched_cols) > 1:
             rename_map.setdefault('_extra_coalesce_', [])
@@ -4284,7 +4291,12 @@ def process_csv(csv_path: str,
 
         for entry in pending_totals:
             sum_name = entry[0]
-            src_cols = entry[1:]
+            body = entry[1:]
+            entry_target = None
+            if body and isinstance(body[-1], (int, float)):
+                entry_target = body[-1]
+                body = body[:-1]
+            src_cols = body
             avail = [c for c in src_cols if c in df.columns]
 
             # If none of the source columns exist yet, defer this entry.
@@ -4302,6 +4314,8 @@ def process_csv(csv_path: str,
             df[sum_name] = numeric_cols.sum(axis=1, min_count=1)
             if sum_name not in sum_col_names:
                 sum_col_names.append(sum_name)
+            if entry_target is not None:
+                _inline_targets[sum_name.upper()] = float(entry_target)
             progressed = True
 
         if not progressed:
@@ -4340,24 +4354,23 @@ def process_csv(csv_path: str,
                 df[new_name] = scaled_vals if np.isfinite(divisor) and divisor != 0 else src_vals
 
             _upm_dist_cols.append(new_name)
-        # Extract target from 3rd element (index 2); 4th element (index 3) is legacy/unused
-        for _tgt_idx in (2, 3):
-            if len(entry) > _tgt_idx:
-                tgt_str = str(entry[_tgt_idx]).replace('%', '').strip()
-                try:
-                    _v = float(tgt_str)
-                    if _v > 0:
-                        _upm_targets[new_name] = _v
-                        break
-                except (ValueError, TypeError):
-                    pass
+        # 3rd element doubles as the target (e.g. target MHz) per upmInfo schema
+        if np.isfinite(divisor) and divisor > 0:
+            _upm_targets[new_name] = divisor
 
     # ── Step 4: CDYN columns ───────────────────────────────────────────────
     cdyn_col_names: list[str] = []
     cdyn_rename: dict[str, str] = {}
 
+    _inline_cdyn_targets: dict = {}   # friendly_name → target, embedded as 3rd list element
     if cdyn_list:
-        for pat, friendly in cdyn_list:
+        for entry in cdyn_list:
+            pat, friendly = entry[0], entry[1]
+            if len(entry) > 2 and entry[2] not in (None, ''):
+                try:
+                    _inline_cdyn_targets[friendly] = float(entry[2])
+                except (ValueError, TypeError):
+                    pass
             for col in col_names:
                 if col not in cdyn_rename and _ordered_like(col, pat):
                     cdyn_rename[col] = friendly
@@ -4474,21 +4487,8 @@ def process_csv(csv_path: str,
 
     # ── Step 7: Load SICC targets ──────────────────────────────────────────
     # Priority: targets embedded in config JSON > target_csv argument
-    targets: dict = {}
-
-    # 1) Read from config dict (sicc_targets + upm_targets)
-    cfg_sicc = config.get('sicc_targets', {})
-    cfg_upm  = config.get('upm_targets', {})
-    for name, val in cfg_sicc.items():
-        try:
-            targets[str(name).strip().upper()] = float(val)
-        except (ValueError, TypeError):
-            pass
-    for name, val in cfg_upm.items():
-        try:
-            targets[str(name).strip().upper()] = float(val)
-        except (ValueError, TypeError):
-            pass
+    # Targets embedded inline in siccList/siccTotalList entries (3rd element)
+    targets: dict = dict(_inline_targets)
 
     # 2) Fallback: read from separate target CSV (legacy)
     if not targets and target_csv and Path(target_csv).is_file():
@@ -4508,14 +4508,8 @@ def process_csv(csv_path: str,
         except Exception:
             pass
 
-    # 3) CDYN targets: from config dict (keyed by friendly name from cdynList)
-    cfg_cdyn_tgt = config.get('cdyn_targets', {})
-    resolved_cdyn_targets: dict = {}
-    for name, val in cfg_cdyn_tgt.items():
-        try:
-            resolved_cdyn_targets[str(name).strip()] = float(val)
-        except (ValueError, TypeError):
-            pass
+    # 3) CDYN targets embedded inline in cdynList entries (3rd element)
+    resolved_cdyn_targets: dict = dict(_inline_cdyn_targets)
     # merge with any explicitly passed cdyn_targets argument
     if cdyn_targets:
         resolved_cdyn_targets.update(cdyn_targets)
@@ -4542,8 +4536,10 @@ def process_csv(csv_path: str,
 
     # ── Step 8: Build SICC/CDYN → UPM die-pair mapping ────────────────────
     _pair_map: dict[str, str] = {}  # sicc_or_cdyn_col → upm_col
-    # Build set of actual UPM column names in DataFrame for fuzzy fallback
-    _upm_cols_in_df = set(_upm_dist_cols)
+    # Ordered list of actual UPM column names (list, not set, so iteration/tie-break
+    # order is deterministic and stable across runs — sets are hash-order dependent).
+    _upm_cols_ordered: list[str] = list(_upm_dist_cols)
+    _upm_cols_in_df = set(_upm_cols_ordered)
 
     # Auto-detect UPM% columns in the DataFrame (0-100 range, 'UPM' in name)
     # These supplement any explicitly listed UPM columns from config.
@@ -4556,6 +4552,7 @@ def process_csv(csv_path: str,
                 if 0 <= _med <= 105:          # looks like a percentage
                     _auto_upm_candidates.append(_c)
                     _upm_cols_in_df.add(_c)
+                    _upm_cols_ordered.append(_c)
 
     def _resolve_upm_col(name: str) -> str | None:
         """Return actual UPM column name in df, or None."""
@@ -4563,28 +4560,28 @@ def process_csv(csv_path: str,
             return name
         # Try case-insensitive match
         nl = name.lower()
-        for u in _upm_cols_in_df:
+        for u in _upm_cols_ordered:
             if u.lower() == nl:
                 return u
         return None
 
     def _auto_pair_upm(col: str) -> str | None:
         """Try to find a UPM partner for a SICC/CDYN column by name substitution."""
-        if not _upm_cols_in_df:
+        if not _upm_cols_ordered:
             return None
         cu = col.upper()
         # Try replacing SICC/CDYN token with UPM and finding a match
         for token in ('SICC', 'CDYN'):
             if token not in cu:
                 continue
-            candidate = _re2.sub(token, 'UPM', cu, count=1)
-            for u in _upm_cols_in_df:
+            candidate = re.sub(token, 'UPM', cu, count=1)
+            for u in _upm_cols_ordered:
                 if u.upper() == candidate:
                     return u
-        # Fuzzy: longest common suffix match among UPM candidates
+        # Fuzzy: longest common suffix match among UPM candidates (first-defined wins ties)
         best, best_len = None, 0
         cl = col.lower()
-        for u in _upm_cols_in_df:
+        for u in _upm_cols_ordered:
             ul = u.lower()
             # common suffix length
             i = 0
@@ -4605,19 +4602,34 @@ def process_csv(csv_path: str,
             if resolved:
                 _pair_map[cfg_entry[2]] = resolved
 
-    # Auto-pair any SICC/CDYN columns not yet in _pair_map
-    # Since UPM is per-die (same value for SICC and CDYN on the same die),
-    # prefer re-using the UPM column already paired with any SICC column.
-    _any_sicc_upm = next((v for k, v in _pair_map.items() if k in sicc_col_names), None)
-    for _col in list(sicc_col_names) + list(cdyn_col_names):
+    # Auto-pair SICC columns first (name-substitution / fuzzy-suffix match)
+    for _col in sicc_col_names:
         if _col not in _pair_map:
-            # For CDYN: first try the same UPM column already used by SICC
-            if _col in cdyn_col_names and _any_sicc_upm:
+            _ap = _auto_pair_upm(_col)
+            if _ap:
+                _pair_map[_col] = _ap
+
+    # Since UPM is per-die (same value for SICC and CDYN on the same die),
+    # CDYN columns reuse whichever UPM column SICC resolved to before
+    # falling back to their own name-based match.
+    _any_sicc_upm = next((v for k, v in _pair_map.items() if k in sicc_col_names), None)
+    for _col in cdyn_col_names:
+        if _col not in _pair_map:
+            if _any_sicc_upm:
                 _pair_map[_col] = _any_sicc_upm
             else:
                 _ap = _auto_pair_upm(_col)
                 if _ap:
                     _pair_map[_col] = _ap
+
+    # Final fallback: no reliable name-based match was found for a column
+    # (e.g. auto-detected CDYN columns with no cdynList entries) — pair it
+    # with the first available UPM column so the XY chart plots UPM% on the
+    # x-axis instead of falling back to Wafer.
+    if _upm_dist_cols:
+        _default_upm = _upm_dist_cols[0]
+        for _col in list(sicc_col_names) + list(cdyn_col_names):
+            _pair_map.setdefault(_col, _default_upm)
 
     # ── Step 9: Per-wafer medians + histograms ─────────────────────────────
     rows = []
@@ -4721,6 +4733,18 @@ def process_csv(csv_path: str,
     else:
         rows.append(_make_row(df, '', '', 'ALL', ''))
 
+    def _derive_category(name: str) -> str:
+        """Group a friendly test name into a category, e.g. 'SICC CORE0 0.95 - SDS' -> 'CORE - SDS'."""
+        base, _, suf = name.rpartition(' - ')
+        base = base or name
+        m = re.match(r'^[A-Za-z_]+', base.strip())
+        grp = m.group(0).rstrip('0123456789_ ').strip() if m else base.strip()
+        return f'{grp} - {suf}' if suf else grp
+
+    sicc_table_config = [[_derive_category(c), c, c, _pair_map.get(c, '')] for c in sicc_col_names]
+    cdyn_table_config = [[_derive_category(c), c, c, _pair_map.get(c, '')] for c in cdyn_col_names]
+    upm_table_config  = [[_derive_category(c), c, c, ''] for c in _upm_dist_cols]
+
     return {
         'rows':         rows,
         'sicc_columns': sicc_col_names,
@@ -4737,9 +4761,9 @@ def process_csv(csv_path: str,
             'x':        x_col,
             'y':        y_col,
         },
-        'sicc_table_config': config.get('SiccTableConfig', []),
-        'cdyn_table_config': config.get('cdynTableConfig', []),
-        'upm_table_config':  config.get('upmTableConfig', []),
+        'sicc_table_config': sicc_table_config,
+        'cdyn_table_config': cdyn_table_config,
+        'upm_table_config':  upm_table_config,
         'upm_dist_cols':     _upm_dist_cols,
         'upm_info':          upm_info_list,
         # Die-level DataFrame with all column transforms (UPM %, SICC/CDYN renames)
@@ -4809,50 +4833,19 @@ def run_python_pipeline(csv_path: str,
         except Exception:
             pass
 
-        # Extract targets from product config JSON (overrides anything in testlist)
+        # Targets now live inline in siccList/siccTotalList/cdynList/upmInfo entries
         _override_targets: dict = {}
         _override_cdyn_targets: dict = {}
         if product_config_path and Path(product_config_path).is_file():
             try:
                 import json as _jspc
                 _pcfg = _jspc.loads(Path(product_config_path).read_text(encoding='utf-8'))
-                for _e in _pcfg.get('sicc_targets', []):
-                    _t = str(_e.get('test', '')).strip()
-                    _v = _e.get('target_A')
-                    if _t and _v is not None:
-                        try: _override_targets[_t.upper()] = float(_v)
-                        except (ValueError, TypeError): pass
-                # upm_target not used from Product Config (UPM targets come from upmInfo)
-                for _e in _pcfg.get('cdyn_targets', []):
-                    _t = str(_e.get('test', '')).strip()
-                    _v = _e.get('target_nF')
-                    if _t and _v is not None:
-                        try: _override_cdyn_targets[_t] = float(_v)
-                        except (ValueError, TypeError): pass
-                # Extract UPM targets from product config (dict or list format)
-                _upm_tgt_raw = _pcfg.get('upm_targets')
-                if isinstance(_upm_tgt_raw, dict):
-                    for _k, _v in _upm_tgt_raw.items():
-                        try: _override_targets[str(_k).strip().upper()] = float(str(_v).replace('%','').strip())
-                        except (ValueError, TypeError): pass
-                elif isinstance(_upm_tgt_raw, list):
-                    for _e in _upm_tgt_raw:
-                        if not isinstance(_e, dict): continue
-                        _t = str(_e.get('test','') or _e.get('name','')).strip()
-                        _v = _e.get('target') or _e.get('target_pct') or _e.get('value')
-                        if _t and _v is not None:
-                            try: _override_targets[_t.upper()] = float(str(_v).replace('%','').strip())
-                            except (ValueError, TypeError): pass
-                if _override_targets or _override_cdyn_targets:
-                    status_cb(f'Loaded {len(_override_targets)} SICC + {len(_override_cdyn_targets)} CDYN targets from product config.')
-                # Merge testlist configs from product config (takes precedence)
-                for _key in ('siccList', 'siccTotalList', 'cdynList', 'upmInfo',
-                             'SiccTableConfig', 'cdynTableConfig', 'upmTableConfig'):
+                for _key in ('siccList', 'siccTotalList', 'cdynList', 'upmInfo'):
                     if _key in _pcfg:
                         cfg[_key] = _pcfg[_key]
                         status_cb(f'Using {_key} from product config.')
             except Exception as _ep:
-                status_cb(f'WARNING: Could not read product config targets: {_ep}')
+                status_cb(f'WARNING: Could not read product config: {_ep}')
 
         status_cb('Processing CSV…')
         data = process_csv(csv_path, cfg, target_csv=target_csv,

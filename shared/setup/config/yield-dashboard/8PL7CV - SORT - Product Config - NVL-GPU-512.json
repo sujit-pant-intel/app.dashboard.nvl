@@ -1,422 +1,120 @@
 {
   "name": "NVL-512 GPU - A0",
   "yield_targets": [
-    {
-      "bin": "1/2/3/4",
-      "fail_bucket": "SDS FF+DF yield",
-      "yield": 91.3
-    },
-    {
-      "bin": "1/2",
-      "fail_bucket": "SDS FF yield",
-      "yield": 56.3
-    },
-    {
-      "bin": "3/4",
-      "fail_bucket": "Recovery (Defeatured)",
-      "yield": 14.6
-    },
-    {
-      "bin": "1",
-      "fail_bucket": "SDS FF (No Repair) yield",
-      "yield": 44.9
-    },
-    {
-      "bin": "2",
-      "fail_bucket": "MBIST Repair",
-      "yield": 19.5
-    },
-    {
-      "bin": "3",
-      "fail_bucket": "Recovery (Defeatured)",
-      "yield": 7.0
-    },
-    {
-      "bin": "4",
-      "fail_bucket": "Recovery (Defeatured)",
-      "yield": 7.6
-    },
-    {
-      "bin": "41/42/47/76/77/81/82",
-      "fail_bucket": "SCAN (post-recovery)",
-      "yield": 1.2
-    },
-    {
-      "bin": "20/21/33/60/61/62/63/65",
-      "fail_bucket": "ARRAY MBIST (post-recovery)",
-      "yield": 0.5
-    },
-    {
-      "bin": "11/13/16/25/27/28/32/36/39/46/48/51/64/71/74/75",
-      "fail_bucket": "ANALOG (post-recovery)",
-      "yield": 0.02
-    },
-    {
-      "bin": "7/8/9/10/15/18/43/80/89",
-      "fail_bucket": "TPI (Foundry)",
-      "yield": 2.5
-    },
-    {
-      "bin": "31/88/91/94/97/98/99/93",
-      "fail_bucket": "TPI (Bump/DiePrep/Test)",
-      "yield": 1.4
-    },
-    {
-      "bin": "19/35",
-      "fail_bucket": "RESET",
-      "yield": 1.2
-    },
-    {
-      "bin": "12/44/45/70/85/86",
-      "fail_bucket": "Functional",
-      "yield": 1.4
-    },
-    {
-      "bin": "26",
-      "fail_bucket": "HVQK",
-      "yield": 0.5
-    }
+    { "bin": "1/2/3/4", "fail_bucket": "SDS FF+DF yield", "yield": 91.3 },
+    { "bin": "1/2", "fail_bucket": "SDS FF yield", "yield": 56.3 },
+    { "bin": "3/4", "fail_bucket": "Recovery (Defeatured)", "yield": 14.6 },
+    { "bin": "1", "fail_bucket": "SDS FF (No Repair) yield", "yield": 44.9 },
+    { "bin": "2", "fail_bucket": "MBIST Repair", "yield": 19.5 },
+    { "bin": "3", "fail_bucket": "Recovery (Defeatured)", "yield": 7.0 },
+    { "bin": "4", "fail_bucket": "Recovery (Defeatured)", "yield": 7.6 },
+    { "bin": "41/42/47/76/77/81/82", "fail_bucket": "SCAN (post-recovery)", "yield": 1.2 },
+    { "bin": "20/21/33/60/61/62/63/65", "fail_bucket": "ARRAY MBIST (post-recovery)", "yield": 0.5 },
+    { "bin": "11/13/16/25/27/28/32/36/39/46/48/51/64/71/74/75", "fail_bucket": "ANALOG (post-recovery)", "yield": 0.02 },
+    { "bin": "7/8/9/10/15/18/43/80/89", "fail_bucket": "TPI (Foundry)", "yield": 2.5 },
+    { "bin": "31/88/91/94/97/98/99/93", "fail_bucket": "TPI (Bump/DiePrep/Test)", "yield": 1.4 },
+    { "bin": "19/35", "fail_bucket": "RESET", "yield": 1.2 },
+    { "bin": "12/44/45/70/85/86", "fail_bucket": "Functional", "yield": 1.4 },
+    { "bin": "26", "fail_bucket": "HVQK", "yield": 0.5 }
   ],
   "bin_map": {
-    "1": {
-      "cat": "FF Yield",
-      "desc": "Good"
-    },
-    "2": {
-      "cat": "FF Yield",
-      "desc": "Repair"
-    },
-    "3": {
-      "cat": "DF Yield",
-      "desc": "Recovery"
-    },
-    "4": {
-      "cat": "DF Yield",
-      "desc": "Recovery"
-    },
-    "8": {
-      "cat": "DC",
-      "desc": "VCC_CON"
-    },
-    "10": {
-      "cat": "DC",
-      "desc": "SHORTS"
-    },
-    "15": {
-      "cat": "DC",
-      "desc": "SHOPS/EDM"
-    },
-	"80": {
-    "cat": "DC",
-    "desc": "VCC_CON-POSTSURGE"
-    },
-    "20": {
-      "cat": "Array",
-      "desc": "ARR_CORE/ATOM_LSA"
-    },
-    "21": {
-      "cat": "Array",
-      "desc": "ARR_Post Recovery"
-    },
-    "60": {
-      "cat": "Array",
-      "desc": "ARR_SSA"
-    },
-    "61": {
-      "cat": "Array",
-      "desc": "ARR_SSA"
-    },
-    "62": {
-      "cat": "Array",
-      "desc": "ARR_SSA"
-    },
-    "41": {
-      "cat": "Scan",
-      "desc": "Chain"
-    },
-    "42": {
-      "cat": "Scan",
-      "desc": "Scan"
-    },
-    "47": {
-      "cat": "Scan",
-      "desc": "Atspeed"
-    },
-    "44": {
-      "cat": "Functional",
-      "desc": "Function"
-    },
-    "45": {
-      "cat": "Functional",
-      "desc": "Function"
-    },
-    "27": {
-      "cat": "Analog",
-      "desc": "DLVR"
-    },
-    "28": {
-      "cat": "Analog",
-      "desc": "PLL"
-    },
-    "29": {
-      "cat": "Analog",
-      "desc": "BGR"
-    },
-    "36": {
-      "cat": "Analog",
-      "desc": "D2D"
-    },
-    "64": {
-      "cat": "Analog",
-      "desc": "DTS"
-    },
-    "19": {
-      "cat": "RESET",
-      "desc": "RESET"
-    },
-    "35": {
-      "cat": "RESET",
-      "desc": "RESET"
-    },
-    "31": {
-      "cat": "TPI",
-      "desc": "Fuse"
-    },
-    "88": {
-      "cat": "TPI",
-      "desc": "SIUP"
-    },
-    "89": {
-      "cat": "TPI",
-      "desc": "test issue"
-    },
-    "93": {
-      "cat": "TPI",
-      "desc": "inking/unsort"
-    },
-    "95": {
-      "cat": "TPI",
-      "desc": "system error"
-    },
-    "98": {
-      "cat": "TPI",
-      "desc": "system error"
-    },
-    "99": {
-      "cat": "TPI",
-      "desc": "Alarm"
-    },
-    "43": {
-      "cat": "ADTL",
-      "desc": "ADTL"
-    },
-    "26": {
-      "cat": "HVQK",
-      "desc": "HVQK_STRESS"
-    },
-    "17": {
-      "cat": "Scan",
-      "desc": "Scan Vmax"
-    },
-    "53": {
-      "cat": "UBE",
-      "desc": "UBE"
-    }
+    "1": { "cat": "FF Yield", "desc": "Good" },
+    "2": { "cat": "FF Yield", "desc": "Repair" },
+    "3": { "cat": "DF Yield", "desc": "Recovery" },
+    "4": { "cat": "DF Yield", "desc": "Recovery" },
+    "8": { "cat": "DC", "desc": "VCC_CON" },
+    "10": { "cat": "DC", "desc": "SHORTS" },
+    "15": { "cat": "DC", "desc": "SHOPS/EDM" },
+    "80": { "cat": "DC", "desc": "VCC_CON-POSTSURGE" },
+    "20": { "cat": "Array", "desc": "ARR_CORE/ATOM_LSA" },
+    "21": { "cat": "Array", "desc": "ARR_Post Recovery" },
+    "60": { "cat": "Array", "desc": "ARR_SSA" },
+    "61": { "cat": "Array", "desc": "ARR_SSA" },
+    "62": { "cat": "Array", "desc": "ARR_SSA" },
+    "41": { "cat": "Scan", "desc": "Chain" },
+    "42": { "cat": "Scan", "desc": "Scan" },
+    "47": { "cat": "Scan", "desc": "Atspeed" },
+    "44": { "cat": "Functional", "desc": "Function" },
+    "45": { "cat": "Functional", "desc": "Function" },
+    "27": { "cat": "Analog", "desc": "DLVR" },
+    "28": { "cat": "Analog", "desc": "PLL" },
+    "29": { "cat": "Analog", "desc": "BGR" },
+    "36": { "cat": "Analog", "desc": "D2D" },
+    "64": { "cat": "Analog", "desc": "DTS" },
+    "19": { "cat": "RESET", "desc": "RESET" },
+    "35": { "cat": "RESET", "desc": "RESET" },
+    "31": { "cat": "TPI", "desc": "Fuse" },
+    "88": { "cat": "TPI", "desc": "SIUP" },
+    "89": { "cat": "TPI", "desc": "test issue" },
+    "93": { "cat": "TPI", "desc": "inking/unsort" },
+    "95": { "cat": "TPI", "desc": "system error" },
+    "98": { "cat": "TPI", "desc": "system error" },
+    "99": { "cat": "TPI", "desc": "Alarm" },
+    "43": { "cat": "ADTL", "desc": "ADTL" },
+    "26": { "cat": "HVQK", "desc": "HVQK_STRESS" },
+    "17": { "cat": "Scan", "desc": "Scan Vmax" },
+    "53": { "cat": "UBE", "desc": "UBE" }
   },
   "fB93xx": [
-		{ "FB": "9308", "name": "PreviousSocketBinning", "description": "Previous socket binning (Dice skipped during SDT Good die only testing; e.g., previously bad bin at CMT or SDS)" },
-		{ "FB": "9320", "name": "MinDieSkipTray", "description": "Deprecated / no longer used (No longer used)" },
-		{ "FB": "9317", "name": "OverTouched", "description": "Touchdown count exceeded limit (Die skipped because it exceeded ThermalAction touchdown limit)" },
-		{ "FB": "9399", "name": "Incomplete", "description": "Incomplete die data in ituff (Tester crash or Podituff issue; iLLIAD limit should be 1)" },
-		{ "FB": "9305", "name": "VisionTrayReject", "description": "Incoming No-Go tray reject (Vision rejected entire tray on first sort; resort keeps previous bin data)" },
-		{ "FB": "9306", "name": "VisionUnitReject", "description": "BVIU No-Go unit reject (Vision rejected die prior to test; may map to 9305 depending on flow)" },
-		{ "FB": "9321", "name": "VisionUnitSkip", "description": "IOM unit-level skip (Vision rejected unit during IOM inspection)" },
-		{ "FB": "9310", "name": "UnitAlign", "description": "Unit alignment skip (Manual skip due to alignment alarm)" },
-		{ "FB": "9311", "name": "UnitAlignZ", "description": "Unit alignment Z difference skip (Manual skip due to Z difference alarm 600147/600152)" },
-		{ "FB": "9318", "name": "UnitAlignFail", "description": "Unit alignment auto-skip (Auto skip due to alignment alarm)" },
-		{ "FB": "9319", "name": "UnitAlignZFail", "description": "Unit alignment Z difference auto-skip (Auto skip due to Z difference alarm 600147/600152)" },
-		{ "FB": "9312", "name": "PnpPutTH", "description": "Pick-and-place put at test head skip (Triggered by vacuum/place alarms 660104, 660107, etc.)" },
-		{ "FB": "9313", "name": "PnpTray", "description": "Pick-and-place tray pickup skip (Triggered by tray pick alarms 660100, 660110)" },
-		{ "FB": "9314", "name": "AlcComm", "description": "Vision communication failure (Image transfer error alarm 040012)" },
-		{ "FB": "9315", "name": "CoarseAlign", "description": "Coarse alignment skip (BVIU coarse alignment alarm 660400)" },
-		{ "FB": "9316", "name": "DeviceAlign", "description": "Device alignment skip (Alignment alarm 600118)" },
-		{ "FB": "9309", "name": "HCTriggeredSkip", "description": "Handler controller triggered skip (Generic skip not covered by other handler events)" },
-		{ "FB": "9307", "name": "TrayMapOverride", "description": "Tray map override skip (Override determines tested die; behavior depends on E/G and inking state)" },
-		{ "FB": "9301", "name": "DiePocketEmpty", "description": "Empty die pocket (Presence bin E; verified via SOD or WTT map)" },
-		{ "FB": "9302", "name": "BadDie", "description": "Bad die (Presence bin B; only one latest presence value per die)" },
-		{ "FB": "9303", "name": "FlaggedForSkip", "description": "Inked or overlay skip (IB200/IB190; overrides presence bin; visible in Blazar SDX_DONTTESTINK)" },
-		{ "FB": "9304", "name": "Scrapped", "description": "Scrapped wafer or die (Partial wafer scrapped; may retain prior test bins)" },
-		{ "FB": "9300", "name": "Unknown", "description": "Unknown condition (Examples include tray on hold or missing DPC start; iLLIAD limit should be 1)" }
+    { "FB": "9308", "name": "PreviousSocketBinning", "description": "Previous socket binning (Dice skipped during SDT Good die only testing; e.g., previously bad bin at CMT or SDS)" },
+    { "FB": "9320", "name": "MinDieSkipTray", "description": "Deprecated / no longer used (No longer used)" },
+    { "FB": "9317", "name": "OverTouched", "description": "Touchdown count exceeded limit (Die skipped because it exceeded ThermalAction touchdown limit)" },
+    { "FB": "9399", "name": "Incomplete", "description": "Incomplete die data in ituff (Tester crash or Podituff issue; iLLIAD limit should be 1)" },
+    { "FB": "9305", "name": "VisionTrayReject", "description": "Incoming No-Go tray reject (Vision rejected entire tray on first sort; resort keeps previous bin data)" },
+    { "FB": "9306", "name": "VisionUnitReject", "description": "BVIU No-Go unit reject (Vision rejected die prior to test; may map to 9305 depending on flow)" },
+    { "FB": "9321", "name": "VisionUnitSkip", "description": "IOM unit-level skip (Vision rejected unit during IOM inspection)" },
+    { "FB": "9310", "name": "UnitAlign", "description": "Unit alignment skip (Manual skip due to alignment alarm)" },
+    { "FB": "9311", "name": "UnitAlignZ", "description": "Unit alignment Z difference skip (Manual skip due to Z difference alarm 600147/600152)" },
+    { "FB": "9318", "name": "UnitAlignFail", "description": "Unit alignment auto-skip (Auto skip due to alignment alarm)" },
+    { "FB": "9319", "name": "UnitAlignZFail", "description": "Unit alignment Z difference auto-skip (Auto skip due to Z difference alarm 600147/600152)" },
+    { "FB": "9312", "name": "PnpPutTH", "description": "Pick-and-place put at test head skip (Triggered by vacuum/place alarms 660104, 660107, etc.)" },
+    { "FB": "9313", "name": "PnpTray", "description": "Pick-and-place tray pickup skip (Triggered by tray pick alarms 660100, 660110)" },
+    { "FB": "9314", "name": "AlcComm", "description": "Vision communication failure (Image transfer error alarm 040012)" },
+    { "FB": "9315", "name": "CoarseAlign", "description": "Coarse alignment skip (BVIU coarse alignment alarm 660400)" },
+    { "FB": "9316", "name": "DeviceAlign", "description": "Device alignment skip (Alignment alarm 600118)" },
+    { "FB": "9309", "name": "HCTriggeredSkip", "description": "Handler controller triggered skip (Generic skip not covered by other handler events)" },
+    { "FB": "9307", "name": "TrayMapOverride", "description": "Tray map override skip (Override determines tested die; behavior depends on E/G and inking state)" },
+    { "FB": "9301", "name": "DiePocketEmpty", "description": "Empty die pocket (Presence bin E; verified via SOD or WTT map)" },
+    { "FB": "9302", "name": "BadDie", "description": "Bad die (Presence bin B; only one latest presence value per die)" },
+    { "FB": "9303", "name": "FlaggedForSkip", "description": "Inked or overlay skip (IB200/IB190; overrides presence bin; visible in Blazar SDX_DONTTESTINK)" },
+    { "FB": "9304", "name": "Scrapped", "description": "Scrapped wafer or die (Partial wafer scrapped; may retain prior test bins)" },
+    { "FB": "9300", "name": "Unknown", "description": "Unknown condition (Examples include tray on hold or missing DPC start; iLLIAD limit should be 1)" }
   ],
   "Pass-Bin-Map": {
-    "101": {
-      "cat": "FF Yield",
-      "desc": "FF - No Repair"
-    },
-    "198": {
-      "cat": "FF Yield",
-      "desc": "FF - Vmin Repair"
-    },
-    "126": {
-      "cat": "FF Yield",
-      "desc": "FF - HVQK Rebin - No Repair"
-    },
-    "201": {
-      "cat": "FF Yield",
-      "desc": "FF - Defect Repair"
-    },
-    "202": {
-      "cat": "FF Yield",
-      "desc": "FF - Vmax Repair"
-    },
-    "226": {
-      "cat": "FF Yield",
-      "desc": "FF - HVQK Rebin - Repair"
-    },
-    "301": {
-      "cat": "DF Yield",
-      "desc": "Recovery Defeature(DF) - 448EU"
-    },
-    "302": {
-      "cat": "DF Yield",
-      "desc": "Recovery Defeature(DF) - 384EU"
-    },
-    "303": {
-      "cat": "DF Yield",
-      "desc": "Recovery Defeature(DF) - ?EU"
-    },
-    "304": {
-      "cat": "DF Yield",
-      "desc": "Recovery Defeature(DF) - ?EU"
-    },
-    "326": {
-      "cat": "DF Yield",
-      "desc": "DF - HVQK Rebin - Recovery"
-    },
-    "401": {
-      "cat": "DF Yield",
-      "desc": "Recovery Defeature(DF) - Recovery"
-    },
-    "402": {
-      "cat": "DF Yield",
-      "desc": "Recovery Defeature(DF) - Recovery"
-    },
-    "403": {
-      "cat": "DF Yield",
-      "desc": "Recovery Defeature(DF) - Recovery"
-    },
-    "404": {
-      "cat": "DF Yield",
-      "desc": "Recovery Defeature(DF) - Recovery"
-    },
-    "426": {
-      "cat": "DF Yield",
-      "desc": "DF - HVQK Rebin - Recovery"
-    }
+    "101": { "cat": "FF Yield", "desc": "FF - No Repair" },
+    "198": { "cat": "FF Yield", "desc": "FF - Vmin Repair" },
+    "126": { "cat": "FF Yield", "desc": "FF - HVQK Rebin - No Repair" },
+    "201": { "cat": "FF Yield", "desc": "FF - Defect Repair" },
+    "202": { "cat": "FF Yield", "desc": "FF - Vmax Repair" },
+    "226": { "cat": "FF Yield", "desc": "FF - HVQK Rebin - Repair" },
+    "301": { "cat": "DF Yield", "desc": "Recovery Defeature(DF) - 448EU" },
+    "302": { "cat": "DF Yield", "desc": "Recovery Defeature(DF) - 384EU" },
+    "303": { "cat": "DF Yield", "desc": "Recovery Defeature(DF) - ?EU" },
+    "304": { "cat": "DF Yield", "desc": "Recovery Defeature(DF) - ?EU" },
+    "326": { "cat": "DF Yield", "desc": "DF - HVQK Rebin - Recovery" },
+    "401": { "cat": "DF Yield", "desc": "Recovery Defeature(DF) - Recovery" },
+    "402": { "cat": "DF Yield", "desc": "Recovery Defeature(DF) - Recovery" },
+    "403": { "cat": "DF Yield", "desc": "Recovery Defeature(DF) - Recovery" },
+    "404": { "cat": "DF Yield", "desc": "Recovery Defeature(DF) - Recovery" },
+    "426": { "cat": "DF Yield", "desc": "DF - HVQK Rebin - Recovery" }
   },
-  "_comment_sicccydyn-info ": "SICC/UPM/CDYN testlist config \u2014 column rename patterns and sum definitions.\n  Targets (sicc_targets, upm_targets, cdyn_targets) come from the Product Config JSON, not here.",
+  "_comment_sicccydyn-info ": "SICC/UPM/CDYN testlist config — column rename patterns and sum definitions.\n  Targets (sicc_targets, upm_targets, cdyn_targets) come from the Product Config JSON, not here.",
   "_comment_upmInfo": "1st column =  Display name  2nd column - test name,3rd name is target",
   "upmInfo": [
-  
-     [
-      "ULVT FULLDIE 950mV (%) - SDS",
-      "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*950*",
-      7694,
-      ""
-    ],
-    [
-      "ULVT FULLDIE 650mV (%) - SDS",
-      "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*650*",
-      5150,
-      ""
-    ]
+    ["ULVT FULLDIE 950mV (%) - SDS", "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*950*", 7694],
+    ["ULVT FULLDIE 650mV (%) - SDS", "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*650*", 5150]
   ],
-  "_comment_siccList": "1st column =  Display name  2nd column - test name",
+  "_comment_siccList": "1st column =  Display name  2nd column - test name 3rd column - target",
   "siccList": [
-    [
-      "PTH_POWER*E_BEGIN*SICC_GT_V1_24A_VCCGT_HC*PC*",
-      "SICC GT 0.7 - SDS"
-    ],
-    [
-      "PTH_POWER*E_BEGIN*SICC_GT_V2_24A_VCCGT_HC*PC*",
-      "SICC GT 0.95 - SDS"
-    ],
-    [
-      "PTH_POWER*E_BEGIN*SICC_GT_V3_24A_VCCGT_HC*PC*",
-      "SICC GT 0.75 - SDS"
-    ],
-    [
-      "PTH_POWER*E_BEGIN*SICC_GT_V4_24A_VCCGT_HC*PC*",
-      "SICC GT 0.8 - SDS"
-    ]
+    ["PTH_POWER*E_BEGIN*SICC_GT_V2_24A_VCCGT_HC*PC*", "SICC GT 0.95 - SDS", 2.9],
+    ["PTH_POWER*E_BEGIN*SICC_GT_V4_24A_VCCGT_HC*PC*", "SICC GT 0.8 - SDS", 0.8],
+    ["PTH_POWER*E_BEGIN*SICC_GT_V3_24A_VCCGT_HC*PC*", "SICC GT 0.75 - SDS", 0.5],
+    ["PTH_POWER*E_BEGIN*SICC_GT_V1_24A_VCCGT_HC*PC*", "SICC GT 0.7 - SDS", 0.3]
   ],
-  "_comment_siccTotalList": "1st column =  Display name , rest things to add",
-  "siccTotalList": [
-    [
-      "SICC GT 0.95 - SDS",
-      "SICC GT 0.95 - SDS"
-    ],
-	[
-      "SICC GT 0.7 - SDS",
-      "SICC GT 0.7 - SDS"
-    ]
-  ],
-  "_comment_SiccTableConfig": "1st column = Category Group, 2nd column = Display name in Dashboard, 3rd column = matching test name in the list, 4th column = UPM column",
-  "SiccTableConfig": [
-	[
-      "SICC GT 0.95 - SDS",
-      "SICC GT 0.95 - SDS",
-	  "SICC GT 0.95 - SDS",
-      "ULVT FULLDIE 950mV (%) - SDS"
-    ],
-	[
-      "SICC GT 0.8 - SDS",
-      "SICC GT 0.8 - SDS",
-	  "SICC GT 0.8 - SDS",
-      "ULVT FULLDIE 950mV (%) - SDS"
-    ],
-	[
-      "SICC GT 0.75 - SDS",
-      "SICC GT 0.75 - SDS",
-	  "SICC GT 0.75 - SDS",
-      "ULVT FULLDIE 950mV (%) - SDS"
-    ],    
-	[
-      "SICC GT 0.7 - SDS",
-      "SICC GT 0.7 - SDS",
-	  "SICC GT 0.7 - SDS",
-      "ULVT FULLDIE 950mV (%) - SDS"
-    ]
-  ],
-  
-"sicc_targets": [
-    {
-      "test": "SICC GT 0.95 - SDS",
-      "target_A": 2.9
-    },
-	{"test": "SICC GT 0.8 - SDS",
-      "target_A": 0.8
-    },
-	{      "test": "SICC GT 0.75 - SDS",
-      "target_A": 0.5
-    },
-	{     "test": "SICC GT 0.7 - SDS",
-      "target_A": 0.3
-    }
-  ],
-
-  "_comment_cdynList": "cdynList: [wildcard_pattern, friendly_display_name] \u2014 one entry per individual test, matches raw CSV column names (case-insensitive ordered tokens)",
-  "cdynList": [
-    
-  ],
-  "_comment_cdynTableConfig": "1st column = Category Group, 2nd column = Display name in Dashboard, 3rd column = matching test name in the list, 4th column = UPM column",
-  "cdynTableConfig": [
-  ],
-   "cdyn_targets": [
-    
-  ], 
-  
-
-  "_comment_testprogram_folder": "Default TestProgram folder for this product \u2014 auto-loaded into the pipeline from Product Config (not shown in GUI).",
+  "_comment_siccTotalList": "1st column =  Display name , rest things to add, last column is target",
+  "siccTotalList": [],
+  "_comment_cdynList": "cdynList: [wildcard_pattern, friendly_display_name, target] — one entry per individual test, matches raw CSV column names (case-insensitive ordered tokens)",
+  "cdynList": [],
+  "_comment_testprogram_folder": "Default TestProgram folder for this product — auto-loaded into the pipeline from Product Config (not shown in GUI).",
   "testprogram_folder": "\\\\al4file1.ra.intel.com\\sdx\\program\\1001\\prod\\hdmtprogs\\nvl_ngx_sds"
 }

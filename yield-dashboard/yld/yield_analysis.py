@@ -308,10 +308,11 @@ def generate(data_path, out_dir=None, tbl_path=None):
             pass  # silently ignore product config read errors
     else:
         pass  # no tbl_path — UPM divisors not applied
-    # Only keep UPM columns that have a matched divisor from upmInfo.
-    # If no upmInfo matched anything, fall back to all UPM columns.
+    # Only keep UPM columns that have a matched divisor from upmInfo, in the
+    # order upmInfo defines them (not raw CSV column order) so index 0 always
+    # matches the 1st upmInfo entry (default DLCP/UPM selection).
     if _upm_divisors:
-        _upm_filtered = [c for c in _upm_raw_cols if c in _upm_divisors]
+        _upm_filtered = list(_upm_divisors.keys())
     else:
         _upm_filtered = _upm_raw_cols
     _upm_col_defs = [{'col': c, 'key': f'u{i}',
