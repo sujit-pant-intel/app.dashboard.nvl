@@ -5093,6 +5093,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
       <div class="chart-card">
         <h2 style="margin-bottom:8px">&#128204; iBin Fail Trend
           <button onclick="exportTrendCsv()" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
+        <div id="trend-totals" style="font-size:12px;color:#555;margin:6px 0">{pareto_v_totals_html}</div>
         <div id="trend-chart" class="chart-wrap">{trend_div}</div>
       </div>
       <div class="chart-card" id="trend-fb-drilldown" style="display:none">
@@ -5134,6 +5135,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
     <div id="tab-pareto-h" style="display:none">
       <div class="chart-card">
         <h2>Interface Bin Fail Pareto (horizontal)</h2>
+        <div id="pareto-h-totals" style="font-size:12px;color:#555;margin:6px 0">{pareto_v_totals_html}</div>
         <div id="pareto-h-chart" class="chart-wrap">{pareto_div}</div>
       </div>
       <div class="chart-card" id="pareto-h-fb-drilldown" style="display:none">
@@ -5221,6 +5223,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
     </div>
     <div id="tab-table" style="display:none">
       <div class="chart-card" style="overflow:auto">
+        <div id="table-totals" style="font-size:12px;color:#555;margin:0 0 6px">{pareto_v_totals_html}</div>
         <table id="run-table">
           <thead><tr>
             <th>Period</th><th>Date</th><th>Lot</th><th>Wafer</th>
@@ -5240,6 +5243,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
         <button onclick="dlcpOpenHistT()" style="margin-left:12px;padding:4px 16px;font-size:13px;font-weight:bold;background:linear-gradient(135deg,#1a5276,#2980b9);color:#fff;border:none;border-radius:5px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)">&#128202; UPM Distribution</button>
         <span id="dlcp-no-data-msg" style="color:#c0392b;font-weight:bold;display:none">No UPM die data available.</span>
       </div>
+      <div id="dlcp-totals" style="font-size:12px;color:#555;margin:0 0 6px">{pareto_v_totals_html}</div>
       <div class="dlcp-sumbox" id="dlcp-sumbox"></div>
       <div class="dlcp-inner" style="flex:1;min-height:300px">
         <div class="dlcp-left" id="dlcp-left-pane">
@@ -5325,7 +5329,7 @@ function ibinLabel(ib) {{
 
 // ═══════════════════════════════════════ TABS ══════════════════════════════
 let _activeTab = 'trend';
-let _firstLoad = true;  // skip redundant Plotly.react on initial load (static embed already shows chart)
+let _firstLoad = true;  // gates lazy pareto/table rendering only; trend chart always fully rebuilds
 const _PLOTLY_CFG     = {{displayModeBar:true, scrollZoom:true}};
 const _PLOTLY_CFG_STD = {{displayModeBar:true}};
 function resizeActiveChart() {{
@@ -5941,12 +5945,15 @@ function buildParetoVertTraces(runs, topN) {{
 
 // ═══════════════════════════════════════ UPDATE PARETO TABLE ══════════════
 function _updateParetoVTotals(runs) {{
-  const div = document.getElementById('pareto-v-totals');
-  if (!div) return;
   const lots   = new Set(runs.map(r => r.lot));
   const wafers = runs.reduce((s, r) => s + (r.wafer_count || 1), 0);
   const dies   = runs.reduce((s, r) => s + (r.total_dies || 0), 0);
-  div.innerHTML = `Lots: <b>${{lots.size.toLocaleString()}}</b> &nbsp;|&nbsp; Wafers: <b>${{wafers.toLocaleString()}}</b> &nbsp;|&nbsp; Dies: <b>${{dies.toLocaleString()}}</b>`;
+  const html   = `Lots: <b>${{lots.size.toLocaleString()}}</b> &nbsp;|&nbsp; Wafers: <b>${{wafers.toLocaleString()}}</b> &nbsp;|&nbsp; Dies: <b>${{dies.toLocaleString()}}</b>`;
+  // Same totals summary shown on every tab (Trend, Pareto h/v, Run Table, DLCP)
+  ['pareto-v-totals', 'trend-totals', 'pareto-h-totals', 'table-totals', 'dlcp-totals'].forEach(id => {{
+    const div = document.getElementById(id);
+    if (div) div.innerHTML = html;
+  }});
 }}
 
 function updateParetoTable(tableRows) {{
@@ -6071,13 +6078,14 @@ function rebuildCharts() {{
   const groupMode = document.querySelector('input[name="groupby"]:checked')?.value || 'lot';
   const runsForChart = groupMode === 'lot' ? aggregateByLot(filteredRuns) : filteredRuns;
   const groups = groupRuns(runsForChart, interval);
-  const {{ traces, layout, flat }} = buildTrendTraces(groups, topN, thresh, groupMode, _firstLoad);
+  // Always build full traces (UPM line + click targets) — the static server-rendered
+  // embed lacks the UPM trace and has no click handler bound, so first load needs this too.
+  const {{ traces, layout, flat }} = buildTrendTraces(groups, topN, thresh, groupMode, false);
   window._lastFlat = flat;
 
   // Guard all Plotly calls — if CDN fails, tables/DLCP/tabs still work
   if (typeof Plotly !== 'undefined') {{
-    if (!_firstLoad) {{
-      Plotly.react(_TREND_EL, traces, layout, _PLOTLY_CFG).then(() => {{
+    Plotly.react(_TREND_EL, traces, layout, _PLOTLY_CFG).then(() => {{
       document.getElementById(_TREND_EL).on('plotly_click', function(d) {{
         const pt = d.points[0];
         if (pt.data.type === 'bar') {{
@@ -6096,7 +6104,6 @@ function rebuildCharts() {{
         }}
       }});
     }});
-  }}  // end if (!_firstLoad)
   }} else {{
     // Plotly not loaded — show inline warning in the trend chart area
     var tc = document.getElementById('trend-chart');
