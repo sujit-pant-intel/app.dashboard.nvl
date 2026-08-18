@@ -65,6 +65,10 @@ _AQUA_EXE_AMR = r"\\FMSAPP3301.amr.corp.intel.com\Installer\AquaHbase\AquaCMDCli
 _BASE_DIR  = Path(r"\\samba.zsc10.intel.com\nfs\zsc10\disks\gsc_gwa011\users\snpant\auto\trend")
 _EMAIL_TO  = "sujit.n.pant@intel.com"
 
+# trend_product_config.json holds interval/topn/thresh (saved by manage_trend.py);
+# trend_setup_config.json holds email recipients — kept separate from the start.
+_PROD_CFG  = _REPO_ROOT / "shared" / "setup" / "automation" / "trend-dashboard" / "trend_product_config.json"
+
 
 def _log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
@@ -265,7 +269,8 @@ def _split_csv_by_devrevstep(src_csv: Path, out_dir: Path, ts: str) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_trend_chart(csv_path: Path, out_html: Path, interval: str,
-                    cfg_path: str, dry_run: bool) -> bool:
+                    cfg_path: str, dry_run: bool,
+                    topn: int | None = None, thresh: float | None = None) -> bool:
     cmd = [
         sys.executable, str(_TREND_SCRIPT),
         str(csv_path),
@@ -274,6 +279,10 @@ def run_trend_chart(csv_path: Path, out_html: Path, interval: str,
     ]
     if cfg_path:
         cmd += ["--cfg", cfg_path]
+    if topn is not None:
+        cmd += ["--topn", str(topn)]
+    if thresh is not None:
+        cmd += ["--thresh", str(thresh)]
 
     _log(f"  CMD: {' '.join(cmd)}")
     if dry_run:
@@ -450,9 +459,28 @@ def main() -> None:
                     help="Trend grouping interval (default: weekly)")
     ap.add_argument("--email",         default="",
                     help="Override recipient email address")
+    ap.add_argument("--topn",          type=int, default=None,
+                    help="Override top-N fail bins shown in trend chart (default: from trend_setup_config.json or 8)")
+    ap.add_argument("--thresh",        type=float, default=None,
+                    help="Override min fail%% threshold for trend chart bins (default: from trend_setup_config.json or 0.0)")
     ap.add_argument("--dry-run",       action="store_true",
                     help="Plan only — do not pull AQUA, run trend_chart, or send email")
     args = ap.parse_args()
+
+    _email_cfg: dict = {}
+    if _EMAIL_CFG.exists():
+        try:
+            _email_cfg = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    _prod_cfg: dict = {}
+    if _PROD_CFG.exists():
+        try:
+            _prod_cfg = json.loads(_PROD_CFG.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    trend_topn   = args.topn   if args.topn   is not None else _prod_cfg.get("topn", 16)
+    trend_thresh = args.thresh if args.thresh is not None else _prod_cfg.get("thresh", 0.0)
 
     unc_base = _resolve_unc(Path(args.base_dir))   # always UNC — used for both I/O and link construction
     base_dir = unc_base
@@ -527,7 +555,8 @@ def main() -> None:
             if _cfg:
                 _log("[" + _pfx + "] Product config: " + Path(_cfg).name)
             _log("[" + _pfx + "] Running trend_chart.py -> " + _out_html.name)
-            _ok = run_trend_chart(_csv_file, _out_html, args.interval, _cfg, args.dry_run)
+            _ok = run_trend_chart(_csv_file, _out_html, args.interval, _cfg, args.dry_run,
+                                  topn=trend_topn, thresh=trend_thresh)
             generated.append((_unc_html, _ok))  # use UNC path so email links are network-accessible
             _log("  " + ("OK" if _ok else "FAIL") + " " + _pfx)
 
@@ -555,15 +584,9 @@ def main() -> None:
                     _log("  WARNING: compression failed for " + _csv_file.name + ": " + str(_cx))
 
         # ── 4. Send email with link to reports folder ──────────────────
-        email_cfg: dict = {}
-        if _EMAIL_CFG.exists():
-            try:
-                email_cfg = json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
-            except Exception:
-                pass
         email_to = (args.email
-                    or email_cfg.get("email_to_report")
-                    or email_cfg.get("email_to")
+                    or _email_cfg.get("email_to_report")
+                    or _email_cfg.get("email_to")
                     or _EMAIL_TO)
 
         n_ok    = sum(1 for _, ok in generated if ok)

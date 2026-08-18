@@ -3762,24 +3762,27 @@ def load_csv(path: Path, log=None, grouping_mode: str = 'wafer') -> list[dict]:
             key = (lot[:7], program, material)
         else:
             key = (lot, wafer, program, material)
-        
+        full_lot_val = sort_lot if sort_lot else lot  # untruncated, run-suffix included
+
         if key not in groups:
             dt = _parse_date(date_s)
             if dt is None:
                 dt = _parse_date(lot) or _parse_date(program)
             groups[key] = {
-                'lot': lot[:7] if grouping_mode == 'lot' else lot,
+                'lot': lot[:7],
                 'wafer': wafer, 'program': program,
                 'devrevstep': devrevstep,
-                'sort_lot': sort_lot[:7] if grouping_mode == 'lot' else sort_lot,
+                'sort_lot': (sort_lot or lot)[:7],
                 'material': material,
                 'label': _prog_label(program, lot, wafer if grouping_mode == 'wafer' else ''),
                 'date_str': date_s, 'date': dt,
                 'total_dies': tot, 'bin_counts': {},
                 'upm_950': [],  # per-die [ibin, upm_pct] pairs
                 'die_xy': [],   # per-die [x, y, ibin, fbin, upm_pct] for wafermap drilldown
+                'full_lots': set(),  # untruncated lot(s) rolled into this 7-char lot, for hover
             }
         grp = groups[key]
+        grp['full_lots'].add(full_lot_val)
         if not grp.get('material') and material:
             grp['material'] = material
         wtot = grp.setdefault('_wafer_totals', {})
@@ -3838,7 +3841,8 @@ def load_csv(path: Path, log=None, grouping_mode: str = 'wafer') -> list[dict]:
              'material':    grp.get('material', ''),
              'upm_950':     grp.get('upm_950', []),
              'fb_counts':   grp.get('fb_counts', {}),
-             'fb_modules':  grp.get('fb_modules', {})}
+             'fb_modules':  grp.get('fb_modules', {}),
+             'full_lots':   sorted(grp.get('full_lots', set()) or {grp['lot']})}
         result.append(r)
         if log:
             n_f = sum(1 for v in fail_ibins.values() if v > 0)
@@ -3907,9 +3911,11 @@ def _aggregate_by_lot(runs: list[dict]) -> list[dict]:
                 'devrevstep': r.get('devrevstep', ''),
                 'date': r.get('date'), 'date_str': r.get('date_str', ''),
                 'total_dies': 0, 'bin_counts': {}, '_wafers': [],
+                'full_lots': set(),
             }
         g['total_dies'] += r.get('total_dies', 0) or 0
         g['_wafers'].append(r.get('wafer') or '?')
+        g['full_lots'].update(r.get('full_lots') or [r.get('sort_lot') or r.get('lot') or lot7])
         rd = r.get('date')
         if rd and (not g['date'] or rd > g['date']):
             g['date'] = rd
@@ -3920,6 +3926,7 @@ def _aggregate_by_lot(runs: list[dict]) -> list[dict]:
     result = []
     for g in groups.values():
         wafers = g.pop('_wafers')
+        g['full_lots'] = sorted(g.get('full_lots', set()) or {g['lot']})
         total = g['total_dies'] or sum(g['bin_counts'].values()) or 1
         ff_cnt    = sum(c for b, c in g['bin_counts'].items() if b in _FF_BINS)
         ff_df_cnt = sum(c for b, c in g['bin_counts'].items() if b in _FF_DF_BINS)
@@ -3998,8 +4005,10 @@ def build_trend_chart(groups: OrderedDict,
     def _run_tip(iv: str, r: dict) -> str:
         d = (r['date_str'] or
              (r['date'].strftime('%Y-%m-%d') if r['date'] else '\u2014'))
+        full_lots = ', '.join(r.get('full_lots') or [r['lot']])
         return (f'<b>{r["label"]}</b> | Period: {iv}<br>'
                 f'Lot: {r["lot"]}  Wafer: {r["wafer"]}<br>'
+                f'Full Lot: {full_lots}<br>'
                 f'Program: {r["program"]}<br>'
                 f'Date: {d}  |  Dies: {r["total_dies"]:,}')
 
@@ -4082,14 +4091,16 @@ def build_trend_chart(groups: OrderedDict,
     if ff_tgt is not None:
         fig.add_hline(y=ff_tgt, line_dash='dot', line_color='#1a73e8',
                       line_width=1.5, opacity=0.5, secondary_y=True,
-                      annotation_text=f'{ff_name} target {ff_tgt:.1f}%',
-                      annotation_position='right',
+                      annotation_text=f'FF Target {ff_tgt:.1f}%',
+                      annotation_x=0, annotation_xanchor='left',
+                      annotation_yanchor='bottom',
                       annotation_font_size=10)
     if ffdf_tgt is not None:
         fig.add_hline(y=ffdf_tgt, line_dash='dot', line_color='#2e7d32',
                       line_width=1.5, opacity=0.5, secondary_y=True,
-                      annotation_text=f'{ffdf_name} target {ffdf_tgt:.1f}%',
-                      annotation_position='right',
+                      annotation_text=f'FF+DF Target {ffdf_tgt:.1f}%',
+                      annotation_x=0, annotation_xanchor='left',
+                      annotation_yanchor='bottom',
                       annotation_font_size=10)
 
     # --- Period dividers + annotations
@@ -4412,7 +4423,7 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
                   trend_fig: 'go.Figure', pareto_fig: 'go.Figure',
                   output_path: Path,
                   interval: str = 'revision',
-                  top_n: int = 8,
+                  top_n: int = 16,
                   cfg_path: str = '',
                   cfg: dict | None = None,
                   pareto_vertical_fig: 'go.Figure | None' = None,
@@ -4438,6 +4449,7 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
             'lot':        r['lot'],
             'wafer':      r.get('wafer', ''),
             'sort_lot':   r.get('sort_lot', ''),
+            'full_lots':  r.get('full_lots') or [r['lot']],
             'material':   r.get('material', ''),
             'program':    r['program'],
             'date':       date_s,
@@ -4529,10 +4541,11 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
             wafer_key = f'{lot}::{w}'
             wafer_mat = wafer_materials.get(wafer_key, '')
             wafer_title = f'Wafer: {label}' + (f' - {wafer_mat}' if wafer_mat else '')
+            mat_span = f' <span style="color:#7fb3d3;font-size:8px;font-weight:normal">({wafer_mat})</span>' if wafer_mat else ''
             items.append(
-                f'<label class="cb-lbl wafer-item" data-lot="{lot}" title="{wafer_title}">'
+                f'<label class="cb-lbl wafer-item" data-lot="{lot}" data-material="{wafer_mat}" title="{wafer_title}">'
                 f'<input type="checkbox" class="wafer-cb" value="{val}" checked> '
-                f'<span>{label}</span></label>'
+                f'<span class="wafer-lbl-txt">{label}{mat_span}</span></label>'
             )
         return ''.join(items)
 
@@ -4574,10 +4587,11 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
                 val = wafer_key
                 label = w or '(no wafer)'
                 wafer_title = f'Wafer: {label}' + (f' - {wafer_mat}' if wafer_mat else '')
+                mat_span = f' <span style="color:#7fb3d3;font-size:8px;font-weight:normal">({wafer_mat})</span>' if wafer_mat else ''
                 items.append(
-                    f'<label class="cb-lbl wafer-item" data-lot="{lot}" title="{wafer_title}">'
+                    f'<label class="cb-lbl wafer-item" data-lot="{lot}" data-material="{wafer_mat}" title="{wafer_title}">'
                     f'<input type="checkbox" class="wafer-cb" value="{val}" checked> '
-                    f'<span>{label}</span></label>'
+                    f'<span class="wafer-lbl-txt">{label}{mat_span}</span></label>'
                 )
         return ''.join(items)
 
@@ -4591,47 +4605,17 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
             mat = lot_material.get(lot, '')
             mat_span = f' <span style="color:#7fb3d3;font-size:10px">({mat})</span>' if mat else ''
             mat_title = f' - {mat}' if mat else ''
-            
-            # Check if lot has multiple materials (for lot-grouping mode)
-            lot_has_multi_mats = len(lot_materials_set.get(lot, set())) > 1
-            
-            if grouping_mode == 'lot' and lot_has_multi_mats:
-                # Build material nesting for lots with multiple materials
-                material_rows = ''
-                for material in sorted(lot_materials_set.get(lot, [])):
-                    if material:  # Skip empty materials
-                        material_rows += (
-                            f'<div class="material-row" style="margin-left:20px">'
-                            f'<input type="checkbox" class="material-cb" id="mat-cb-{lot}-{material}" '
-                            f'value="{lot}::{material}" checked>'
-                            f'<label for="mat-cb-{lot}-{material}" style="color:#7fb3d3">{material}</label>'
-                            f'<span class="wafer-arrow" onclick="toggleMaterialWafers(this)" '
-                            f'data-lot="{lot}" data-material="{material}">&#9654;</span>'
-                            f'</div>'
-                            f'<div class="material-drop" id="mdrop-{lot}-{material}" style="display:none;margin-left:20px">'
-                            f'{_material_wafer_items(lot, material)}'
-                            f'</div>'
-                        )
-                lot_rows += (
-                    f'<div class="lot-row">'
-                    f'<input type="checkbox" class="lot-cb" id="lot-cb-{lot}" value="{lot}" checked onchange="toggleLotWafers(this)">'
-                    f'<label for="lot-cb-{lot}" class="lot-label" title="Lot: {lot}{mat_title}">{lot}{mat_span}</label>'
-                    f'<span class="wafer-arrow" onclick="toggleWaferDrop(this)" data-lot="{lot}">&#9654;</span>'
-                    f'</div>'
-                    f'<div class="wafer-drop" id="wdrop-{lot}" style="display:none">'
-                    f'{material_rows}'
-                    f'</div>'
-                )
-            else:
-                # Standard flat wafer list (wafer mode or single-material lot)
-                lot_rows += (
-                    f'<div class="lot-row">'
-                    f'<input type="checkbox" class="lot-cb" id="lot-cb-{lot}" value="{lot}" checked onchange="toggleLotWafers(this)">'
-                    f'<label for="lot-cb-{lot}" class="lot-label" title="Lot: {lot}{mat_title}">{lot}{mat_span}</label>'
-                    f'<span class="wafer-arrow" onclick="toggleWaferDrop(this)" data-lot="{lot}">&#9654;</span>'
-                    f'</div>'
-                    f'<div class="wafer-drop" id="wdrop-{lot}">{_wafer_items(lot)}</div>'
-                )
+
+            # Flat wafer list — each wafer row already shows its own material inline,
+            # so there is no need for a separate "material only" grouping header.
+            lot_rows += (
+                f'<div class="lot-row">'
+                f'<input type="checkbox" class="lot-cb" id="lot-cb-{lot}" value="{lot}" checked onchange="toggleLotWafers(this)">'
+                f'<label for="lot-cb-{lot}" class="lot-label" title="Lot: {lot}{mat_title}">{lot}{mat_span}</label>'
+                f'<span class="wafer-arrow" onclick="toggleWaferDrop(this)" data-lot="{lot}">&#9654;</span>'
+                f'</div>'
+                f'<div class="wafer-drop" id="wdrop-{lot}">{_wafer_items(lot)}</div>'
+            )
         
         if single:
             # Only one lot in group — no extra nesting; still show material on the row
@@ -4743,8 +4727,11 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
 body{{font-family:Arial,sans-serif;background:#f0f3f7;display:flex;height:100vh;overflow:hidden}}
 
 /* ── Sidebar ── */
-#sidebar{{width:280px;min-width:220px;background:#1a252f;color:#ecf0f1;
+#sidebar{{width:280px;min-width:220px;max-width:70vw;background:#1a252f;color:#ecf0f1;
   display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}}
+#sidebar-resizer{{width:5px;flex-shrink:0;cursor:col-resize;background:#dce3eb;
+  transition:background .15s}}
+#sidebar-resizer:hover,#sidebar-resizer.dragging{{background:#3498db}}
 #sidebar-header{{padding:12px 14px 8px;border-bottom:1px solid #2c3e50}}
 #sidebar-header h1{{font-size:14px;color:#3498db;line-height:1.3}}
 #sidebar-header .meta{{font-size:10px;color:#7f8c8d;margin-top:3px}}
@@ -4818,6 +4805,11 @@ body{{font-family:Arial,sans-serif;background:#f0f3f7;display:flex;height:100vh;
   border-left:2px solid #2c3e50;margin-left:0px}}
 .wafer-drop.show{{display:block}}
 .wafer-drop .cb-lbl{{font-size:10px;color:#95a5a6;padding-left:4px}}
+.wafer-drop .cb-lbl .wafer-lbl-txt{{min-width:0;flex-shrink:1}}
+.material-row{{display:flex;align-items:center;gap:5px;padding:2px 4px}}
+.material-drop{{display:none}}
+.material-drop.show{{display:block}}
+.material-drop .cb-lbl{{font-size:10px;color:#95a5a6;padding-left:4px}}
 
 /* options */
 .opt-grid{{display:grid;grid-template-columns:auto 1fr;gap:4px 8px;align-items:center}}
@@ -5078,12 +5070,12 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
     <div id="stats-bar"></div>
   </div>
 </div>
+<div id="sidebar-resizer" title="Drag to resize"></div>
 
 <!-- ═══ MAIN ═══ -->
 <div id="main">
   <div id="tabs">
     <div class="tab active" onclick="showTab('trend',this)">&#128204; Trend</div>
-    <div class="tab" onclick="showTab('pareto-h',this)">&#128202; Pareto (horizontal)</div>
     <div class="tab" onclick="showTab('pareto-v',this)">&#128202; Pareto (by bin)</div>
     <div class="tab" onclick="showTab('table',this)">&#128209; Run Table</div>
     <div class="tab" onclick="showTab('dlcp',this)">&#9889; DLCP</div>
@@ -5099,9 +5091,12 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
       <div class="chart-card" id="trend-fb-drilldown" style="display:none">
         <h2 id="trend-fb-title">Functional Bin Breakdown — IB <span id="trend-fb-ib"></span>
           <button onclick="exportFbDrilldownCsv('trend-fb-thead','trend-fb-tbody','fb_drilldown')" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
-        <div class="fbdd-tabs" style="margin:4px 0 8px">
+        <div class="fbdd-tabs" style="margin:4px 0 8px;display:flex;align-items:center;gap:12px">
           <button class="fbdd-tab-btn active" id="trend-fbview-table-btn" onclick="setFbView('trend','table')">Table</button>
           <button class="fbdd-tab-btn" id="trend-fbview-map-btn" onclick="setFbView('trend','map')">Wafer Map</button>
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#555;cursor:pointer;margin-left:6px" title="Canvas mode renders faster for many wafers; SVG mode is slower but lets you inspect crisp vector output">
+            <input type="checkbox" checked onchange="toggleWmRenderMode(this)"> Fast render (uncheck for SVG)
+          </label>
         </div>
         <div id="trend-fbtable-wrap"><div style="overflow-x:auto"><table class="fb-drill-tbl" id="trend-fb-tbl">
           <thead id="trend-fb-thead"><tr><th>Interface Bin</th><th>Lot (Wafers)</th><th>Functional Bin</th><th>Description</th><th>Fail Test Module</th>
@@ -5132,48 +5127,6 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
         </div>
       </div>
     </div>
-    <div id="tab-pareto-h" style="display:none">
-      <div class="chart-card">
-        <h2>Interface Bin Fail Pareto (horizontal)</h2>
-        <div id="pareto-h-totals" style="font-size:12px;color:#555;margin:6px 0">{pareto_v_totals_html}</div>
-        <div id="pareto-h-chart" class="chart-wrap">{pareto_div}</div>
-      </div>
-      <div class="chart-card" id="pareto-h-fb-drilldown" style="display:none">
-        <h2 id="pareto-h-fb-title">Functional Bin Breakdown — IB <span id="pareto-h-fb-ib"></span>
-          <button onclick="exportFbDrilldownCsv('pareto-h-fb-thead','pareto-h-fb-tbody','fb_drilldown')" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
-        <div class="fbdd-tabs" style="margin:4px 0 8px">
-          <button class="fbdd-tab-btn active" id="pareto-h-fbview-table-btn" onclick="setFbView('pareto-h','table')">Table</button>
-          <button class="fbdd-tab-btn" id="pareto-h-fbview-map-btn" onclick="setFbView('pareto-h','map')">Wafer Map</button>
-        </div>
-        <div id="pareto-h-fbtable-wrap"><div style="overflow-x:auto"><table class="fb-drill-tbl" id="pareto-h-fb-tbl">
-          <thead id="pareto-h-fb-thead"><tr><th>Interface Bin</th><th>Lot (Wafers)</th><th>Functional Bin</th><th>Description</th><th>Fail Test Module</th>
-            <th class="num">Total Tested</th><th class="num">Fail Count</th><th class="num">Fail %</th></tr></thead>
-          <tbody id="pareto-h-fb-tbody"></tbody>
-        </table></div></div>
-        <div id="pareto-h-wafermap-wrap" style="display:none">
-          <div id="pareto-h-wafermap-selrow" style="display:none;margin-bottom:8px;font-size:12px;position:relative">
-            <span class="wm-dd-group" style="position:relative;display:inline-block">
-              <span onclick="toggleWmDrop(this,'pareto-h','wafer')" style="cursor:pointer;user-select:none;color:#2c3e50;font-weight:600">Wafers <span class="wm-dd-arrow">&#9654;</span></span>
-              <span id="pareto-h-wafermap-summary" style="color:#888;margin-left:6px"></span>
-              <div id="pareto-h-wafermap-drop" class="wm-dd-panel" style="display:none">
-                <div style="margin-bottom:4px"><button onclick="wmCheckAll('pareto-h',true)" style="font-size:11px">All</button> <button onclick="wmCheckAll('pareto-h',false)" style="font-size:11px">None</button></div>
-                <input type="text" placeholder="Search wafers…" oninput="wmFilterChecks('pareto-h',this.value)" style="font-size:11px;width:100%;box-sizing:border-box;margin-bottom:4px;padding:2px 4px">
-                <div id="pareto-h-wafermap-checks" style="display:flex;flex-direction:column;max-height:180px;overflow-y:auto"></div>
-              </div>
-            </span>
-            <span class="wm-dd-group" id="pareto-h-wm-fb-wrap" style="position:relative;display:none;margin-left:14px">
-              <span onclick="toggleWmDrop(this,'pareto-h','fb')" style="cursor:pointer;user-select:none;color:#2c3e50;font-weight:600">FB <span class="wm-dd-arrow">&#9654;</span></span>
-              <span id="pareto-h-wafermap-fbsummary" style="color:#888;margin-left:6px"></span>
-              <div id="pareto-h-wafermap-fbdrop" class="wm-dd-panel" style="display:none">
-                <div style="margin-bottom:4px"><button onclick="wmFbCheckAll('pareto-h',true)" style="font-size:11px">All</button> <button onclick="wmFbCheckAll('pareto-h',false)" style="font-size:11px">None</button></div>
-                <div id="pareto-h-wafermap-fbchecks" style="display:flex;flex-direction:column;max-height:180px;overflow-y:auto"></div>
-              </div>
-            </span>
-          </div>
-          <div id="pareto-h-wafermap-grid" style="display:flex;flex-wrap:wrap;gap:14px"></div>
-        </div>
-      </div>
-    </div>
     <div id="tab-pareto-v" style="display:none">
       <div class="chart-card">
         <h2>Interface Bin Fail Pareto — by bin</h2>
@@ -5188,9 +5141,12 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
       <div class="chart-card" id="pareto-v-fb-drilldown" style="display:none">
         <h2 id="pareto-v-fb-title">Functional Bin Breakdown — IB <span id="pareto-v-fb-ib"></span>
           <button onclick="exportFbDrilldownCsv('pareto-v-fb-thead','pareto-v-fb-tbody','fb_drilldown_v')" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
-        <div class="fbdd-tabs" style="margin:4px 0 8px">
+        <div class="fbdd-tabs" style="margin:4px 0 8px;display:flex;align-items:center;gap:12px">
           <button class="fbdd-tab-btn active" id="pareto-v-fbview-table-btn" onclick="setFbView('pareto-v','table')">Table</button>
           <button class="fbdd-tab-btn" id="pareto-v-fbview-map-btn" onclick="setFbView('pareto-v','map')">Wafer Map</button>
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#555;cursor:pointer;margin-left:6px" title="Canvas mode renders faster for many wafers; SVG mode is slower but lets you inspect crisp vector output">
+            <input type="checkbox" checked onchange="toggleWmRenderMode(this)"> Fast render (uncheck for SVG)
+          </label>
         </div>
         <div id="pareto-v-fbtable-wrap"><div style="overflow-x:auto"><table class="fb-drill-tbl" id="pareto-v-fb-tbl">
           <thead id="pareto-v-fb-thead"><tr><th>Interface Bin</th><th>Lot (Wafers)</th><th>Functional Bin</th><th>Description</th><th>Fail Test Module</th>
@@ -5334,7 +5290,7 @@ const _PLOTLY_CFG     = {{displayModeBar:true, scrollZoom:true}};
 const _PLOTLY_CFG_STD = {{displayModeBar:true}};
 function resizeActiveChart() {{
   if (typeof Plotly === 'undefined') return;
-  const ids = {{'trend':_TREND_EL,'pareto-h':_PARETO_H_EL,'pareto-v':_PARETO_V_EL}};
+  const ids = {{'trend':_TREND_EL,'pareto-v':_PARETO_V_EL}};
   const el = document.getElementById(ids[_activeTab]);
   if (el) Plotly.Plots.resize(el);
 }}
@@ -5362,15 +5318,7 @@ function showTab(name, btn) {{
   // Lazy render — wrapped in try/catch so errors never block tab switching
   try {{
     const runs = window._pendingRuns;
-    if (runs && (name === 'pareto-h' || name === 'pareto-v') && !_paretoRendered) {{
-      const pareto = buildParetoTraces(runs, 20);
-      Plotly.react(_PARETO_H_EL, pareto.traces, pareto.layout, _PLOTLY_CFG_STD).then(() => {{
-        document.getElementById(_PARETO_H_EL).on('plotly_click', function(d) {{
-          const pt = d.points[0];
-          const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
-          if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-h', window._lastFilteredRuns);
-        }});
-      }});
+    if (runs && name === 'pareto-v' && !_paretoRendered) {{
       const paretoV = buildParetoVertTraces(runs, 20);
       Plotly.react(_PARETO_V_EL, paretoV.traces, paretoV.layout, _PLOTLY_CFG_STD).then(() => {{
         document.getElementById(_PARETO_V_EL).on('plotly_click', function(d) {{
@@ -5418,8 +5366,8 @@ function showTab(name, btn) {{
 }}
 
 // ═══════════════════════════════════════ FILTER HELPERS ════════════════════
-function selAll(sel)  {{ document.querySelectorAll(sel).forEach(c => c.checked = true);  }}
-function selNone(sel) {{ document.querySelectorAll(sel).forEach(c => c.checked = false); }}
+function selAll(sel)  {{ document.querySelectorAll(sel).forEach(c => c.checked = true);  scheduleAutoApply(); }}
+function selNone(sel) {{ document.querySelectorAll(sel).forEach(c => c.checked = false); scheduleAutoApply(); }}
 
 // Filter a sidebar checkbox list (e.g. Test Program, Interface Bin) by label text
 function sidebarFilterList(listId, text) {{
@@ -5473,26 +5421,12 @@ function toggleWaferDrop(span) {{
   }}
 }}
 
-function toggleMaterialWafers(span) {{
-  const lot = span.dataset.lot;
-  const material = span.dataset.material;
-  const drop = document.getElementById('mdrop-' + lot + '-' + material);
-  if (!drop) return;
-  const open = drop.classList.contains('show');
-  if (open) {{
-    drop.classList.remove('show');
-    span.innerHTML = '&#9654;';
-  }} else {{
-    drop.classList.add('show');
-    span.innerHTML = '&#9660;';
-  }}
-}}
 function filterLots(query) {{
   const lowerQuery = query.toLowerCase();
   document.querySelectorAll('.lot-group').forEach(group => {{
-    // Match against any lot-label or lot-group-lbl inside the group
-    const labels = [...group.querySelectorAll('.lot-label, .lot-group-lbl')];
-    const matches = labels.some(el => el.textContent.toLowerCase().includes(lowerQuery));
+    // Match against lot/group labels, wafer rows, and material text anywhere in the group
+    // (so searching by material — e.g. a wafer's material with no separate lot-level match — still works)
+    const matches = group.textContent.toLowerCase().includes(lowerQuery);
     group.style.display = matches ? '' : 'none';
   }});
 }}
@@ -5513,11 +5447,13 @@ function lotWaferAll(checked) {{
     const grpCb = grp.querySelector('.lot-grp-cb');
     if (grpCb) grpCb.checked = checked;
   }});
+  scheduleAutoApply();
 }}
 function selFail() {{
   document.querySelectorAll('.ibin-cb').forEach(c => {{
     c.checked = (c.closest('.cb-lbl').dataset.fail === 'true');
   }});
+  scheduleAutoApply();
 }}
 
 // ═══════════════════════════════════════ GROUPING ══════════════════════════
@@ -5623,6 +5559,11 @@ function runLabel(r) {{
   const p = r.program.length > 18 ? r.program.slice(-18) : r.program;
   return `${{r.wafer || '?'}}-${{p}}`;
 }}
+function fullLotLabel(r) {{
+  const lot = r.sort_lot || r.lot || runLabel(r);
+  const full = (r.full_lots && r.full_lots.length) ? r.full_lots.join(', ') : lot;
+  return `${{lot}}<br>Full Lot: ${{full}}`;
+}}
 
 // ═══════════════════════════════════════ AGGREGATE BY LOT ════════════════
 // Merge multiple wafers belonging to the same (program, lot) into one run.
@@ -5636,7 +5577,7 @@ function aggregateByLot(runs) {{
         lot: lot7, wafer: '', sort_lot: ((r.sort_lot || r.lot) || '').substring(0, 7),
         material: r.material, program: r.program,
         date: r.date, total_dies: 0, bin_counts: {{}}, fb_counts: {{}}, fb_modules: {{}}, ff_upm: [], df_upm: [],
-        _wafers: [], _sourceRuns: [], _n: 0,
+        _wafers: [], _sourceRuns: [], _n: 0, _fullLots: new Set(),
       }});
     }}
     const agg = map.get(key);
@@ -5644,6 +5585,7 @@ function aggregateByLot(runs) {{
     agg._n++;
     agg._wafers.push(r.wafer || '?');
     agg._sourceRuns.push(r);
+    (r.full_lots && r.full_lots.length ? r.full_lots : [r.sort_lot || r.lot]).forEach(l => agg._fullLots.add(l));
     if (r.date && (!agg.date || r.date > agg.date)) agg.date = r.date;
     for (const [ib, cnt] of Object.entries(r.bin_counts))
       agg.bin_counts[ib] = (agg.bin_counts[ib] || 0) + cnt;
@@ -5662,6 +5604,7 @@ function aggregateByLot(runs) {{
   return [...map.values()].map(agg => ({{
     ...agg,
     wafer: agg._wafers.length === 1 ? agg._wafers[0] : `${{agg._n}}W`,
+    full_lots: [...agg._fullLots],
   }}));
 }}
 
@@ -5702,7 +5645,7 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
       const pct = (stats.failIbins[ib] || 0).toFixed(2);
       const totalDies = run.total_dies || Object.values(run.bin_counts || {{}}).reduce((s,v)=>s+v,0) || 1;
       const nFail = Math.round((pct / 100) * totalDies);
-      return `<b>${{runLabel(run)}}</b><br>Period: ${{period}}<br>Lot: ${{run.lot}}(${{run.material || '?'}})&nbsp;&nbsp;Wafer: ${{run.wafer}}<br>Program: ${{run.program}}<br>Date: ${{run.date}}<br>\u2500\u2500\u2500\u2500<br><b>${{ibinLabel(ib)}}</b><br>Fail: <b>${{nFail}} (${{pct}}%)</b>`;
+      return `<b>${{fullLotLabel(run)}}</b><br>Period: ${{period}}<br>(${{run.material || '?'}})&nbsp;&nbsp;Wafer: ${{run.wafer}}<br>Program: ${{run.program}}<br>Date: ${{run.date}}<br>\u2500\u2500\u2500\u2500<br><b>${{ibinLabel(ib)}}</b><br>Fail: <b>${{nFail}} (${{pct}}%)</b>`;
     }});
     traces.push({{ type:'bar', x:xPos, y, name:ibinLabel(ib),
       hovertext:hover, hoverinfo:'text',
@@ -5769,7 +5712,7 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
     line:{{color:'#1a73e8',width:2.5}}, marker:{{size:8}},
     text:ffY.map(v => v.toFixed(1)+'%'), textposition:'top center',
     textfont:{{size:9,color:'#1a73e8'}},
-    hovertext:flat.map(({{ run, stats }}) => `<b>${{run.sort_lot || runLabel(run)}}</b><br>${{ffName}}: <b>${{stats.ffYield.toFixed(2)}}%</b>${{buildIbFbBreakdown(run, [1, 2])}}`),
+    hovertext:flat.map(({{ run, stats }}) => `<b>${{fullLotLabel(run)}}</b><br>${{ffName}}: <b>${{stats.ffYield.toFixed(2)}}%</b>${{buildIbFbBreakdown(run, [1, 2])}}`),
     hoverinfo:'text', legendgroup:'yield_lines', yaxis:'y2' }});
 
   traces.push({{ type:'scatter', x:xPos, y:ffdfY,
@@ -5777,7 +5720,7 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
     line:{{color:'#2e7d32',width:2.5,dash:'dash'}}, marker:{{size:8,symbol:'square'}},
     text:ffdfY.map(v => v.toFixed(1)+'%'), textposition:'bottom center',
     textfont:{{size:9,color:'#2e7d32'}},
-    hovertext:flat.map(({{ run, stats }}) => `<b>${{run.sort_lot || runLabel(run)}}</b><br>${{ffdfName}}: <b>${{stats.ffDfYield.toFixed(2)}}%</b>${{buildIbFbBreakdown(run, [1, 2, 3, 4])}}`),
+    hovertext:flat.map(({{ run, stats }}) => `<b>${{fullLotLabel(run)}}</b><br>${{ffdfName}}: <b>${{stats.ffDfYield.toFixed(2)}}%</b>${{buildIbFbBreakdown(run, [1, 2, 3, 4])}}`),
     hoverinfo:'text', legendgroup:'yield_lines', yaxis:'y2' }});
 
   const upmY = flat.map(({{ stats }}) => stats.upmMed);
@@ -5788,8 +5731,8 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
       text:upmY.map(v => v != null ? v.toFixed(1)+'%' : ''), textposition:'top center',
       textfont:{{size:9,color:'#ff0000'}},
       hovertext:flat.map(({{ run, stats }}) => stats.upmMed != null
-        ? `<b>${{run.sort_lot || runLabel(run)}}</b><br>UPM Median: <b>${{stats.upmMed.toFixed(2)}}%</b>`
-        : `<b>${{run.sort_lot || runLabel(run)}}</b><br>UPM Median: \u2014`),
+        ? `<b>${{fullLotLabel(run)}}</b><br>UPM Median: <b>${{stats.upmMed.toFixed(2)}}%</b>`
+        : `<b>${{fullLotLabel(run)}}</b><br>UPM Median: \u2014`),
       hoverinfo:'text', legendgroup:'yield_lines', yaxis:'y2' }});
   }}
 
@@ -5813,18 +5756,18 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
     hlines.push({{ type:'line', x0:0, x1:1, xref:'paper',
       y0:ffTgt, y1:ffTgt, yref:'y2',
       line:{{color:'#1a73e8',width:2.5,dash:'dot'}}, opacity:0.85 }});
-    tgtAnnots.push({{ x:1, xref:'paper', y:ffTgt, yref:'y2',
-      text:`${{ffName}} target ${{ffTgt.toFixed(1)}}%`,
-      showarrow:false, xanchor:'left', font:{{size:10,color:'#1a73e8'}},
+    tgtAnnots.push({{ x:0, xref:'paper', y:ffTgt, yref:'y2',
+      text:`FF Target ${{ffTgt.toFixed(1)}}%`,
+      showarrow:false, xanchor:'left', yanchor:'bottom', font:{{size:10,color:'#1a73e8'}},
       bgcolor:'rgba(255,255,255,0.7)' }});
   }}
   if (ffdfTgt != null) {{
     hlines.push({{ type:'line', x0:0, x1:1, xref:'paper',
       y0:ffdfTgt, y1:ffdfTgt, yref:'y2',
       line:{{color:'#2e7d32',width:2.5,dash:'dot'}}, opacity:0.85 }});
-    tgtAnnots.push({{ x:1, xref:'paper', y:ffdfTgt, yref:'y2',
-      text:`${{ffdfName}} target ${{ffdfTgt.toFixed(1)}}%`,
-      showarrow:false, xanchor:'left', font:{{size:10,color:'#2e7d32'}},
+    tgtAnnots.push({{ x:0, xref:'paper', y:ffdfTgt, yref:'y2',
+      text:`FF+DF Target ${{ffdfTgt.toFixed(1)}}%`,
+      showarrow:false, xanchor:'left', yanchor:'bottom', font:{{size:10,color:'#2e7d32'}},
       bgcolor:'rgba(255,255,255,0.7)' }});
   }}
 
@@ -6027,10 +5970,37 @@ function updateStats(runs, flat) {{
      <div class="stat-chip">Avg ${{ffdfLbl}}: <b>${{avgFFDF.toFixed(1)}}%</b></div>`;
 }}
 
+// Re-run the currently open FB drilldown (table/wafer-map) against a fresh filtered
+// run set, so sidebar filter changes are reflected immediately without re-clicking a bar.
+// Always lands back on the wafer-map view (its default) rather than remembering table.
+function _refreshOpenFbDrilldowns(filteredRuns) {{
+  ['trend', 'pareto-v'].forEach(tabPrefix => {{
+    const card = document.getElementById(`${{tabPrefix}}-fb-drilldown`);
+    if (!card || card.style.display === 'none') return;
+    const ibNum = (window._fbddIb || {{}})[tabPrefix];
+    if (ibNum == null) return;
+    showFbDrilldown(ibNum, filteredRuns, tabPrefix, filteredRuns);
+  }});
+}}
+
+// Debounced auto-apply: sidebar filter checkboxes trigger a rebuild shortly after
+// they change, so the trend chart / wafer map stay in sync without an explicit click.
+var _autoApplyTimer = null;
+function scheduleAutoApply() {{
+  clearTimeout(_autoApplyTimer);
+  _autoApplyTimer = setTimeout(rebuildCharts, 200);
+}}
+document.getElementById('sidebar-body').addEventListener('change', function(ev) {{
+  const t = ev.target;
+  if (t.matches('.lot-cb, .wafer-cb, .mat-cb, .material-cb, .prog-cb, .ibin-cb, .lot-grp-cb, input[name="groupby"], input[name="interval"], input[name="datemode"]')) {{
+    scheduleAutoApply();
+  }}
+}});
+
 // ═══════════════════════════════════════ MAIN REBUILD ══════════════════════
 function rebuildCharts() {{
   const interval = document.querySelector('input[name="interval"]:checked')?.value || 'revision';
-  const topN   = parseInt(document.getElementById('topn-input').value)   || 8;
+  const topN   = parseInt(document.getElementById('topn-input').value)   || 16;
   const thresh = parseFloat(document.getElementById('thresh-input').value) || 0;
 
   const selProgs  = new Set([...document.querySelectorAll('.prog-cb:checked')].map(c => c.value));
@@ -6074,6 +6044,7 @@ function rebuildCharts() {{
   // Store globally so click handlers can access filtered runs
   window._lastFilteredRuns = filteredRuns;
   _updateParetoVTotals(filteredRuns);
+  _refreshOpenFbDrilldowns(filteredRuns);
 
   const groupMode = document.querySelector('input[name="groupby"]:checked')?.value || 'lot';
   const runsForChart = groupMode === 'lot' ? aggregateByLot(filteredRuns) : filteredRuns;
@@ -6110,17 +6081,9 @@ function rebuildCharts() {{
     if (tc) tc.innerHTML = '<div style="padding:20px;color:#e74c3c;font-family:Arial;font-size:13px">&#9888; Plotly chart library failed to load.<br>Check shared/library/ path.</div>';
   }}
 
-  // Lazy: only build/render pareto charts if their tab is currently visible (skip entirely on
-  // first load — buildParetoTraces' hover-text construction is expensive and unused otherwise)
-  if ((typeof Plotly !== 'undefined') && !_firstLoad && (_activeTab === 'pareto-h' || _activeTab === 'pareto-v' || !_paretoRendered)) {{
-    const pareto = buildParetoTraces(filteredRuns, 20);
-    Plotly.react(_PARETO_H_EL, pareto.traces, pareto.layout, _PLOTLY_CFG_STD).then(() => {{
-      document.getElementById(_PARETO_H_EL).on('plotly_click', function(d) {{
-        const pt = d.points[0];
-        const ibNum = parseInt((pt.x || '').toString().match(/\\d+/)?.[0]);
-        if (!isNaN(ibNum)) showFbDrilldown(ibNum, window._lastFilteredRuns, 'pareto-h', window._lastFilteredRuns);
-      }});
-    }});
+  // Lazy: only build/render the pareto chart if its tab is currently visible (skip entirely on
+  // first load — buildParetoVertTraces' hover-text construction is expensive and unused otherwise)
+  if ((typeof Plotly !== 'undefined') && !_firstLoad && (_activeTab === 'pareto-v' || !_paretoRendered)) {{
     const paretoV = buildParetoVertTraces(filteredRuns, 20);
     Plotly.react(_PARETO_V_EL, paretoV.traces, paretoV.layout, _PLOTLY_CFG_STD).then(() => {{
       document.getElementById(_PARETO_V_EL).on('plotly_click', function(d) {{
@@ -6130,7 +6093,7 @@ function rebuildCharts() {{
       }});
     }});
     updateParetoTable(paretoV.tableRows);
-    if (_activeTab === 'pareto-h' || _activeTab === 'pareto-v') _paretoRendered = true;
+    if (_activeTab === 'pareto-v') _paretoRendered = true;
   }}
   if (_activeTab === 'dlcp') updateDlcp(filteredRuns);
 
@@ -6416,7 +6379,8 @@ function showFbDrilldown(ibNum, runs, tabPrefix, selectedRuns) {{
     mapBtn.disabled = !hasDies;
     mapBtn.title = hasDies ? '' : 'No wafers with per-die X/Y data in this selection';
   }}
-  setFbView(tabPrefix, 'table');
+  // Default to the wafer map view (falls back to table when no per-die data exists)
+  setFbView(tabPrefix, (mapBtn && !mapBtn.disabled) ? 'map' : 'table');
 }}
 
 // Fetch per-die [x,y,ibin,fbin,upm_pct] for a run, falling back to a live DATA.runs lookup
@@ -6532,6 +6496,16 @@ function renderWafermapGrid(tabPrefix) {{
     grid.appendChild(none);
     return;
   }}
+  // Virtualize: only actually draw a tile's wafer map once it scrolls into view,
+  // so selecting a bin with 100+ wafers doesn't paint every canvas up front.
+  const io = new IntersectionObserver((entries, obs) => {{
+    entries.forEach(entry => {{
+      if (!entry.isIntersecting) return;
+      const tile = entry.target;
+      obs.unobserve(tile);
+      _drawWafermap(tile._canvasDiv, tile._run, 150, selIb, selFb);
+    }});
+  }}, {{root: null, rootMargin: '200px'}});
   shown.forEach(run => {{
     const tile = document.createElement('div');
     tile.style.cssText = 'cursor:pointer;text-align:center;width:150px';
@@ -6540,11 +6514,14 @@ function renderWafermapGrid(tabPrefix) {{
     label.style.cssText = 'font-size:11px;color:#444;margin-bottom:3px;font-weight:600';
     label.textContent = `${{run.lot || ''}} ${{run.wafer || ''}}${{run.material ? ` (${{run.material}})` : ''}}`;
     const canvasDiv = document.createElement('div');
+    canvasDiv.style.cssText = 'height:150px';  // reserve space before the tile is drawn
     tile.appendChild(label);
     tile.appendChild(canvasDiv);
     tile.onclick = () => openWaferZoom(run, selIb, selFb);
+    tile._canvasDiv = canvasDiv;
+    tile._run = run;
     grid.appendChild(tile);
-    _drawWafermap(canvasDiv, run, 150, selIb, selFb);
+    io.observe(tile);
   }});
 }}
 
@@ -6554,6 +6531,7 @@ function openWaferZoom(run, selIb, selFb) {{
   const legend   = document.getElementById('wm-zoom-legend');
   const canvas   = document.getElementById('wm-zoom-canvas');
   if (!overlay || !canvas) return;
+  window._wmZoomLast = {{run, selIb, selFb}};
   title.textContent = `${{run.lot || ''}} ${{run.wafer || ''}}${{run.material ? ` (${{run.material}})` : ''}}`;
   if (legend) legend.innerHTML = _wmLegendHtml(selIb, selFb);
   _drawWafermap(canvas, run, Math.min(640, window.innerWidth * 0.8), selIb, selFb);
@@ -6576,12 +6554,12 @@ function _drawWafermap(container, run, width, selIb, selFb) {{
   function colorFor(ib, fb) {{
     if (selIb != null && ib === selIb) {{
       // FB deselected in the FB picker — show blank/muted instead of highlighted
-      if (selFb && selFb.size && !selFb.has(fb)) return '#f4f6f6';
+      if (selFb && selFb.size && !selFb.has(fb)) return '#000000';
       return '#e74c3c';  // selected IB — bright red, highlighted
     }}
     if (ib === 1 || ib === 2) return '#1e8449';   // FF pass
     if (ib === 3 || ib === 4) return '#117a65';   // DF pass
-    return '#2471a3';                              // other fail — blue
+    return '#0d47a1';                              // other fail — dark blue
   }}
   if (typeof wmRender !== 'function') {{
     container.innerHTML = '<div style="color:#c0392b;font-size:12px">Wafer map renderer unavailable</div>';
@@ -6596,15 +6574,31 @@ function _drawWafermap(container, run, width, selIb, selFb) {{
       return `Die (${{d.x}}, ${{d.y}})<br>IB ${{d.ib}} &middot; ${{fbTxt}} &middot; UPM ${{upmTxt}}`;
     }},
     width: width,
+    mode: window._wmFastMode === false ? 'svg' : 'canvas',
   }});
+}}
+
+// Toggle between fast canvas rendering (default) and SVG rendering for wafer maps.
+window._wmFastMode = true;
+function toggleWmRenderMode(cb) {{
+  window._wmFastMode = !!cb.checked;
+  document.querySelectorAll('.fbdd-tabs input[type="checkbox"]').forEach(other => {{ other.checked = cb.checked; }});
+  document.querySelectorAll('[id$="-wafermap-grid"]').forEach(grid => {{
+    const tabPrefix = grid.id.replace(/-wafermap-grid$/, '');
+    if (grid.closest('[id$="-wafermap-wrap"]')?.style.display !== 'none') renderWafermapGrid(tabPrefix);
+  }});
+  const zoomOverlay = document.getElementById('wm-zoom-overlay');
+  if (zoomOverlay && zoomOverlay.style.display !== 'none' && window._wmZoomLast) {{
+    openWaferZoom(window._wmZoomLast.run, window._wmZoomLast.selIb, window._wmZoomLast.selFb);
+  }}
 }}
 
 // Color-code legend for the wafer map (matches colorFor() in _drawWafermap)
 function _wmLegendHtml(selIb, selFb) {{
   const items = [['#1e8449', 'FF Pass (IB1/2)'], ['#117a65', 'DF Pass (IB3/4)']];
   if (selIb != null) items.push(['#e74c3c', `Selected IB ${{selIb}} (fail)`]);
-  items.push(['#2471a3', selIb != null ? 'Other Fail' : 'Fail']);
-  if (selIb != null && selFb) items.push(['#f4f6f6', 'Deselected FB (hidden)']);
+  items.push(['#0d47a1', selIb != null ? 'Other Fail' : 'Fail']);
+  if (selIb != null && selFb) items.push(['#000000', 'Deselected FB (hidden)']);
   return '<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:#444;margin-bottom:8px">' +
     items.map(([c, l]) => `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:11px;height:11px;background:${{c}};display:inline-block;border-radius:2px;border:1px solid rgba(0,0,0,0.15)"></span>${{l}}</span>`).join('') +
     '</div>';
@@ -7214,6 +7208,32 @@ document.querySelectorAll('input[name="datemode"]').forEach(rb => rb.addEventLis
 }}));
 document.getElementById('date-from').addEventListener('change', rebuildCharts);
 document.getElementById('date-to').addEventListener('change', rebuildCharts);
+
+// Drag-to-resize the sidebar
+(function() {{
+  const sidebar  = document.getElementById('sidebar');
+  const resizer  = document.getElementById('sidebar-resizer');
+  if (!sidebar || !resizer) return;
+  let dragging = false;
+  resizer.addEventListener('mousedown', (ev) => {{
+    dragging = true;
+    resizer.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    ev.preventDefault();
+  }});
+  document.addEventListener('mousemove', (ev) => {{
+    if (!dragging) return;
+    const min = parseInt(getComputedStyle(sidebar).minWidth) || 220;
+    const max = window.innerWidth * 0.7;
+    sidebar.style.width = Math.min(max, Math.max(min, ev.clientX)) + 'px';
+  }});
+  document.addEventListener('mouseup', () => {{
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.userSelect = '';
+  }});
+}})();
 </script>
 <!-- DLCP column-filter dropdown panel -->
 <div id="dlcp-dd-panel-t" class="dlcp-dd-panel">
@@ -7255,7 +7275,7 @@ def main():
     ap.add_argument('--cfg', default='',
                     help='Product config JSON (auto-detected if omitted)')
     ap.add_argument('--interval', choices=INTERVALS, default='revision')
-    ap.add_argument('--topn',   type=int,   default=8)
+    ap.add_argument('--topn',   type=int,   default=16)
     ap.add_argument('--thresh', type=float, default=0.0)
     ap.add_argument('--group',  choices=['wafer', 'lot'], default='wafer',
                     help='Histogram grouping: lot (default) = one bar per lot, wafer = one bar per wafer')
@@ -7520,7 +7540,7 @@ class TrendChartFrame(tk.Frame):
         out_path = Path(out_str) if out_str else csv_path.parent / (csv_path.stem + '_trend.html')
         out_path = _safe_html_out_path(out_path, csv_path.stem + '_trend.html')
         interval = 'revision'
-        top_n    = 8
+        top_n    = 16
         thresh   = 0.0
         cfg_path = self._cfg_var.get().strip()
 

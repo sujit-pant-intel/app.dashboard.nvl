@@ -30,12 +30,12 @@ from tkinter import messagebox, ttk
 _HERE      = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent   # app.dashboard.nvl/
 _BASE_DIR  = Path.home() / "auto" / "yield"
-_VENV_PY   = next((p for p in [
-               _REPO_ROOT.parent / ".venv" / "Scripts" / "python.exe",
-               Path(r"Y:\tools\scripts\.venv\Scripts\python.exe"),
-               Path(r"C:\scripts\.venv\Scripts\python.exe"),
-             ] if p.exists()), None)
-_PYTHON    = str(_VENV_PY) if _VENV_PY else _sys.executable
+_PYTHON    = sys.executable   # always run subprocesses with whatever interpreter launched this script
+_BAT_PY_PREAMBLE = (
+    'for /f "delims=" %%P in (\'where py 2^>nul\') do set "PYEXE=py" & goto :found\r\n'
+    'set "PYEXE=python"\r\n'
+    ':found\r\n'
+)  # resolve python dynamically in .bat launchers instead of hardcoding sys.executable
 _CFG_NAME  = "yield_setup_config.json"
 _CFG_DIR   = _REPO_ROOT / "shared" / "setup" / "automation" / "yield-dashboard"
 _EMAIL_TO  = "sujit.n.pant@intel.com"
@@ -1590,10 +1590,12 @@ class AutomationManager(tk.Frame):
     def _write_launcher_bat(self) -> Path:
         """Write a per-product .bat launcher so /tr stays under 261 chars."""
         safe_label = re.sub(r'[^\w]', '_', self._product_var.get())
-        bat_path   = _HERE / f"_launch_{safe_label}.bat"
+        bat_path   = _HERE / "launch-bat" / f"_launch_{safe_label}.bat"
+        bat_path.parent.mkdir(parents=True, exist_ok=True)
         lines = [
             "@echo off",
-            f'"{_PYTHON}" "{_HERE / "yld" / "run_automation.py"}"',
+            _BAT_PY_PREAMBLE.rstrip("\r\n"),
+            f'"%PYEXE%" "{_HERE / "yld" / "run_automation.py"}"',
         ]
         if self.aqua_pull_config:
             lines[-1] += f' --report-config "{self.aqua_pull_config}"'
@@ -2083,18 +2085,20 @@ def _write_startup_bats(cfg: dict) -> None:
     """Regenerate all per-product launcher .bat files on startup."""
     for product_name, prod_cfg in cfg.get("products", {}).items():
         safe_label = re.sub(r'[^\w]', '_', product_name)
-        bat_path   = _HERE / f"_launch_{safe_label}.bat"
+        bat_path   = _HERE / "launch-bat" / f"_launch_{safe_label}.bat"
+        bat_path.parent.mkdir(parents=True, exist_ok=True)
         _raw_cfg   = prod_cfg.get("aqua_pull_config", "")
+
         _cfg_path  = Path(_raw_cfg) if _raw_cfg else None
         aqua_cfg   = str(_REPO_ROOT / _cfg_path) if (_cfg_path and not _cfg_path.is_absolute()) else _raw_cfg
         series     = prod_cfg.get("program_series", "")
-        line = f'"{_PYTHON}" "{_HERE / "yld" / "run_automation.py"}"'
+        line = f'"%PYEXE%" "{_HERE / "yld" / "run_automation.py"}"'
         if aqua_cfg:
             line += f' --report-config "{aqua_cfg}"'
         line += f' --product-name "{product_name}"'
         if series:
             line += f' --program-series "{series}"'
-        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+        bat_path.write_text(f"@echo off\r\n{_BAT_PY_PREAMBLE}{line}\r\n", encoding="utf-8")
 
 
 def main() -> None:

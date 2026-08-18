@@ -1,0 +1,113 @@
+{
+  "_comment": "Default PCM parametric panel setup for the yield dashboard. Loaded as fallback when the Product Config JSON does not contain a 'pcm_panels' key. Copy this block into a Product Config JSON under the key 'pcm_panels' to override per-product.",
+
+  "_comment_distribution": "4 histogram panels. Each 'params' entry = one bar in the histogram. Wildcard pattern (e.g. 'Td_RJ*') resolves to the FIRST matching param in the PCM data. Exact display names (UPM/SICC/CDYN) match directly. Add/remove objects to change panel count.",
+  "distribution": [
+    {
+      "label": "Propagation Delay + Leakage + UPM 0107",
+      "params": ["Td_RJ*", "Poff_RJ*", "UPM ULVT 0107 950mV (%) - SDS"]
+    },
+    {
+      "label": "Propagation Delay + Leakage RK + UPM 0704",
+      "params": ["Td_RK*", "Poff_RK*", "UPM ULVT 0704 950mV (%) - SDS"]
+    },
+    {
+      "label": "SICC Totals SDS",
+      "params": [
+        "SICC RING 0.95 - SDS",
+        "SICC CORE 0.95 - SDS",
+        "SICC ATOM 0.95 - SDS",
+        "SICC FULLCHIP - SDS"
+      ]
+    },
+    {
+      "label": "CDYN OG_128B ATOM SDS",
+      "params": [
+        "OG_128B_CDYN_ATOM0 - SDS",
+        "OG_128B_CDYN_ATOM1 - SDS",
+        "OG_128B_CDYN_ATOM2 - SDS",
+        "OG_128B_CDYN_ATOM3 - SDS"
+      ]
+    }
+  ],
+
+  "_comment_xy": "4 scatter panels. Each panel has a left (a) and right (b) plot rendered side-by-side. 'x' wildcard resolves to the FIRST matching param. 'ys' wildcards expand to ALL matches (multi-Y). Add/remove objects to change panel count.",
+  "xy": [
+    {
+      "label": "UPM 0107 vs SICC Totals  |  UPM 0704 vs SICC Totals",
+      "a": {
+        "x": "UPM ULVT 0107 950mV (%) - SDS",
+        "ys": [
+          "SICC RING 0.95 - SDS",
+          "SICC CORE 0.95 - SDS",
+          "SICC ATOM 0.95 - SDS",
+          "SICC FULLCHIP - SDS"
+        ]
+      },
+	  "b": {
+        "x": "UPM ULVT 0704 950mV (%) - SDS",
+        "ys": [
+          "SICC RING 0.95 - SDS",
+          "SICC CORE 0.95 - SDS",
+          "SICC ATOM 0.95 - SDS",
+          "SICC FULLCHIP - SDS"
+        ]
+      }
+    },
+    {
+      "label": "UPM 0107 vs Poff_RJ4u  |  UPM 0704 vs Poff_RK4u",
+      "a": {
+        "x": "UPM ULVT 0107 950mV (%) - SDS",
+        "ys": ["Poff_RJ4u*"]
+      },
+      "b": {
+        "x": "UPM ULVT 0704 950mV (%) - SDS",
+        "ys": ["Poff_RK4u"]
+      }
+    },
+    {
+      "label": "Td_RJ4u vs UPM 0107  |  Td_RK4u vs UPM 0704",
+       "a": {
+        "x": "Td_RJ4u*",
+        "ys": ["UPM ULVT 0107 950mV (%) - SDS"]
+      },
+	  "b": {
+        "x": "Td_RK4u*",
+        "ys": ["UPM ULVT 0704 950mV (%) - SDS"]
+      }
+    },
+    {
+      "label": "UPM 0107 vs CDYN ATOM  |  UPM 0704 vs SICC Totals",
+      "a": {
+        "x": "UPM ULVT 0107 950mV (%) - SDS",
+        "ys": [
+          "OG_128B_CDYN_ATOM0 - SDS",
+          "OG_128B_CDYN_ATOM1 - SDS",
+          "OG_128B_CDYN_ATOM2 - SDS",
+          "OG_128B_CDYN_ATOM3 - SDS"
+        ]
+      },
+      "b": {
+        "x": "UPM ULVT 0704 950mV (%) - SDS",
+        "ys": [
+          "OG_128B_CDYN_ATOM0 - SDS",
+          "OG_128B_CDYN_ATOM1 - SDS",
+          "OG_128B_CDYN_ATOM2 - SDS",
+          "OG_128B_CDYN_ATOM3 - SDS"
+        ]
+      }
+    },
+    {
+      "label": "Td_RJ4u vs UPM 0107  |  Td_RK4u vs UPM 0704",
+      "a": {
+        "x": "Td_RJ*",
+        "ys": ["UPM ULVT 0107 950mV (%) - SDS"]
+      },
+      "b": {
+        "x": "Td_RK*",
+        "ys": ["UPM ULVT 0704 950mV (%) - SDS"]
+      }
+    }
+    
+  ]
+}

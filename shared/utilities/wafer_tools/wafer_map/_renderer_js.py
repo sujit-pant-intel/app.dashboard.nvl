@@ -11,10 +11,77 @@ WAFERMAP_JS = r"""<script>
 
 // ── shared tooltip div (one per page, reused by all wmRender calls) ───────────
 var _wmrTip = null;
-// Page-level pinned state — set to the SVG that owns the sticky tip, or null.
-// Any SVG checks this before showing a hover tip, so moving to a neighbouring
-// tile never overrides a pinned tooltip from another tile.
+// Page-level pinned state — set to the SVG/canvas host that owns the sticky tip,
+// or null. Any host checks this before showing a hover tip, so moving to a
+// neighbouring tile never overrides a pinned tooltip from another tile.
 var _wmrPinnedSvg = null;
+
+function _wmrBuildContent(html, pinned){
+  var closeBtn = pinned
+    ? '<span data-wmr-close="1" '
+      + 'style="cursor:pointer;display:inline-block;background:#c0392b;color:#ffffff;'
+      + 'font-size:11px;font-weight:700;padding:2px 9px;border-radius:3px;'
+      + 'user-select:none;letter-spacing:.04em;border:1px solid #e74c3c" '
+      + 'title="Close tooltip">&#10005;&nbsp;close</span>'
+    : '';
+  var dragBar = pinned
+    ? '<div data-wmr-drag="1" style="display:flex;justify-content:space-between;'
+      + 'align-items:center;margin-bottom:5px;cursor:move;padding:2px 0;'
+      + 'border-bottom:1px solid #2a4060;user-select:none">'
+      + '<span style="font-size:10px;color:#445566;letter-spacing:.05em">&#8597; drag to move</span>'
+      + closeBtn
+      + '</div>'
+    : '';
+  return '<div>' + dragBar + '<div>' + html + '</div></div>';
+}
+
+// ── drag-to-move for pinned tooltip (wired once, page-level) ────────────────
+var _wmrDrag = null;
+document.addEventListener('mousedown', function(ev){
+  if(!_wmrPinnedSvg) return;
+  var tip = _wmrTip;
+  if(tip && ev.target && ev.target.getAttribute('data-wmr-drag')){
+    var r = tip.getBoundingClientRect();
+    _wmrDrag = {ox: ev.clientX - r.left, oy: ev.clientY - r.top};
+    ev.preventDefault();
+  }
+});
+document.addEventListener('mousemove', function(ev){
+  if(!_wmrDrag) return;
+  var tip = _wmrTip;
+  tip.style.left = (ev.clientX - _wmrDrag.ox) + 'px';
+  tip.style.top  = (ev.clientY - _wmrDrag.oy) + 'px';
+});
+document.addEventListener('mouseup', function(){
+  _wmrDrag = null;
+});
+
+function _wmrUnpin(){
+  _wmrPinnedSvg = null;
+  var tip = _wmrTip;
+  if(!tip) return;
+  tip.style.display = 'none';
+  tip.style.pointerEvents = 'none';
+  tip.style.border = '1px solid #2a4060';
+  tip.onmousedown = null;
+}
+
+function _wmrPin(host, html, x, y){
+  _wmrPinnedSvg = host;
+  var tip = _wmrEnsureTip();
+  tip.innerHTML = _wmrBuildContent(html, true);
+  tip.style.display = 'block';
+  tip.style.left = (x + 14) + 'px';
+  tip.style.top  = (y + 10) + 'px';
+  tip.style.pointerEvents = 'auto';
+  tip.style.border = '1px solid #4a9fd4';  // blue border = pinned
+  tip.onmousedown = function(ev){
+    if(ev.target && ev.target.getAttribute('data-wmr-close')){
+      _wmrUnpin();
+      ev.stopPropagation();
+    }
+  };
+}
 
 function _wmrEnsureTip(){
   if(!_wmrTip){
@@ -84,13 +151,14 @@ function wmRender(containerId, cfg){
   var shotColor   = cfg.shotColor   || '#2471a3';
   var shotColors  = cfg.shotColors  || null;   // optional per-shot color array
   var shotStrokeW = cfg.shotStrokeWidth != null ? cfg.shotStrokeWidth : 1.5;
+  var mode        = cfg.mode === 'canvas' ? 'canvas' : 'svg';  // 'canvas' = fast bitmap mode
 
   if(!dies.length){
     el.innerHTML = '<span style="color:#666;font-size:12px">no data</span>';
     return;
   }
 
-  // ── geometry ────────────────────────────────────────────────────────────────
+  // ── geometry (shared by both render modes) ─────────────────────────────────
   var xs = dies.map(function(d){ return d.x; });
   var ys = dies.map(function(d){ return d.y; });
   var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
@@ -112,6 +180,12 @@ function wmRender(containerId, cfg){
   var cy  = (pad + (yMax - yCtr)*csy + csy*0.45).toFixed(1);
   var rx  = (xRad*cs  + cs*0.5).toFixed(1);
   var ry  = (yRad*csy + csy*0.5).toFixed(1);
+
+  if(mode === 'canvas'){
+    _wmRenderCanvas(el, W, H, pad, bgColor, borderColor, shotColor, shotColors, shotStrokeW,
+      dies, colorFn, tipFn, retShots, shotLabels, xMin, yMax, cs, csy, cx, cy, rx, ry);
+    return;
+  }
 
   // ── build SVG markup ────────────────────────────────────────────────────────
   var parts = [];
@@ -213,68 +287,6 @@ function wmRender(containerId, cfg){
   if(hasTips){
     var tip = _wmrEnsureTip();
 
-    function _wmrBuildContent(html, pinned){
-      var closeBtn = pinned
-        ? '<span data-wmr-close="1" '
-          + 'style="cursor:pointer;display:inline-block;background:#c0392b;color:#ffffff;'
-          + 'font-size:11px;font-weight:700;padding:2px 9px;border-radius:3px;'
-          + 'user-select:none;letter-spacing:.04em;border:1px solid #e74c3c" '
-          + 'title="Close tooltip">&#10005;&nbsp;close</span>'
-        : '';
-      var dragBar = pinned
-        ? '<div data-wmr-drag="1" style="display:flex;justify-content:space-between;'
-          + 'align-items:center;margin-bottom:5px;cursor:move;padding:2px 0;'
-          + 'border-bottom:1px solid #2a4060;user-select:none">'
-          + '<span style="font-size:10px;color:#445566;letter-spacing:.05em">&#8597; drag to move</span>'
-          + closeBtn
-          + '</div>'
-        : '';
-      return '<div>' + dragBar + '<div>' + html + '</div></div>';
-    }
-
-    // ── drag-to-move for pinned tooltip ──────────────────────────────────────
-    var _wmrDrag = null;  // {dx, dy} offset from tip origin to mousedown point
-    document.addEventListener('mousedown', function(ev){
-      if(!_wmrPinnedSvg) return;
-      if(ev.target && ev.target.getAttribute('data-wmr-drag')){
-        var r = tip.getBoundingClientRect();
-        _wmrDrag = {ox: ev.clientX - r.left, oy: ev.clientY - r.top};
-        ev.preventDefault();
-      }
-    });
-    document.addEventListener('mousemove', function(ev){
-      if(!_wmrDrag) return;
-      tip.style.left = (ev.clientX - _wmrDrag.ox) + 'px';
-      tip.style.top  = (ev.clientY - _wmrDrag.oy) + 'px';
-    });
-    document.addEventListener('mouseup', function(){
-      _wmrDrag = null;
-    });
-
-    function _wmrUnpin(){
-      _wmrPinnedSvg = null;
-      tip.style.display = 'none';
-      tip.style.pointerEvents = 'none';
-      tip.style.border = '1px solid #2a4060';
-      tip.onmousedown = null;
-    }
-
-    function _wmrPin(html, x, y){
-      _wmrPinnedSvg = svg;
-      tip.innerHTML = _wmrBuildContent(html, true);
-      tip.style.display = 'block';
-      tip.style.left = (x + 14) + 'px';
-      tip.style.top  = (y + 10) + 'px';
-      tip.style.pointerEvents = 'auto';
-      tip.style.border = '1px solid #4a9fd4';  // blue border = pinned
-      tip.onmousedown = function(ev){
-        if(ev.target && ev.target.getAttribute('data-wmr-close')){
-          _wmrUnpin();
-          ev.stopPropagation();
-        }
-      };
-    }
-
     svg.addEventListener('mousemove', function(ev){
       if(_wmrPinnedSvg) return;  // page-level: any pinned tip blocks all hover
       var t = ev.target;
@@ -304,15 +316,145 @@ function wmRender(containerId, cfg){
       // clicking the same die while pinned → unpin
       if(_wmrPinnedSvg === svg){
         var html = tipMap[+t.getAttribute('data-i')];
-        if(html != null) _wmrPin(html, ev.clientX, ev.clientY);
+        if(html != null) _wmrPin(svg, html, ev.clientX, ev.clientY);
         return;
       }
       // unpin any other SVG first, then pin this one
       _wmrUnpin();
       var html = tipMap[+t.getAttribute('data-i')];
-      if(html != null) _wmrPin(html, ev.clientX, ev.clientY);
+      if(html != null) _wmrPin(svg, html, ev.clientX, ev.clientY);
     });
   }
+}
+
+// ── fast canvas render path ──────────────────────────────────────────────────
+// Draws the same wafer map as a single <canvas> bitmap instead of one SVG <rect>
+// per die. Much faster to build/paint when rendering many wafers at once (grid
+// view with dozens/hundreds of thumbnails). Hit-testing for tooltips is done by
+// inverse-transforming the mouse position back to a die (x,y) instead of relying
+// on per-element DOM targets.
+function _wmRenderCanvas(el, W, H, pad, bgColor, borderColor, shotColor, shotColors, shotStrokeW,
+    dies, colorFn, tipFn, retShots, shotLabels, xMin, yMax, cs, csy, cx, cy, rx, ry){
+  var canvas = document.createElement('canvas');
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  canvas.style.display = 'block';
+  el.appendChild(canvas);
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  if(bgColor && bgColor !== 'none'){
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(parseFloat(cx), parseFloat(cy), parseFloat(rx), parseFloat(ry), 0, 0, Math.PI*2);
+  ctx.clip();
+
+  // die -> lookup index, for hover/click hit-testing via inverse coordinate transform
+  var dieMap = {};
+  // Group by fill color first so ctx.fillStyle is set once per color instead of
+  // once per die — cuts canvas state changes from N dies to a handful of colors.
+  var byColor = {};
+  dies.forEach(function(d, i){
+    dieMap[d.x+','+d.y] = i;
+    var fill = colorFn(d) || '#888';
+    (byColor[fill] || (byColor[fill] = [])).push(d);
+  });
+  Object.keys(byColor).forEach(function(fill){
+    ctx.fillStyle = fill;
+    byColor[fill].forEach(function(d){
+      var px = pad + (d.x - xMin)*cs;
+      var py = pad + (yMax - d.y)*csy;
+      ctx.fillRect(px, py, cs*0.9, csy*0.9);
+    });
+  });
+
+  retShots.forEach(function(s, si){
+    var sx = pad + (s[0] - xMin)*cs;
+    var sy = pad + (yMax - s[3])*csy;
+    var sw = (s[2] - s[0] + 1)*cs;
+    var sh = (s[3] - s[1] + 1)*csy;
+    ctx.strokeStyle = (shotColors && shotColors[si] != null) ? shotColors[si] : shotColor;
+    ctx.lineWidth = (shotColors && shotColors[si] != null) ? shotStrokeW * 2.5 : shotStrokeW;
+    ctx.globalAlpha = 0.92;
+    ctx.strokeRect(sx, sy, sw, sh);
+    ctx.globalAlpha = 1;
+  });
+
+  ctx.restore();
+
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(parseFloat(cx), parseFloat(cy), parseFloat(rx), parseFloat(ry), 0, 0, Math.PI*2);
+  ctx.stroke();
+
+  if(shotLabels !== null){
+    ctx.textBaseline = 'top';
+    retShots.forEach(function(s, si){
+      var sx = pad + (s[0] - xMin)*cs;
+      var sy = pad + (yMax - s[3])*csy;
+      var sh = (s[3] - s[1] + 1)*csy;
+      var lbl = shotLabels[si] != null ? String(shotLabels[si]) : String(si + 1);
+      var lfs = Math.max(6, Math.min(10, Math.round(sh * 0.18)));
+      ctx.font = lfs + 'px Arial,sans-serif';
+      ctx.strokeStyle = '#0a0f1a';
+      ctx.lineWidth = 2;
+      ctx.strokeText(lbl, sx + 2, sy);
+      ctx.fillStyle = shotColor;
+      ctx.fillText(lbl, sx + 2, sy);
+    });
+  }
+
+  if(!tipFn) return;
+
+  var tip = _wmrEnsureTip();
+
+  function _dieAt(ev){
+    var r = canvas.getBoundingClientRect();
+    var mx = ev.clientX - r.left, my = ev.clientY - r.top;
+    var dx = Math.round((mx - pad) / cs + xMin);
+    var dy = yMax - Math.round((my - pad) / csy);
+    var i = dieMap[dx+','+dy];
+    return i != null ? dies[i] : null;
+  }
+
+  canvas.addEventListener('mousemove', function(ev){
+    if(_wmrPinnedSvg) return;
+    var d = _dieAt(ev);
+    if(d){
+      tip.innerHTML = _wmrBuildContent(tipFn(d), false);
+      tip.style.display = 'block';
+      tip.style.left = (ev.clientX + 14) + 'px';
+      tip.style.top  = (ev.clientY + 10) + 'px';
+      tip.style.pointerEvents = 'none';
+      tip.style.border = '1px solid #2a4060';
+    } else {
+      tip.style.display = 'none';
+    }
+  });
+
+  canvas.addEventListener('mouseleave', function(){
+    if(_wmrPinnedSvg) return;
+    tip.style.display = 'none';
+  });
+
+  canvas.addEventListener('click', function(ev){
+    var d = _dieAt(ev);
+    if(!d) return;
+    if(_wmrPinnedSvg === canvas){
+      _wmrPin(canvas, tipFn(d), ev.clientX, ev.clientY);
+      return;
+    }
+    _wmrUnpin();
+    _wmrPin(canvas, tipFn(d), ev.clientX, ev.clientY);
+  });
 }
 
 window.wmRender = wmRender;

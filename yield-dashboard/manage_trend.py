@@ -32,12 +32,12 @@ from tkinter import messagebox, ttk
 _HERE      = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent   # app.dashboard.nvl/
 _BASE_DIR  = Path.home() / "auto" / "trend"
-_VENV_PY   = next((p for p in [
-               _REPO_ROOT.parent / ".venv" / "Scripts" / "python.exe",
-               Path(r"Y:\tools\scripts\.venv\Scripts\python.exe"),
-               Path(r"C:\scripts\.venv\Scripts\python.exe"),
-             ] if p.exists()), None)
-_PYTHON    = str(_VENV_PY) if _VENV_PY else sys.executable
+_PYTHON    = sys.executable   # always run subprocesses with whatever interpreter launched this script
+_BAT_PY_PREAMBLE = (
+    'for /f "delims=" %%P in (\'where py 2^>nul\') do set "PYEXE=py" & goto :found\r\n'
+    'set "PYEXE=python"\r\n'
+    ':found\r\n'
+)  # resolve python dynamically in .bat launchers instead of hardcoding sys.executable
 _CFG_NAME       = "trend_product_config.json"
 _EMAIL_CFG_NAME = "trend_setup_config.json"
 _CFG_DIR        = _REPO_ROOT / "shared" / "setup" / "automation" / "trend-dashboard"
@@ -205,7 +205,7 @@ def _load_config(cfg_path: Path) -> dict:
             return json.loads(cfg_path.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return {"email_to": _EMAIL_TO, "interval": "weekly", "topn": 8, "thresh": 0.0}
+    return {"email_to": _EMAIL_TO, "interval": "weekly", "topn": 16, "thresh": 0.0}
 
 
 def _save_config(cfg_path: Path, cfg: dict) -> None:
@@ -385,7 +385,7 @@ class AutomationManager(tk.Frame):
         row += 1
         tk.Label(frm_params, text="Top N IBins:", font=FONT_UI, bg=BG, fg=FG_DIM
                  ).grid(row=row, column=0, sticky="w", padx=8, pady=4)
-        self.topn_var = tk.StringVar(value=str(self.cfg.get("topn", 8)))
+        self.topn_var = tk.StringVar(value=str(self.cfg.get("topn", 16)))
         tk.Spinbox(frm_params, from_=1, to=50, textvariable=self.topn_var,
                    font=FONT_MONO, bg=BG2, fg=FG, width=6, relief="flat"
                    ).grid(row=row, column=1, sticky="w", padx=8, pady=4)
@@ -414,7 +414,7 @@ class AutomationManager(tk.Frame):
         # Save chart parameters to trend_product_config.json
         self.cfg.update({
             "interval": self.interval_var.get(),
-            "topn":     int(self.topn_var.get() or 8),
+            "topn":     int(self.topn_var.get() or 16),
             "thresh":   float(self.thresh_var.get() or 0.0),
         })
         # Save email settings to trend_setup_config.json
@@ -859,7 +859,7 @@ class AutomationManager(tk.Frame):
                                 bg=BG, fg=ACCENT, bd=1, relief="groove")
         frm_cfg.pack(fill="x", **pad)
 
-        run_script = str(_HERE / "trend" / "run_trend.py")
+        run_script = str(_HERE / "yld" / "run_trend.py")
 
         for row, lbl, val in [
             (0, "Task name:", _TASK_NAME),
@@ -996,9 +996,10 @@ class AutomationManager(tk.Frame):
 
     def _write_launcher_bat(self) -> Path:
         """Write a .bat launcher so /tr stays under 261 chars."""
-        bat_path = _HERE / "_launch_trend.bat"
-        line = f'"{_PYTHON}" "{_HERE / "trend" / "run_trend.py"}"'
-        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+        bat_path = _HERE / "launch-bat" / "_launch_trend.bat"
+        bat_path.parent.mkdir(parents=True, exist_ok=True)
+        line = f'"%PYEXE%" "{_HERE / "yld" / "run_trend.py"}"'
+        bat_path.write_text(f"@echo off\r\n{_BAT_PY_PREAMBLE}{line}\r\n", encoding="utf-8")
         return bat_path
 
     def _sched_create(self) -> None:
@@ -1499,7 +1500,7 @@ class AutomationManager(tk.Frame):
                 return
 
             interval = self.interval_var.get()
-            topn     = int(self.topn_var.get() or 8)
+            topn     = int(self.topn_var.get() or 16)
             thresh   = float(self.thresh_var.get() or 0.0)
             email_to = self.email_var.get().strip()
             ts_run   = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1965,12 +1966,12 @@ class AutomationManager(tk.Frame):
             cache_dir.mkdir(parents=True, exist_ok=True)
             return cache_dir / "run_cache.json"
         except (OSError, PermissionError):
-            local_cache = _HERE / "trend" / ".cache"
+            local_cache = _HERE / "yld" / ".cache"
             try:
                 local_cache.mkdir(exist_ok=True)
                 return local_cache / "trend_run_cache.json"
             except Exception:
-                return _HERE / "trend" / "trend_run_cache.json"
+                return _HERE / "yld" / "trend_run_cache.json"
 
     def _load_cache(self) -> dict:
         try:
@@ -1995,9 +1996,10 @@ class AutomationManager(tk.Frame):
 
 def _write_startup_bat() -> None:
     """Regenerate the trend launcher .bat on startup."""
-    bat_path = _HERE / "_launch_trend.bat"
-    line = f'"{_PYTHON}" "{_HERE / "trend" / "run_trend.py"}"'
-    bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+    bat_path = _HERE / "launch-bat" / "_launch_trend.bat"
+    bat_path.parent.mkdir(parents=True, exist_ok=True)
+    line = f'"%PYEXE%" "{_HERE / "yld" / "run_trend.py"}"'
+    bat_path.write_text(f"@echo off\r\n{_BAT_PY_PREAMBLE}{line}\r\n", encoding="utf-8")
 
 
 def main() -> None:

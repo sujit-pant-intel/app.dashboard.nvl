@@ -3451,9 +3451,11 @@ def _send_via_outlook(to: str, subject: str, html_body: str) -> None:
     except ImportError:
         pass  # not in this env, try system python
 
-    # Fallback: write HTML to a temp file so we avoid quoting issues in -c script
+    # Fallback: write HTML to a temp file so we avoid quoting issues in -c script.
+    # Prefer the current project venv, then the Python installations available on this machine.
     candidates = [
-        r"C:\Users\snpant\AppData\Local\Python\pythoncore-3.14-64\python.exe",
+        r"Y:\tools\scripts\.venv\Scripts\python.exe",
+        r"C:\Program Files\Python314\python.exe",
         r"C:\Python313\python.exe",
         r"C:\Python312\python.exe",
     ]

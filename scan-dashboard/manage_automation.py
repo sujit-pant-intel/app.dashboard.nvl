@@ -50,12 +50,12 @@ _HERE      = Path(__file__).resolve().parent
 _SELF      = Path(__file__).resolve()   # this file, self-invoked for the automation engine
 _REPO_ROOT = _HERE.parent   # app.dashboard.nvl/
 _BASE_DIR  = Path.home() / "auto" / "scan"
-_VENV_PY   = next((p for p in [
-               _REPO_ROOT.parent / ".venv" / "Scripts" / "python.exe",
-               Path(r"Y:\tools\scripts\.venv\Scripts\python.exe"),
-               Path(r"C:\scripts\.venv\Scripts\python.exe"),
-             ] if p.exists()), None)
-_PYTHON    = str(_VENV_PY) if _VENV_PY else sys.executable
+_PYTHON    = sys.executable   # always run subprocesses with whatever interpreter launched this script
+_BAT_PY_PREAMBLE = (
+    'for /f "delims=" %%P in (\'where py 2^>nul\') do set "PYEXE=py" & goto :found\r\n'
+    'set "PYEXE=python"\r\n'
+    ':found\r\n'
+)  # resolve python dynamically in .bat launchers instead of hardcoding sys.executable
 _CFG_NAME  = "scan_setup_config.json"
 _CFG_DIR   = _REPO_ROOT / "shared" / "setup" / "automation" / "scan-dashboard"
 _EMAIL_TO  = "sujit.n.pant@intel.com"
@@ -3812,9 +3812,9 @@ class AutomationManager(tk.Frame):
         _LAUNCH_BAT_DIR.mkdir(parents=True, exist_ok=True)
         bat_path   = _LAUNCH_BAT_DIR / f"_launch_{safe_label}.bat"
         product    = self._product_var.get()
-        line = (f'"{_PYTHON}" "{_SELF}"'
+        line = (f'"%PYEXE%" "{_SELF}"'
                 f' --base-dir "{self.base_dir}" --product "{product}"')
-        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+        bat_path.write_text(f"@echo off\r\n{_BAT_PY_PREAMBLE}{line}\r\n", encoding="utf-8")
         return bat_path
 
     def _sched_create(self) -> None:
@@ -4036,9 +4036,9 @@ def _write_startup_bat() -> None:
         safe_label   = re.sub(r'[^\w]', '_', f"Scan Automation [{product_name}]")
         bat_path     = _LAUNCH_BAT_DIR / f"_launch_{safe_label}.bat"
         product_base = prod_cfg.get("base_dir", str(_BASE_DIR))
-        line = (f'"{_PYTHON}" "{_SELF}"'
+        line = (f'"%PYEXE%" "{_SELF}"'
                 f' --base-dir "{product_base}" --product "{product_name}"')
-        bat_path.write_text(f"@echo off\r\n{line}\r\n", encoding="utf-8")
+        bat_path.write_text(f"@echo off\r\n{_BAT_PY_PREAMBLE}{line}\r\n", encoding="utf-8")
 
 
 def main() -> None:
