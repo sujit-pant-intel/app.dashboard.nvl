@@ -4521,7 +4521,7 @@ def generate_html(csv_path: Path, groups: OrderedDict, runs: list[dict],
     mat_checks = ''.join(
         f'<label class="cb-lbl">'
         f'<input type="checkbox" class="mat-cb" value="{m}" checked> '
-        f'<span>{m if m else "(none)"}</span></label>'
+        f'<span>{m if m else "Material-N/A"}</span></label>'
         for m in all_mats
     )
     ibin_checks = ''.join(
@@ -4963,6 +4963,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
       <div class="iv-row">
         <label><input type="radio" name="groupby" value="lot" checked><span>Program / Lot</span></label>
         <label><input type="radio" name="groupby" value="wafer"><span>Program / Lot / Wafer</span></label>
+        <label><input type="radio" name="groupby" value="material"><span>Program / Material</span></label>
       </div>
     </div>
     <div class="sep"></div>
@@ -5090,7 +5091,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
       </div>
       <div class="chart-card" id="trend-fb-drilldown" style="display:none">
         <h2 id="trend-fb-title">Functional Bin Breakdown — IB <span id="trend-fb-ib"></span>
-          <button onclick="exportFbDrilldownCsv('trend-fb-thead','trend-fb-tbody','fb_drilldown')" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
+          <button onclick="exportFbDrilldownDiesCsv('trend','fb_drilldown_dies')" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
         <div class="fbdd-tabs" style="margin:4px 0 8px;display:flex;align-items:center;gap:12px">
           <button class="fbdd-tab-btn active" id="trend-fbview-table-btn" onclick="setFbView('trend','table')">Table</button>
           <button class="fbdd-tab-btn" id="trend-fbview-map-btn" onclick="setFbView('trend','map')">Wafer Map</button>
@@ -5105,7 +5106,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
         </table></div></div>
         <div id="trend-wafermap-wrap" style="display:none">
           <div id="trend-wafermap-selrow" style="display:none;margin-bottom:8px;font-size:12px;position:relative">
-            <span class="wm-dd-group" style="position:relative;display:inline-block">
+            <span class="wm-dd-group" id="trend-wm-wafer-wrap" style="position:relative;display:inline-block">
               <span onclick="toggleWmDrop(this,'trend','wafer')" style="cursor:pointer;user-select:none;color:#2c3e50;font-weight:600">Wafers <span class="wm-dd-arrow">&#9654;</span></span>
               <span id="trend-wafermap-summary" style="color:#888;margin-left:6px"></span>
               <div id="trend-wafermap-drop" class="wm-dd-panel" style="display:none">
@@ -5121,6 +5122,20 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
                 <div style="margin-bottom:4px"><button onclick="wmFbCheckAll('trend',true)" style="font-size:11px">All</button> <button onclick="wmFbCheckAll('trend',false)" style="font-size:11px">None</button></div>
                 <div id="trend-wafermap-fbchecks" style="display:flex;flex-direction:column;max-height:180px;overflow-y:auto"></div>
               </div>
+            </span>
+            <span style="margin-left:14px;color:#2c3e50" title="Only show wafers whose fail count for this IB exceeds this value">
+              IB Fail Count &gt; <input type="number" id="trend-wm-failthresh" value="0" min="0" step="1" style="width:50px;font-size:11px;padding:1px 4px" onchange="_wmSetFailThresh('trend')">
+            </span>
+            <span style="margin-left:8px;color:#888;font-style:italic">and</span>
+            <span style="margin-left:8px;color:#2c3e50" title="Only show wafers whose fail % for this IB (fails / total dies on wafer) exceeds this value">
+              Fail % &gt; <input type="number" id="trend-wm-failpctthresh" value="0" min="0" max="100" step="0.1" style="width:55px;font-size:11px;padding:1px 4px" onchange="_wmSetFailThresh('trend')">
+            </span>
+            <span style="margin-left:14px;color:#2c3e50" title="Only show wafers whose fail count for the checked FB(s) exceeds this value">
+              FB Fail Count &gt; <input type="number" id="trend-wm-fbfailthresh" value="0" min="0" step="1" style="width:50px;font-size:11px;padding:1px 4px" onchange="renderWafermapGrid('trend')">
+            </span>
+            <span style="margin-left:8px;color:#888;font-style:italic">and</span>
+            <span style="margin-left:8px;color:#2c3e50" title="Only show wafers whose fail % for the checked FB(s) (fails / total dies on wafer) exceeds this value">
+              FB Fail % &gt; <input type="number" id="trend-wm-fbfailpctthresh" value="0" min="0" max="100" step="0.1" style="width:55px;font-size:11px;padding:1px 4px" onchange="renderWafermapGrid('trend')">
             </span>
           </div>
           <div id="trend-wafermap-grid" style="display:flex;flex-wrap:wrap;gap:14px"></div>
@@ -5140,7 +5155,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
       </div>
       <div class="chart-card" id="pareto-v-fb-drilldown" style="display:none">
         <h2 id="pareto-v-fb-title">Functional Bin Breakdown — IB <span id="pareto-v-fb-ib"></span>
-          <button onclick="exportFbDrilldownCsv('pareto-v-fb-thead','pareto-v-fb-tbody','fb_drilldown_v')" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
+          <button onclick="exportFbDrilldownDiesCsv('pareto-v','fb_drilldown_dies_v')" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
         <div class="fbdd-tabs" style="margin:4px 0 8px;display:flex;align-items:center;gap:12px">
           <button class="fbdd-tab-btn active" id="pareto-v-fbview-table-btn" onclick="setFbView('pareto-v','table')">Table</button>
           <button class="fbdd-tab-btn" id="pareto-v-fbview-map-btn" onclick="setFbView('pareto-v','map')">Wafer Map</button>
@@ -5155,7 +5170,7 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
         </table></div></div>
         <div id="pareto-v-wafermap-wrap" style="display:none">
           <div id="pareto-v-wafermap-selrow" style="display:none;margin-bottom:8px;font-size:12px;position:relative">
-            <span class="wm-dd-group" style="position:relative;display:inline-block">
+            <span class="wm-dd-group" id="pareto-v-wm-wafer-wrap" style="position:relative;display:inline-block">
               <span onclick="toggleWmDrop(this,'pareto-v','wafer')" style="cursor:pointer;user-select:none;color:#2c3e50;font-weight:600">Wafers <span class="wm-dd-arrow">&#9654;</span></span>
               <span id="pareto-v-wafermap-summary" style="color:#888;margin-left:6px"></span>
               <div id="pareto-v-wafermap-drop" class="wm-dd-panel" style="display:none">
@@ -5171,6 +5186,20 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
                 <div style="margin-bottom:4px"><button onclick="wmFbCheckAll('pareto-v',true)" style="font-size:11px">All</button> <button onclick="wmFbCheckAll('pareto-v',false)" style="font-size:11px">None</button></div>
                 <div id="pareto-v-wafermap-fbchecks" style="display:flex;flex-direction:column;max-height:180px;overflow-y:auto"></div>
               </div>
+            </span>
+            <span style="margin-left:14px;color:#2c3e50" title="Only show wafers whose fail count for this IB exceeds this value">
+              IB Fail Count &gt; <input type="number" id="pareto-v-wm-failthresh" value="0" min="0" step="1" style="width:50px;font-size:11px;padding:1px 4px" onchange="_wmSetFailThresh('pareto-v')">
+            </span>
+            <span style="margin-left:8px;color:#888;font-style:italic">and</span>
+            <span style="margin-left:8px;color:#2c3e50" title="Only show wafers whose fail % for this IB (fails / total dies on wafer) exceeds this value">
+              Fail % &gt; <input type="number" id="pareto-v-wm-failpctthresh" value="0" min="0" max="100" step="0.1" style="width:55px;font-size:11px;padding:1px 4px" onchange="_wmSetFailThresh('pareto-v')">
+            </span>
+            <span style="margin-left:14px;color:#2c3e50" title="Only show wafers whose fail count for the checked FB(s) exceeds this value">
+              FB Fail Count &gt; <input type="number" id="pareto-v-wm-fbfailthresh" value="0" min="0" step="1" style="width:50px;font-size:11px;padding:1px 4px" onchange="renderWafermapGrid('pareto-v')">
+            </span>
+            <span style="margin-left:8px;color:#888;font-style:italic">and</span>
+            <span style="margin-left:8px;color:#2c3e50" title="Only show wafers whose fail % for the checked FB(s) (fails / total dies on wafer) exceeds this value">
+              FB Fail % &gt; <input type="number" id="pareto-v-wm-fbfailpctthresh" value="0" min="0" max="100" step="0.1" style="width:55px;font-size:11px;padding:1px 4px" onchange="renderWafermapGrid('pareto-v')">
             </span>
           </div>
           <div id="pareto-v-wafermap-grid" style="display:flex;flex-wrap:wrap;gap:14px"></div>
@@ -5366,8 +5395,16 @@ function showTab(name, btn) {{
 }}
 
 // ═══════════════════════════════════════ FILTER HELPERS ════════════════════
-function selAll(sel)  {{ document.querySelectorAll(sel).forEach(c => c.checked = true);  scheduleAutoApply(); }}
-function selNone(sel) {{ document.querySelectorAll(sel).forEach(c => c.checked = false); scheduleAutoApply(); }}
+// Only affects checkboxes not hidden by a current search filter (label display:none),
+// matching lotWaferAll's behavior of respecting the visible/filtered subset.
+function selAll(sel)  {{
+  document.querySelectorAll(sel).forEach(c => {{ const lbl = c.closest('.cb-lbl'); if (!lbl || lbl.style.display !== 'none') c.checked = true; }});
+  scheduleAutoApply();
+}}
+function selNone(sel) {{
+  document.querySelectorAll(sel).forEach(c => {{ const lbl = c.closest('.cb-lbl'); if (!lbl || lbl.style.display !== 'none') c.checked = false; }});
+  scheduleAutoApply();
+}}
 
 // Filter a sidebar checkbox list (e.g. Test Program, Interface Bin) by label text
 function sidebarFilterList(listId, text) {{
@@ -5561,8 +5598,12 @@ function runLabel(r) {{
 }}
 function fullLotLabel(r) {{
   const lot = r.sort_lot || r.lot || runLabel(r);
-  const full = (r.full_lots && r.full_lots.length) ? r.full_lots.join(', ') : lot;
-  return `${{lot}}<br>Full Lot: ${{full}}`;
+  const lots = (r.full_lots && r.full_lots.length) ? r.full_lots : [lot];
+  const MAX_LOTS = 6;
+  const full = lots.length > MAX_LOTS
+    ? `${{lots.slice(0, MAX_LOTS).join(', ')}}, \u2026 (+${{lots.length - MAX_LOTS}} more)`
+    : lots.join(', ');
+  return `${{lot}}<br>Full Lot${{lots.length > 1 ? 's' : ''}} (${{lots.length}}): ${{full}}`;
 }}
 
 // ═══════════════════════════════════════ AGGREGATE BY LOT ════════════════
@@ -5576,6 +5617,49 @@ function aggregateByLot(runs) {{
       map.set(key, {{
         lot: lot7, wafer: '', sort_lot: ((r.sort_lot || r.lot) || '').substring(0, 7),
         material: r.material, program: r.program,
+        date: r.date, total_dies: 0, bin_counts: {{}}, fb_counts: {{}}, fb_modules: {{}}, ff_upm: [], df_upm: [],
+        _wafers: [], _sourceRuns: [], _n: 0, _fullLots: new Set(),
+      }});
+    }}
+    const agg = map.get(key);
+    agg.total_dies += (r.total_dies || 0);
+    agg._n++;
+    agg._wafers.push(r.wafer || '?');
+    agg._sourceRuns.push(r);
+    (r.full_lots && r.full_lots.length ? r.full_lots : [r.sort_lot || r.lot]).forEach(l => agg._fullLots.add(l));
+    if (r.date && (!agg.date || r.date > agg.date)) agg.date = r.date;
+    for (const [ib, cnt] of Object.entries(r.bin_counts))
+      agg.bin_counts[ib] = (agg.bin_counts[ib] || 0) + cnt;
+    for (const [ib, fbMap] of Object.entries(r.fb_counts || {{}})) {{
+      if (!agg.fb_counts[ib]) agg.fb_counts[ib] = {{}};
+      for (const [fb, cnt] of Object.entries(fbMap))
+        agg.fb_counts[ib][fb] = (agg.fb_counts[ib][fb] || 0) + cnt;
+    }}
+    for (const [ib, fbMap] of Object.entries(r.fb_modules || {{}})) {{
+      if (!agg.fb_modules[ib]) agg.fb_modules[ib] = {{}};
+      Object.assign(agg.fb_modules[ib], fbMap);
+    }}
+    if (r.ff_upm && r.ff_upm.length) agg.ff_upm.push(...r.ff_upm);
+    if (r.df_upm && r.df_upm.length) agg.df_upm.push(...r.df_upm);
+  }}
+  return [...map.values()].map(agg => ({{
+    ...agg,
+    wafer: agg._wafers.length === 1 ? agg._wafers[0] : `${{agg._n}}W`,
+    full_lots: [...agg._fullLots],
+  }}));
+}}
+
+// Merge all lots/wafers belonging to the same (program, material) into one run.
+// Runs with no material tag are grouped under 'Material-N/A'.
+function aggregateByMaterial(runs) {{
+  const map = new Map();
+  for (const r of runs) {{
+    const mat = r.material || 'Material-N/A';
+    const key = r.program + '\x00' + mat;
+    if (!map.has(key)) {{
+      map.set(key, {{
+        lot: mat, wafer: '', sort_lot: mat,
+        material: mat, program: r.program,
         date: r.date, total_dies: 0, bin_counts: {{}}, fb_counts: {{}}, fb_modules: {{}}, ff_upm: [], df_upm: [],
         _wafers: [], _sourceRuns: [], _n: 0, _fullLots: new Set(),
       }});
@@ -5632,6 +5716,7 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
 
   const xPos    = flat.map((_, i) => i);
   const xLabels = flat.map(({{ run }}) => {{
+    if (groupMode === 'material') return run.material || 'Material-N/A';
     const base = run.sort_lot || run.lot;
     const wfr  = groupMode === 'wafer' ? ` W${{run.wafer || '?'}}` : '';
     const mat  = run.material ? `(${{run.material}})` : '';
@@ -5645,7 +5730,7 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
       const pct = (stats.failIbins[ib] || 0).toFixed(2);
       const totalDies = run.total_dies || Object.values(run.bin_counts || {{}}).reduce((s,v)=>s+v,0) || 1;
       const nFail = Math.round((pct / 100) * totalDies);
-      return `<b>${{fullLotLabel(run)}}</b><br>Period: ${{period}}<br>(${{run.material || '?'}})&nbsp;&nbsp;Wafer: ${{run.wafer}}<br>Program: ${{run.program}}<br>Date: ${{run.date}}<br>\u2500\u2500\u2500\u2500<br><b>${{ibinLabel(ib)}}</b><br>Fail: <b>${{nFail}} (${{pct}}%)</b>`;
+      return `<b>${{fullLotLabel(run)}}</b><br>Period: ${{period}}<br>(${{run.material || 'Material-N/A'}})&nbsp;&nbsp;Wafer: ${{run.wafer}}<br>Program: ${{run.program}}<br>Date: ${{run.date}}<br>\u2500\u2500\u2500\u2500<br><b>${{ibinLabel(ib)}}</b><br>Fail: <b>${{nFail}} (${{pct}}%)</b>`;
     }});
     traces.push({{ type:'bar', x:xPos, y, name:ibinLabel(ib),
       hovertext:hover, hoverinfo:'text',
@@ -6047,7 +6132,9 @@ function rebuildCharts() {{
   _refreshOpenFbDrilldowns(filteredRuns);
 
   const groupMode = document.querySelector('input[name="groupby"]:checked')?.value || 'lot';
-  const runsForChart = groupMode === 'lot' ? aggregateByLot(filteredRuns) : filteredRuns;
+  const runsForChart = groupMode === 'lot' ? aggregateByLot(filteredRuns)
+    : groupMode === 'material' ? aggregateByMaterial(filteredRuns)
+    : filteredRuns;
   const groups = groupRuns(runsForChart, interval);
   // Always build full traces (UPM line + click targets) — the static server-rendered
   // embed lacks the UPM trace and has no click handler bound, so first load needs this too.
@@ -6336,24 +6423,22 @@ function showFbDrilldown(ibNum, runs, tabPrefix, selectedRuns) {{
   // A bar can aggregate multiple wafers (e.g. a lot-level bar) — show all as thumbnails,
   // with checkboxes to narrow down which ones are displayed.
   const mapBtn = document.getElementById(`${{tabPrefix}}-fbview-map-btn`);
-  const eligible = runs.filter(r => {{
-    const dxy = _liveDieXy(r);
-    if (!dxy.length) return false;
-    // Only show wafers where the selected IB actually failed a die on that wafer.
-    return dxy.some(d => d[2] === ibNum);
-  }});
-  window._fbddRuns = window._fbddRuns || {{}};
-  window._fbddRuns[tabPrefix] = eligible;
+  window._fbddAllRuns = window._fbddAllRuns || {{}};
+  window._fbddAllRuns[tabPrefix] = runs;
   window._fbddIb = window._fbddIb || {{}};
   window._fbddIb[tabPrefix] = ibNum;
+  window._fbddRuns = window._fbddRuns || {{}};
+  const eligible = _wmComputeEligible(tabPrefix);
   const selRow = document.getElementById(`${{tabPrefix}}-wafermap-selrow`);
+  const waferWrap = document.getElementById(`${{tabPrefix}}-wm-wafer-wrap`);
   const checksEl = document.getElementById(`${{tabPrefix}}-wafermap-checks`);
   if (checksEl) {{
     checksEl.innerHTML = eligible.map((r, i) => `<label class="cb-lbl">
         <input type="checkbox" class="wm-chk-${{tabPrefix}}" value="${{i}}" checked onchange="renderWafermapGrid('${{tabPrefix}}');_wmUpdateSummary('${{tabPrefix}}')"> ${{r.lot || ''}} ${{r.wafer || ''}}${{r.material ? ` (${{r.material}})` : ''}}
       </label>`).join('');
   }}
-  if (selRow) selRow.style.display = eligible.length > 1 ? '' : 'none';
+  if (selRow) selRow.style.display = '';
+  if (waferWrap) waferWrap.style.display = eligible.length > 1 ? '' : 'none';
   _wmUpdateSummary(tabPrefix);
 
   // FB picker: list every functional bin seen under this IB across the eligible wafers.
@@ -6381,6 +6466,89 @@ function showFbDrilldown(ibNum, runs, tabPrefix, selectedRuns) {{
   }}
   // Default to the wafer map view (falls back to table when no per-die data exists)
   setFbView(tabPrefix, (mapBtn && !mapBtn.disabled) ? 'map' : 'table');
+}}
+
+// {{count, pct}} of dies on a run that failed the given IB — pct is out of the
+// wafer's total die count (falls back to summing bin_counts if total_dies is absent).
+function _wmFailStats(run, ibNum) {{
+  const count = _liveDieXy(run).filter(d => d[2] === ibNum).length;
+  const total = run.total_dies || Object.values(run.bin_counts || {{}}).reduce((s, v) => s + v, 0) || 0;
+  const pct = total > 0 ? (count / total * 100) : 0;
+  return {{count, pct}};
+}}
+
+// Same as _wmFailStats but restricted to dies whose FB is in the checked-FB set —
+// used to hide wafers that have zero fails among the currently checked FB(s).
+function _wmFbFailStats(run, ibNum, fbSet) {{
+  const count = _liveDieXy(run).filter(d => d[2] === ibNum && fbSet.has(d[3])).length;
+  const total = run.total_dies || Object.values(run.bin_counts || {{}}).reduce((s, v) => s + v, 0) || 0;
+  const pct = total > 0 ? (count / total * 100) : 0;
+  return {{count, pct}};
+}}
+
+// Recompute the eligible-wafer list for a tabPrefix from the full run list, the
+// selected IB, and the current Fail Count / Fail % threshold inputs — a wafer is
+// kept only if BOTH its fail count and its fail % for this IB exceed their
+// respective thresholds. Caches the result on window._fbddRuns[tabPrefix] and returns it.
+function _wmComputeEligible(tabPrefix) {{
+  const runs  = (window._fbddAllRuns || {{}})[tabPrefix] || [];
+  const ibNum = (window._fbddIb || {{}})[tabPrefix];
+  const countInput = document.getElementById(`${{tabPrefix}}-wm-failthresh`);
+  const pctInput   = document.getElementById(`${{tabPrefix}}-wm-failpctthresh`);
+  const countThresh = countInput ? (parseInt(countInput.value) || 0) : 0;
+  const pctThresh   = pctInput   ? (parseFloat(pctInput.value) || 0) : 0;
+  const eligible = runs.filter(r => {{
+    const {{count, pct}} = _wmFailStats(r, ibNum);
+    return count > countThresh && pct > pctThresh;
+  }});
+  window._fbddRuns = window._fbddRuns || {{}};
+  window._fbddRuns[tabPrefix] = eligible;
+  return eligible;
+}}
+
+// Re-apply the Fail Threshold filter (called on input change) and redraw the
+// wafer checkbox list, FB picker, and grid using the same logic as showFbDrilldown.
+function _wmSetFailThresh(tabPrefix) {{
+  const eligible = _wmComputeEligible(tabPrefix);
+  const ibNum = (window._fbddIb || {{}})[tabPrefix];
+  const selRow = document.getElementById(`${{tabPrefix}}-wafermap-selrow`);
+  const waferWrap = document.getElementById(`${{tabPrefix}}-wm-wafer-wrap`);
+  const checksEl = document.getElementById(`${{tabPrefix}}-wafermap-checks`);
+  if (checksEl) {{
+    checksEl.innerHTML = eligible.map((r, i) => `<label class="cb-lbl">
+        <input type="checkbox" class="wm-chk-${{tabPrefix}}" value="${{i}}" checked onchange="renderWafermapGrid('${{tabPrefix}}');_wmUpdateSummary('${{tabPrefix}}')"> ${{r.lot || ''}} ${{r.wafer || ''}}${{r.material ? ` (${{r.material}})` : ''}}
+      </label>`).join('');
+  }}
+  if (selRow) selRow.style.display = '';
+  if (waferWrap) waferWrap.style.display = eligible.length > 1 ? '' : 'none';
+  _wmUpdateSummary(tabPrefix);
+
+  const fbSet = new Set();
+  eligible.forEach(r => {{
+    const fbCounts = (r.fb_counts && r.fb_counts[ibNum]) || {{}};
+    Object.keys(fbCounts).forEach(fb => fbSet.add(parseInt(fb)));
+  }});
+  const fbList = [...fbSet].sort((a, b) => a - b);
+  window._fbddFb = window._fbddFb || {{}};
+  window._fbddFb[tabPrefix] = new Set(fbList);
+  const fbWrap   = document.getElementById(`${{tabPrefix}}-wm-fb-wrap`);
+  const fbChecks = document.getElementById(`${{tabPrefix}}-wafermap-fbchecks`);
+  if (fbChecks) {{
+    fbChecks.innerHTML = fbList.map(fb => `<label class="cb-lbl">
+        <input type="checkbox" class="wmfb-chk-${{tabPrefix}}" value="${{fb}}" checked onchange="_wmSyncFbSelection('${{tabPrefix}}');renderWafermapGrid('${{tabPrefix}}')"> FB${{fb}}
+      </label>`).join('');
+  }}
+  if (fbWrap) fbWrap.style.display = fbList.length ? '' : 'none';
+  _wmUpdateFbSummary(tabPrefix);
+
+  const mapBtn = document.getElementById(`${{tabPrefix}}-fbview-map-btn`);
+  if (mapBtn) {{
+    const hasDies = eligible.length > 0;
+    mapBtn.disabled = !hasDies;
+    mapBtn.title = hasDies ? '' : 'No wafers with per-die X/Y data above the fail threshold';
+  }}
+  const mapWrap = document.getElementById(`${{tabPrefix}}-wafermap-wrap`);
+  if (mapWrap && mapWrap.style.display !== 'none') renderWafermapGrid(tabPrefix);
 }}
 
 // Fetch per-die [x,y,ibin,fbin,upm_pct] for a run, falling back to a live DATA.runs lookup
@@ -6483,7 +6651,20 @@ function renderWafermapGrid(tabPrefix) {{
   const selIb = (window._fbddIb || {{}})[tabPrefix];
   const selFb = (window._fbddFb || {{}})[tabPrefix];
   const checked = [...document.querySelectorAll(`.wm-chk-${{tabPrefix}}:checked`)].map(cb => parseInt(cb.value));
-  const shown = checked.length ? checked.map(i => eligible[i]).filter(Boolean) : eligible;
+  let shown = checked.length ? checked.map(i => eligible[i]).filter(Boolean) : eligible;
+  // Drop wafers with no fails among the checked FB(s) — also enforces the FB
+  // Fail Count/% thresholds (both default to 0, so a wafer needs >=1 fail among
+  // the checked FBs to appear at all).
+  const fbCountInput = document.getElementById(`${{tabPrefix}}-wm-fbfailthresh`);
+  const fbPctInput   = document.getElementById(`${{tabPrefix}}-wm-fbfailpctthresh`);
+  const fbCountThresh = fbCountInput ? (parseInt(fbCountInput.value) || 0) : 0;
+  const fbPctThresh   = fbPctInput   ? (parseFloat(fbPctInput.value) || 0) : 0;
+  if (selFb) {{
+    shown = shown.filter(run => {{
+      const {{count, pct}} = _wmFbFailStats(run, selIb, selFb);
+      return count > fbCountThresh && pct > fbPctThresh;
+    }});
+  }}
   grid.innerHTML = '';
   const legend = document.createElement('div');
   legend.style.width = '100%';
@@ -6541,6 +6722,29 @@ function openWaferZoom(run, selIb, selFb) {{
 function closeWaferZoom() {{
   const overlay = document.getElementById('wm-zoom-overlay');
   if (overlay) overlay.style.display = 'none';
+}}
+
+// Download the per-die data behind the currently-zoomed wafer map as CSV.
+function downloadWaferZoomCsv() {{
+  const last = window._wmZoomLast;
+  if (!last || !last.run) return;
+  const run = last.run;
+  const raw = _liveDieXy(run);
+  if (!raw.length) return;
+  const rows = [['sort_x', 'sort_y', 'lot', 'wafer', 'material', 'upm', 'IB', 'FB']];
+  raw.forEach(d => {{
+    rows.push([d[0], d[1], run.lot || '', run.wafer || '', run.material || '',
+      (d[4] === null || d[4] === undefined) ? '' : d[4], parseInt(d[2]),
+      (d[3] === null || d[3] === undefined) ? '' : parseInt(d[3])]);
+  }});
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\\n');
+  const blob = new Blob([csv], {{type: 'text/csv'}});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `wafermap_${{run.lot || 'lot'}}_${{run.wafer || 'wafer'}}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }}
 
 function _drawWafermap(container, run, width, selIb, selFb) {{
@@ -7138,6 +7342,56 @@ function initParetoComments() {{
   }});
 }}
 
+// Generic <table thead>/<tbody> exporter, used by the Trend chart and FB-drilldown CSV buttons.
+function exportTblCsv(headId, bodyId, fname) {{
+  const rows = [];
+  const head = document.getElementById(headId);
+  if (head) {{
+    head.querySelectorAll('tr').forEach(tr => {{
+      rows.push([...tr.querySelectorAll('th,td')].map(c => c.textContent.trim()));
+    }});
+  }}
+  const body = document.getElementById(bodyId);
+  if (body) {{
+    body.querySelectorAll('tr').forEach(tr => {{
+      rows.push([...tr.querySelectorAll('th,td')].map(c => c.textContent.trim()));
+    }});
+  }}
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\\n');
+  const blob = new Blob([csv], {{type: 'text/csv'}});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (fname || 'export') + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}}
+function exportTrendCsv() {{ exportTblCsv('trend-thead', 'trend-tbody', 'yield_trend'); }}
+function exportFbDrilldownCsv(headId, bodyId, fname) {{ exportTblCsv(headId, bodyId, fname); }}
+
+// Per-die export for the FB-drilldown wafer-map view: one row per die across every
+// wafer eligible for the drilldown (all IB/FB values, not just the clicked bar's IB) —
+// sort_x/sort_y/lot/wafer/material/upm/IB/FB (IB/FB as integers) for further analysis.
+function exportFbDrilldownDiesCsv(tabPrefix, fname) {{
+  const eligible = (window._fbddRuns || {{}})[tabPrefix] || [];
+  const rows = [['sort_x', 'sort_y', 'lot', 'wafer', 'material', 'upm', 'IB', 'FB']];
+  eligible.forEach(run => {{
+    _liveDieXy(run).forEach(d => {{
+      rows.push([d[0], d[1], run.lot || '', run.wafer || '', run.material || '',
+        (d[4] === null || d[4] === undefined) ? '' : d[4],
+        parseInt(d[2]), (d[3] === null || d[3] === undefined) ? '' : parseInt(d[3])]);
+    }});
+  }});
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\\n');
+  const blob = new Blob([csv], {{type: 'text/csv'}});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (fname || 'fb_drilldown_dies') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}}
+
 function exportParetoTableCsv() {{
   const saved = loadComments();
   const rows = [['Interface Bin', 'Description', 'Total Tested', 'Fail Count', 'Fail %', 'Comment']];
@@ -7250,6 +7504,7 @@ document.getElementById('date-to').addEventListener('change', rebuildCharts);
 <div id="wm-zoom-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99980;align-items:center;justify-content:center" onclick="if(event.target===this)closeWaferZoom()">
   <div style="background:#fff;border-radius:8px;padding:14px;max-width:90vw;max-height:90vh;overflow:auto;position:relative">
     <button onclick="closeWaferZoom()" style="position:absolute;top:6px;right:8px;border:none;background:#e74c3c;color:#fff;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:14px">&#10005;</button>
+    <button onclick="downloadWaferZoomCsv()" style="position:absolute;top:6px;right:38px;border:1px solid #aaa;border-radius:3px;background:#f5f5f5;color:#2c3e50;padding:2px 8px;cursor:pointer;font-size:11px" title="Download per-die CSV">&#8681; CSV</button>
     <div id="wm-zoom-title" style="font-size:13px;font-weight:600;margin-bottom:4px;color:#2c3e50"></div>
     <div id="wm-zoom-legend" style="margin-bottom:8px"></div>
     <div id="wm-zoom-canvas"></div>

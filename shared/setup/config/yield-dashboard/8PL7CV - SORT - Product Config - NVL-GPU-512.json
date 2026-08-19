@@ -102,7 +102,8 @@
   "_comment_upmInfo": "1st column =  Display name  2nd column - test name,3rd name is target",
   "upmInfo": [
     ["ULVT FULLDIE 950mV (%) - SDS", "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*950*", 7694],
-    ["ULVT FULLDIE 650mV (%) - SDS", "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*650*", 5150]
+    ["ULVT FULLDIE 650mV (%) - SDS", "*UPM_2007_DPMH130P48ULVTINVD4_FULLDIE*650*", 5150],
+	["ULVTLL FULLDIE 950mV (%) - SDS", "*UPM_2107_DPMH130P48ULVTLLINVD4_FULLDIE*0950*", 7253]
   ],
   "_comment_siccList": "1st column =  Display name  2nd column - test name 3rd column - target",
   "siccList": [

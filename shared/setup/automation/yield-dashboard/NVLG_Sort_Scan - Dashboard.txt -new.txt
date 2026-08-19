@@ -1,0 +1,128 @@
+@ Report : NVLG_Sort_Scan - Dashboard
+
+
+####################
+@ FilterSet : NVLG_Sort_Scan - Dashboard_FilterSet
+####################
+
+@ Domain : PreAssembly
+@ Apply all to Parameter : NO
+@ Attributes : 
+	@@ Operation :
+	;
+	@@ LATOValidFlag :
+		 = Both
+	;
+	@@ ProgramName :
+		 = NGXSDJXA0H8*
+	;
+	@@ LastNWwsStartDateTime :
+		 = 8
+	;
+	@@ Lot :
+	;
+	@@ UnitInterfaceBin :
+	;
+	@@ DevRevStep :
+	;
+	@@ LastNDaysLoadStart :
+	;
+
+####################
+@ Parameters : NVLG_Sort_Scan - Dashboard_Parameters
+####################
+
+@ Operations : 
+
+	@@ 132322| : Data Domain = SDX; Show Latest = Yes; Lots From Filterset = Yes; Display Index = 2; 
+		@@@ Selected Filters : ProgramName|LastNWwsStartDateTime|UnitInterfaceBin
+
+	@@ 119325| : Data Domain = SDX; Show Latest = Yes; Lots From Filterset = Yes; Display Index = 1; 
+		@@@ Selected Filters : ProgramName|LastNWwsStartDateTime|UnitInterfaceBin
+
+@ Sorting Direction : NONE
+
+@ Parameters Group : Bin
+	@@ "0|FUNCTIONAL_BIN" : Operations = 132322, 119325; 
+	@@ "1|INTERFACE_BIN" : Operations = 132322, 119325; 
+	@@ "2|DATA_BIN" : Operations = 132322, 119325; 
+	@@ "3|DATA_TOTAL_BIN" : Operations = 132322, 119325; 
+	@@ "4|INTERFACE_TOTAL_BIN" : Operations = 132322, 119325; 
+	@@ "5|FUNCTIONAL_TOTAL_BIN" : Operations = 132322, 119325; 
+
+@ Parameters Group : Parametric
+# Group Settings :  [ Data Type Position = None;  ] 
+	@@ "0|PTH_POWER_GXXX::POWER_X_ANADC_E_BEGIN_X_X_NOM_X_GTSICC_24A_V1|PP_SICC_GT_V1_24A_VCCGT_HC|VCCGT_HC|PC" : 
+	@@ "1|PTH_POWER_GXXX::POWER_X_ANADC_E_BEGIN_X_X_NOM_X_GTSICC_24A_V2|PP_SICC_GT_V2_24A_VCCGT_HC|VCCGT_HC|PC" : 
+	@@ "2|PTH_POWER_GXXX::POWER_X_ANADC_E_BEGIN_X_X_NOM_X_GTSICC_24A_V3|PP_SICC_GT_V3_24A_VCCGT_HC|VCCGT_HC|PC" : 
+	@@ "3|PTH_POWER_GXXX::POWER_X_ANADC_E_BEGIN_X_X_NOM_X_GTSICC_24A_V4|PP_SICC_GT_V4_24A_VCCGT_HC|VCCGT_HC|PC" : 
+	@@ "4|PTH_POWER_GXXX::POWER_X_SCREEN_K_BEGIN_X_X_X_X_GT_ICC_CALCPP_SICC_GT_V1" : 
+	@@ "5|PTH_POWER_GXXX::POWER_X_SCREEN_K_BEGIN_X_X_X_X_GT_ICC_CALCPP_SICC_GT_V2" : 
+	@@ "6|TPI_VCC::CONT*" : 
+	@@ "7|UPM_2007_DPMH130P48ULVTINVD4_FULLDIE_0950_MED" : Operations = 132322, 119325; 
+	@@ "8|UPM_2007_DPMH130P48ULVTINVD4_FULLDIE_0650_MED" : Operations = 132322, 119325; 
+	@@ "9|PTH_POWER_GXXX::POWER_X_SCREEN_K_BEGIN_X_X_X_X_GT_ICC_CALCPP_CDYN_GT_V1" : 
+	@@ "10|PTH_POWER_GXXX::POWER_X_SCREEN_K_BEGIN_X_X_X_X_GT_ICC_CALCPP_CDYN_GT_V2" : 
+	@@ "11|UPM_2107_DPMH130P48ULVTLLINVD4_FULLDIE_0950_MED" : Operations = 119325; 
+
+@ Parameters Group : Session Data
+	@@ "0|Bin Description" : Operations = 132322, 119325; 
+	@@ "1|Cell ID" : Operations = 132322, 119325; 
+	@@ "2|Unit Tester Id" : Operations = 132322, 119325; 
+	@@ "3|Unit Tester Site Id" : Operations = 132322, 119325; 
+	@@ "4|DevRevStep" : Operations = 132322, 119325; 
+	@@ "5|Engineering ID" : Operations = 132322, 119325; 
+	@@ "6|Fuse Id" : Operations = 132322, 119325; 
+	@@ "7|Lot" : Operations = 132322, 119325; 
+	@@ "8|LOTS End Date Time" : Operations = 132322, 119325; 
+	@@ "9|LOTS End WW" : Operations = 132322, 119325; 
+	@@ "10|LOTS Temperature" : Operations = 132322, 119325; 
+	@@ "11|Operation" : Operations = 132322, 119325; 
+	@@ "12|Program Name" : Operations = 132322, 119325; 
+	@@ "13|Carrier X" : Operations = 132322, 119325; 
+	@@ "14|Carrier Y" : Operations = 132322, 119325; 
+	@@ "15|Sort Partial Wafer ID" : Operations = 132322, 119325; 
+	@@ "16|Thermal Head Id" : Operations = 132322, 119325; 
+	@@ "17|Unit TIU" : Operations = 132322, 119325; 
+
+@ Parameters Group : String
+# Group Settings :  [ Data Type Position = None; Spm Option = False;  ] 
+	@@ "0|TPI_BIN::CTRL_UB_X_K_BIN_X_X_X_X_SETBIN" : Operations = 119325; 
+	@@ "1|PTH_POWER_GXXX::POWER_X_SCREEN_K_BEGIN_X_X_X_X_GT_ICC_CALCPWR_CDYN" : 
+	@@ "2|SCN_GT_GXX::ATSPEED_ALL_GFXSB_E_PREHVQK_HITO_GT_NOM_LFM_HRY_RAWSTR" : Operations = 119325; 
+	@@ "3|SCN_GT_GXX::ATSPEED_ALL_GFXSB_E_PREHVQK_HITO_VNNAON_NOM_LFM_HRY_RAWSTR" : Operations = 119325; 
+	@@ "4|SCN_GT_GXX::ATSPEED_ALL_GFXSB_K_END_HITO_GT_NOM_LFM_X_HRY_RAWSTR" : Operations = 119325; 
+	@@ "5|SCN_GT_GXX::ATSPEED_ALL_GFXSB_K_END_HITO_VNNAON_NOM_LFM_X_HRY_RAWSTR" : Operations = 119325; 
+	@@ "6|SCN_GT_GXX::CHAIN_ALL_GFXSB_K_BEGIN_HITO_GT_NOM_LFM_HVM_HRY_RAWSTR" : Operations = 119325; 
+	@@ "7|SCN_GT_GXX::CTRL_X_GFXAGG_K_BEGIN_X_X_X_X_X_EVALUATE_HRY_RAWSTR" : Operations = 119325; 
+	@@ "8|SCN_GT_GXX::CTRL_X_GFXAGG_K_PREHVQK_X_X_X_X_X_EVALUATE_LFM_HRY_RAWSTR" : Operations = 119325; 
+	@@ "9|SCN_GT_GXX::CTRL_X_GFXAGG_K_PREHVQK_X_X_X_X_X_EVALUATE_LFM_REC_HRY_RAWSTR" : Operations = 119325; 
+	@@ "10|SCN_GT_GXX::STUCKAT_ALL_GFXSB_K_BEGIN_HITO_GT_NOM_LFM_HRY_RAWSTR" : Operations = 119325; 
+	@@ "11|SCN_GT_GXX::STUCKAT_ALL_GFXSB_K_END_HITO_GT_NOM_LFM_UNGT_HRY_RAWSTR" : Operations = 119325; 
+	@@ "12|SCN_GT_GXX::STUCKAT_ALL_GFXSB_K_END_HITO_GT_NOM_LFM_X_HRY_RAWSTR" : Operations = 119325; 
+
+@ Parameters Group : Session Attribute
+	@@ "0|BOMGROUPNAME" : Operations = 119325; 
+
+####################
+@ Report Format
+####################
+
+@ Data Tracking Level : Units
+@ Format : Split
+@ Report Output Format : Csv
+@ Naming Convention : Test Name, Operation
+@ Columns Order : Type = Alphabetical; 
+@ Pivot SSID : NO
+@ Chunk Files : NO
+@ Stack Session Data : NO
+@ Drop Original Unparsed Column : NO
+
+
+
+
+####################
+@ Post Processing Definition - Please IGNORE
+####################
+
+
