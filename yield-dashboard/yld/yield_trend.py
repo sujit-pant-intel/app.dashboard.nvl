@@ -984,20 +984,18 @@ _FAIL_COLORS = [
 
 
 def build_top10_pareto_chart(runs_data):
-    """Horizontal bar chart: top-10 Interface Bins by max fail% — uses Functional Bin table."""
+    """Horizontal bar chart: Interface Bins with fail% >= 0.5, rest pooled into 'Misc'."""
     if not HAVE_MPL:
         return ''
-    # Prefer func_bin_rows (has fbin); fall back to bin_fail_rows
-    use_fbin = any(r.get('bin_data') and r['bin_data'].get('func_bin_rows')
-                   for r in runs_data)
-    row_key  = 'func_bin_rows' if use_fbin else 'bin_fail_rows'
+    row_key = 'bin_summary_rows' if any(
+        r.get('bin_data') and r['bin_data'].get('bin_summary_rows') for r in runs_data
+    ) else 'bin_fail_rows'
     valid = [r for r in runs_data if r.get('bin_data') and r['bin_data'].get(row_key)]
     if not valid:
         return ''
 
-    # Collect all ibins; keep max fail% per ibin
+    # Collect all ibins; keep max fail% per ibin (unambiguous — one row per ibin)
     ibin_max    = {}
-    ibin_fbin   = {}
     ibin_bucket = {}
     for run in valid:
         for row in run['bin_data'][row_key]:
@@ -1006,46 +1004,194 @@ def build_top10_pareto_chart(runs_data):
             if v > ibin_max.get(k, 0.0):
                 ibin_max[k]    = v
                 ibin_bucket[k] = row.get('fail_bucket', '')
-                ibin_fbin[k]   = row.get('fbin', '')
 
-    top10 = sorted(ibin_max.keys(), key=lambda k: ibin_max[k], reverse=True)[:10]
-    if not top10:
+    MISC_THRESHOLD = 0.1
+    major = sorted((k for k in ibin_max if ibin_max[k] >= MISC_THRESHOLD),
+                   key=lambda k: ibin_max[k], reverse=True)
+    minor = [k for k in ibin_max if ibin_max[k] < MISC_THRESHOLD]
+    if not major and not minor:
         return ''
+    labels = list(major) + (['__MISC__'] if minor else [])
 
     n_runs = len(valid)
-    n_bins = len(top10)
+    n_bins = len(labels)
     y      = np.arange(n_bins)
     height = 0.8 / max(n_runs, 1)
 
     fig, ax = plt.subplots(figsize=(9, max(4, n_bins * 0.65)))
     for ri, run in enumerate(valid):
-        vals = [
-            next((ro['fail_pct'] for ro in run['bin_data'][row_key] if ro['ibin'] == k), 0.0) or 0.0
-            for k in top10
-        ]
+        vals = []
+        for k in labels:
+            if k == '__MISC__':
+                v = sum(next((ro['fail_pct'] for ro in run['bin_data'][row_key] if ro['ibin'] == m), 0.0) or 0.0
+                        for m in minor)
+            else:
+                v = next((ro['fail_pct'] for ro in run['bin_data'][row_key] if ro['ibin'] == k), 0.0) or 0.0
+            vals.append(v)
         offset = (ri - n_runs / 2 + 0.5) * height
         bars = ax.barh(y + offset, vals, height, label=run['name'],
                        color=_ID_COLORS[ri % len(_ID_COLORS)], alpha=0.87)
         for bar, v in zip(bars, vals):
             if v >= 0.1:
                 ax.text(v + 0.05, bar.get_y() + bar.get_height() / 2,
-                        f'{v:.2f}%', va='center', ha='left', fontsize=7)
+                        f'{v:.1f}%', va='center', ha='left', fontsize=7)
 
-    if use_fbin:
-        ylabels = [
-            f'iBin {k}  FBin {ibin_fbin.get(k, "—")}  |  {ibin_bucket.get(k, "")}'
-            for k in top10
-        ]
-    else:
-        ylabels = [
-            f'iBin {k}  |  {ibin_bucket.get(k, "")}'
-            for k in top10
-        ]
+    def _label(k):
+        if k == '__MISC__':
+            return f'Misc (<{MISC_THRESHOLD:.1f}%)'
+        return f'iBin {k}  |  {ibin_bucket.get(k, "")}'
+
+    ylabels = [_label(k) for k in labels]
     ax.set_yticks(y)
     ax.set_yticklabels(ylabels, fontsize=7.5)
     ax.invert_yaxis()
     ax.set_xlabel('Fail (%)')
-    ax.set_title('Top 10 Interface Bin Fail Pareto', fontsize=13, weight='bold')
+    ax.set_title(f'Interface Bin Fail Pareto (≥{MISC_THRESHOLD:.1f}%, rest as Misc)', fontsize=13, weight='bold')
+    ax.legend(fontsize=8)
+    ax.grid(axis='x', linestyle='--', alpha=0.4)
+    fig.tight_layout()
+    return _fig_b64(fig)
+
+
+def build_func_bin_table_html(runs_data):
+    """Table: Functional Bin rows (iBin+FBin), each run's Fail% + delta vs first run."""
+    valid = [r for r in runs_data if r.get('bin_data') and r['bin_data'].get('func_bin_rows')]
+    if not valid:
+        return ''
+    # Union of keys across ALL runs (not just one) — and take the fail_bucket
+    # label from whichever run has a non-empty one, since a run reconstructed
+    # from a merged/pooled source may lack labels for some keys while another
+    # run's own data has them.
+    label_by_key: dict = {}
+    for r in valid:
+        for row in r['bin_data']['func_bin_rows']:
+            key = (row['ibin'], row.get('fbin', ''))
+            if key not in label_by_key or (not label_by_key[key] and row.get('fail_bucket')):
+                label_by_key[key] = row.get('fail_bucket', '')
+    all_rows = [{'ibin': k[0], 'fbin': k[1], 'fail_bucket': v} for k, v in label_by_key.items()]
+    all_rows.sort(key=lambda row: (
+        int(row['ibin']) if str(row['ibin']).isdigit() else 9999,
+        int(row.get('fbin', '')) if str(row.get('fbin', '')).isdigit() else 9999))
+
+    hdr = '<th>Interface Bin</th><th>Functional Bin</th><th>Fail Bucket</th>'
+    for ri, r in enumerate(valid):
+        clr = _ID_COLORS[ri % len(_ID_COLORS)]
+        hdr += f'<th style="background:{clr};color:#fff;font-weight:bold;padding:5px 8px">{_esc(r["name"])}</th>'
+    if len(valid) >= 2:
+        for ri in range(1, len(valid)):
+            hdr += (f'<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">'
+                    f'\u0394 {_esc(valid[ri]["name"])}<br>vs {_esc(valid[0]["name"])}</th>')
+            if ri >= 2:
+                hdr += (f'<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">'
+                        f'\u0394 {_esc(valid[ri]["name"])}<br>vs {_esc(valid[ri-1]["name"])}</th>')
+
+    rows_html = ''
+    for row in all_rows:
+        key = (row['ibin'], row.get('fbin', ''))
+        cells = (f'<td>{_esc(row["ibin"])}</td><td>{_esc(row.get("fbin", ""))}</td>'
+                 f'<td>{_esc(row.get("fail_bucket", ""))}</td>')
+        run_vals = []
+        for r in valid:
+            v = next((ro['fail_pct'] for ro in r['bin_data']['func_bin_rows']
+                      if (ro['ibin'], ro.get('fbin', '')) == key), None)
+            run_vals.append(v)
+            row_all = [next((ro['fail_pct'] for ro in rx['bin_data']['func_bin_rows']
+                             if (ro['ibin'], ro.get('fbin', '')) == key), None) for rx in valid]
+            cells += _cell_hl(v, row_all) + (f'{v:.1f}%' if v is not None else '\u2014') + '</td>'
+        if len(valid) >= 2:
+            def _delta_td(v, base_v):
+                if base_v is not None and v is not None:
+                    delta = v - base_v
+                    sign = '+' if delta > 0 else ''
+                    clr = '#c0392b' if delta > 0 else '#27ae60' if delta < 0 else '#555'
+                    return f'<td class="num" style="color:{clr};font-weight:bold">{sign}{delta:.1f}%</td>'
+                return '<td class="num">\u2014</td>'
+            base_v = run_vals[0]
+            for ri in range(1, len(valid)):
+                cells += _delta_td(run_vals[ri], base_v)
+                if ri >= 2:
+                    cells += _delta_td(run_vals[ri], run_vals[ri - 1])
+        rows_html += f'<tr>{cells}</tr>\n'
+
+    return f'''<div class="section">
+  <h2>&#128196; Functional Bin Fail Summary</h2>
+  <div style="overflow-x:auto">
+  <table class="cmp-tbl" style="border-collapse:collapse">
+    <thead><tr>{hdr}</tr></thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+  </div>
+</div>'''
+
+
+def build_fb_pareto_chart(runs_data):
+    """Horizontal bar chart: Functional Bins (iBin+FBin) with fail% >= 0.5, rest as 'Misc'.
+
+    Keyed by the (ibin, fbin) pair — unlike the Interface Bin chart, a single
+    ibin can have several fbins, so each is compared as its own distinct bar
+    across runs (fixes cross-run mismatches where different runs' dominant
+    FBin for the same ibin used to be silently swapped)."""
+    if not HAVE_MPL:
+        return ''
+    valid = [r for r in runs_data if r.get('bin_data') and r['bin_data'].get('func_bin_rows')]
+    if not valid:
+        return ''
+
+    key_max    = {}
+    key_bucket = {}
+    for run in valid:
+        for row in run['bin_data']['func_bin_rows']:
+            k = (row['ibin'], row.get('fbin', ''))
+            v = row['fail_pct'] or 0.0
+            if v > key_max.get(k, 0.0):
+                key_max[k]    = v
+                key_bucket[k] = row.get('fail_bucket', '')
+
+    MISC_THRESHOLD = 0.1
+    major = sorted((k for k in key_max if key_max[k] >= MISC_THRESHOLD),
+                   key=lambda k: key_max[k], reverse=True)
+    minor = [k for k in key_max if key_max[k] < MISC_THRESHOLD]
+    if not major and not minor:
+        return ''
+    labels = list(major) + (['__MISC__'] if minor else [])
+
+    n_runs = len(valid)
+    n_bins = len(labels)
+    y      = np.arange(n_bins)
+    height = 0.8 / max(n_runs, 1)
+
+    fig, ax = plt.subplots(figsize=(9, max(4, n_bins * 0.65)))
+    for ri, run in enumerate(valid):
+        vals = []
+        for k in labels:
+            if k == '__MISC__':
+                v = sum(next((ro['fail_pct'] for ro in run['bin_data']['func_bin_rows']
+                              if (ro['ibin'], ro.get('fbin', '')) == m), 0.0) or 0.0
+                        for m in minor)
+            else:
+                v = next((ro['fail_pct'] for ro in run['bin_data']['func_bin_rows']
+                          if (ro['ibin'], ro.get('fbin', '')) == k), 0.0) or 0.0
+            vals.append(v)
+        offset = (ri - n_runs / 2 + 0.5) * height
+        bars = ax.barh(y + offset, vals, height, label=run['name'],
+                       color=_ID_COLORS[ri % len(_ID_COLORS)], alpha=0.87)
+        for bar, v in zip(bars, vals):
+            if v >= 0.1:
+                ax.text(v + 0.05, bar.get_y() + bar.get_height() / 2,
+                        f'{v:.1f}%', va='center', ha='left', fontsize=7)
+
+    def _label(k):
+        if k == '__MISC__':
+            return f'Misc (<{MISC_THRESHOLD:.1f}%)'
+        ibin, fbin = k
+        return f'iBin {ibin}  FBin {fbin}  |  {key_bucket.get(k, "")}'
+
+    ylabels = [_label(k) for k in labels]
+    ax.set_yticks(y)
+    ax.set_yticklabels(ylabels, fontsize=7.5)
+    ax.invert_yaxis()
+    ax.set_xlabel('Fail (%)')
+    ax.set_title(f'Functional Bin Fail Pareto (≥{MISC_THRESHOLD:.1f}%, rest as Misc)', fontsize=13, weight='bold')
     ax.legend(fontsize=8)
     ax.grid(axis='x', linestyle='--', alpha=0.4)
     fig.tight_layout()
@@ -1779,10 +1925,11 @@ def build_xlsx_comparison_table(runs_data):
 
 
 def _cell_hl(v, row_vals, extra_style=''):
-    """Return a <td> string. Bold-red if |v - row_mean| > 10 (percentage points)."""
+    """Return an OPEN <td ...> tag (never closed) — callers append the cell
+    text and their own </td>. Bold-red if |v - row_mean| > 10 (percentage points)."""
     nums = [x for x in row_vals if x is not None]
     if v is None:
-        return f'<td class="num" style="{extra_style}"></td>'
+        return f'<td class="num" style="{extra_style}">'
     alert = (len(nums) >= 2 and abs(v - (sum(nums) / len(nums))) > 10)
     st = extra_style + ('color:#c0392b;font-weight:bold;' if alert else '')
     return f'<td class="num" style="{st}">'
@@ -1800,10 +1947,13 @@ def build_rdnd_table_html(runs_data):
     for ri, r in enumerate(valid):
         clr = _ID_COLORS[ri % len(_ID_COLORS)]
         hdr += f'<th style="background:{clr};color:#fff;font-weight:bold;padding:5px 8px">{_esc(r["name"])}</th>'
-    # add delta headers between consecutive runs
+    # add delta headers: each run vs baseline (run 0), plus vs previous run
+    # when that's a different comparison (i.e. ri >= 2)
     if len(valid) >= 2:
         for ri in range(1, len(valid)):
             hdr += f'<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">\u0394 {_esc(valid[ri]["name"])}<br>vs {_esc(valid[0]["name"])}</th>'
+            if ri >= 2:
+                hdr += f'<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">\u0394 {_esc(valid[ri]["name"])}<br>vs {_esc(valid[ri-1]["name"])}</th>'
 
     rows_html = ''
     for row in yield_rows:
@@ -1823,18 +1973,20 @@ def build_rdnd_table_html(runs_data):
                 for rx in valid
             ]
             cells += _cell_hl(v, row_vals) + (f'{v:.1f}%' if v is not None else '') + '</td>'
-        # delta cells: each run vs first run (baseline)
+        # delta cells: each run vs baseline, plus vs previous run when ri >= 2
         if len(valid) >= 2:
-            base = run_vals[0]
-            for ri in range(1, len(valid)):
-                v = run_vals[ri]
+            def _delta_td(v, base):
                 if base is not None and v is not None:
                     delta = v - base
                     sign = '+' if delta > 0 else ''
                     clr = '#27ae60' if delta > 0 else '#c0392b' if delta < 0 else '#555'
-                    cells += f'<td class="num" style="color:{clr};font-weight:bold">{sign}{delta:.2f}%</td>'
-                else:
-                    cells += '<td class="num">\u2014</td>'
+                    return f'<td class="num" style="color:{clr};font-weight:bold">{sign}{delta:.2f}%</td>'
+                return '<td class="num">\u2014</td>'
+            base = run_vals[0]
+            for ri in range(1, len(valid)):
+                cells += _delta_td(run_vals[ri], base)
+                if ri >= 2:
+                    cells += _delta_td(run_vals[ri], run_vals[ri - 1])
         rows_html += f'<tr>{cells}</tr>\n'
 
     return f'''<div class="section">
@@ -1878,10 +2030,12 @@ def build_bin_fail_table_html(runs_data):
             clr = _ID_COLORS[ri % len(_ID_COLORS)]
             hdr += (f'<th style="background:{clr};color:#fff;font-weight:bold;padding:5px 8px">'
                     f'{_esc(r["name"])}<br><span style="font-size:11px;font-weight:normal">Yield/Fail%</span></th>')
-        # delta headers
+        # delta headers: each run vs baseline, plus vs previous run when ri >= 2
         if len(valid) >= 2:
             for ri in range(1, len(valid)):
                 hdr += f'<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">\u0394 {_esc(valid[ri]["name"])}<br>vs {_esc(valid[0]["name"])}</th>'
+                if ri >= 2:
+                    hdr += f'<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">\u0394 {_esc(valid[ri]["name"])}<br>vs {_esc(valid[ri-1]["name"])}</th>'
 
         rows_html = ''
         for row in all_rows:
@@ -1899,18 +2053,20 @@ def build_bin_fail_table_html(runs_data):
                 run_vals.append(v)
                 row_all = [next((ro['fail_pct'] for ro in rx['bin_data']['bin_summary_rows'] if ro['ibin'] == key), None) for rx in valid]
                 cells += _cell_hl(v, row_all, extra_style=f'background:{row_bg};') + (f'{v:.2f}%' if v is not None else '\u2014') + '</td>'
-            # delta cells
+            # delta cells: each run vs baseline, plus vs previous run when ri >= 2
             if len(valid) >= 2:
-                base = run_vals[0]
-                for ri in range(1, len(valid)):
-                    v = run_vals[ri]
+                def _delta_td(v, base):
                     if base is not None and v is not None:
                         delta = v - base
                         sign = '+' if delta > 0 else ''
                         clr = '#c0392b' if delta > 0 else '#27ae60' if delta < 0 else '#555'
-                        cells += f'<td class="num" style="color:{clr};font-weight:bold;background:{row_bg}">{sign}{delta:.2f}%</td>'
-                    else:
-                        cells += f'<td class="num" style="background:{row_bg}">\u2014</td>'
+                        return f'<td class="num" style="color:{clr};font-weight:bold;background:{row_bg}">{sign}{delta:.2f}%</td>'
+                    return f'<td class="num" style="background:{row_bg}">\u2014</td>'
+                base = run_vals[0]
+                for ri in range(1, len(valid)):
+                    cells += _delta_td(run_vals[ri], base)
+                    if ri >= 2:
+                        cells += _delta_td(run_vals[ri], run_vals[ri - 1])
             rows_html += f'<tr>{cells}</tr>\n'
     else:
         valid = [r for r in runs_data if r.get('bin_data') and r['bin_data']['bin_fail_rows']]
@@ -1923,10 +2079,12 @@ def build_bin_fail_table_html(runs_data):
         for ri, r in enumerate(valid):
             clr = _ID_COLORS[ri % len(_ID_COLORS)]
             hdr += f'<th style="background:{clr};color:#fff;font-weight:bold;padding:5px 8px">{_esc(r["name"])}</th>'
-        # delta headers
+        # delta headers: each run vs baseline, plus vs previous run when ri >= 2
         if len(valid) >= 2:
             for ri in range(1, len(valid)):
                 hdr += f'<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">\u0394 {_esc(valid[ri]["name"])}<br>vs {_esc(valid[0]["name"])}</th>'
+                if ri >= 2:
+                    hdr += f'<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">\u0394 {_esc(valid[ri]["name"])}<br>vs {_esc(valid[ri-1]["name"])}</th>'
 
         rows_html = ''
         for row in all_rows:
@@ -1939,18 +2097,20 @@ def build_bin_fail_table_html(runs_data):
                 run_vals.append(v)
                 row_all = [next((ro['fail_pct'] for ro in rx['bin_data']['bin_fail_rows'] if ro['ibin'] == key), None) for rx in valid]
                 cells += _cell_hl(v, row_all) + (f'{v:.2f}%' if v is not None else '\u2014') + '</td>'
-            # delta cells
+            # delta cells: each run vs baseline, plus vs previous run when ri >= 2
             if len(valid) >= 2:
-                base = run_vals[0]
-                for ri in range(1, len(valid)):
-                    v = run_vals[ri]
+                def _delta_td(v, base):
                     if base is not None and v is not None:
                         delta = v - base
                         sign = '+' if delta > 0 else ''
                         clr = '#c0392b' if delta > 0 else '#27ae60' if delta < 0 else '#555'
-                        cells += f'<td class="num" style="color:{clr};font-weight:bold">{sign}{delta:.2f}%</td>'
-                    else:
-                        cells += '<td class="num">\u2014</td>'
+                        return f'<td class="num" style="color:{clr};font-weight:bold">{sign}{delta:.2f}%</td>'
+                    return '<td class="num">\u2014</td>'
+                base = run_vals[0]
+                for ri in range(1, len(valid)):
+                    cells += _delta_td(run_vals[ri], base)
+                    if ri >= 2:
+                        cells += _delta_td(run_vals[ri], run_vals[ri - 1])
             rows_html += f'<tr>{cells}</tr>\n'
 
     return f'''<div class="section">
@@ -2435,13 +2595,23 @@ def generate_report(runs_data, output_path: Path, ref_name: str = None, config_j
     if bf_valid:
         charts_html += build_bin_fail_table_html(bf_valid)
 
-    # --- Top-10 fail pareto ---
+    # --- Interface Bin / Functional Bin fail pareto (separate charts) ---
     top10_b64 = build_top10_pareto_chart(runs_data)
     if top10_b64:
         charts_html += ('<div class="section">'
-                        '<h2>&#128202; Top 10 Interface Bin Fail Pareto</h2>'
+                        '<h2>&#128202; Interface Bin Fail Pareto (≥0.1%, rest as Misc)</h2>'
                         '<img class="chart" src="data:image/png;base64,'
                         + top10_b64 + '"/></div>')
+
+    fb_b64 = build_fb_pareto_chart(runs_data)
+    if fb_b64:
+        fb_tbl = build_func_bin_table_html(runs_data)
+        if fb_tbl:
+            charts_html += fb_tbl
+        charts_html += ('<div class="section">'
+                        '<h2>&#128202; Functional Bin Fail Pareto (≥0.1%, rest as Misc)</h2>'
+                        '<img class="chart" src="data:image/png;base64,'
+                        + fb_b64 + '"/></div>')
 
     # --- SICC/UPM charts + table ---
     if upm_valid:

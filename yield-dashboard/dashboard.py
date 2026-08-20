@@ -33,9 +33,8 @@ if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
 from yield_pipeline      import PipelineFrame
-from yield_trend         import CompareFrame
-from yield_data          import ManageFrame
 from yield_trend         import TrendChartFrame
+from yield_group_compare import GroupCompareFrame
 import yield_data as _mpd
 
 # ---------------------------------------------------------------------------
@@ -444,25 +443,23 @@ class DashboardApp(tk.Tk):
         nb.pack(fill='both', expand=True, padx=0, pady=0)
 
         self._pipeline_tab = PipelineFrame(nb)
-        self._compare_tab  = CompareFrame(nb)
+        self._group_tab    = GroupCompareFrame(nb)
         self._trend_tab    = TrendChartFrame(nb)
         self._portable_tab = PortableFrame(nb)
 
         nb.add(self._pipeline_tab, text='   Create   ')
-        nb.add(self._compare_tab,  text='  Compare   ')
+        nb.add(self._group_tab,    text='  Compare   ')
         nb.add(self._trend_tab,    text='Yield Trend ')
         nb.add(self._portable_tab, text='  Portable  ')
 
-        # When switching to Manage or Compare, pre-fill Dashboard.html if known
+        # When switching to Manage, pre-fill Dashboard.html if known
 
     def _on_tab_change(self, _evt=None):
-        """Propagate last known Dashboard.html path to Manage and Compare tabs."""
+        """Propagate last known Dashboard.html path to the Manage tab."""
         try:
             dash = getattr(self._pipeline_tab, '_last_dashboard_html', None)
             if not dash:
                 return
-            if not self._compare_tab._dash_path.get():
-                self._compare_tab._dash_path.set(dash)
             if not self._manage_tab._path_var.get():
                 self._manage_tab._path_var.set(dash)
         except Exception:
