@@ -23,12 +23,19 @@ otherwise swallows silently) is tee'd to logs/run_YYYYMMDD_HHMMSS.log
 next to this script so failures are diagnosable after the fact.
 """
 import importlib.util
+import io
 import logging
 import re
 import sys
 import traceback
 from datetime import datetime as _datetime_cls
 from pathlib import Path
+
+# Reconfigure console streams to UTF-8 so Unicode log chars never crash the process
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+if hasattr(sys.stderr, 'buffer'):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 
 _HERE = Path(__file__).resolve().parent
 _YA   = _HERE / "yield_automation.py"
@@ -41,11 +48,7 @@ class _Tee:
 
     def write(self, data):
         for s in self._streams:
-            try:
-                s.write(data)
-            except UnicodeEncodeError:
-                # console may be cp1252; replace unencodable chars rather than crash
-                s.write(data.encode(s.encoding or 'utf-8', errors='replace').decode(s.encoding or 'utf-8', errors='replace'))
+            s.write(data)
 
     def flush(self):
         for s in self._streams:
