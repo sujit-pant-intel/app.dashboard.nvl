@@ -7700,9 +7700,12 @@ def main() -> None:
                 if not _ok or str(_gz_ts).startswith('prev:'):
                     continue
                 _idx = Path(str(_tp_output_dir)) / 'index.html'
-                _m_let = re.search(r'[A-Za-z]\d+([A-Za-z])', _tp_key)
-                _grp = _prog_series + (_m_let.group(1).upper() if _m_let else '?')
+                _m_let = re.search(r'[A-Za-z](\d+)([A-Za-z])', _tp_key)
+                # group name e.g. "80C" (digits + letter, no leading series prefix)
+                _grp = (_m_let.group(1) + _m_let.group(2).upper()) if _m_let else _prog_series + '?'
                 _gc_pairs.append((_grp, _idx))
+            # sort ascending by letter so columns appear 80A, 80B, 80C …
+            _gc_pairs.sort(key=lambda t: t[0])
             if len(_gc_pairs) >= 2:
                 # place alongside the last letter's report.html
                 _gc_out = letter_report_paths[-1].parent / 'group_compare.html' if letter_report_paths else base_dir / 'output' / 'group_compare.html'
