@@ -550,6 +550,46 @@ def _build_tabbed_layout(out_path: Path) -> None:
     out_path.write_text(html, encoding='utf-8')
 
 
+def run_group_compare_headless(
+    group_index_htmls: list[tuple[str, Path]],
+    out_path: Path,
+    log=print,
+) -> Path | None:
+    """Headless group compare for automation — no tkinter required."""
+    group_records = []
+    for group_name, index_html in group_index_htmls:
+        if not index_html.exists():
+            log(f'  SKIP {group_name}: {index_html} not found')
+            continue
+        try:
+            recs = build_tp_records(index_html)
+        except Exception as exc:
+            log(f'  ERROR loading {index_html}: {exc}')
+            continue
+        if not recs:
+            continue
+        group_records.append(build_group_record(group_name, recs))
+        log(f'  {group_name}: {len(recs)} TP(s), die={sum(r["numDie"] or 0 for r in recs)}')
+
+    if len(group_records) < 2:
+        log(f'  Group compare skipped — need \u22652 groups, got {len(group_records)}')
+        return None
+
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        generate_report(group_records, out_path)
+        _strip_run_summary_section(out_path)
+        _strip_digital_dashboard_section(out_path)
+        _round_percents_to_one_decimal(out_path)
+        _build_tabbed_layout(out_path)
+        _move_watermark_to_footer(out_path)
+        log(f'  Group compare \u2192 {out_path}')
+        return out_path
+    except Exception as exc:
+        log(f'  ERROR generating group compare: {exc}')
+        return None
+
+
 # ---------------------------------------------------------------------------
 # GUI — Group Compare tab
 # ---------------------------------------------------------------------------

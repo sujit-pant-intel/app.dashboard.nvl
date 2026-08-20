@@ -6321,12 +6321,29 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         )
         sum_rows += _material_rows_for_entry(e, is_latest=True, prog_prefix=prog_cell)
 
+    # find most-recent group_compare.html across all run folders for this product
+    _gc_files = sorted(
+        (f for f in output_dir.rglob('group_compare.html') if f.is_file()),
+        key=lambda f: f.stat().st_mtime, reverse=True,
+    )
+    _gc_link = ''
+    if _gc_files:
+        _gc = _gc_files[0]
+        _gc_unc = str(_gc).replace('/', '\\')
+        _gc_link = (
+            f'<p class="panel-sub">'
+            f'&#128202; <a href="{_gc.as_uri()}" style="color:#4fc3f7">Group Compare (cross-letter)</a>'
+            f' &nbsp;<span style="color:#546e7a;font-size:12px">{_gc_unc}</span>'
+            f'</p>\n'
+        )
+
     summary_panel = (
         f'<div id="panel-summary" class="panel active">\n'
         f'  <h2 class="panel-hdr">&#128200; Summary \u2014 Latest Run per Program'
         f'    <button class="csv-btn" onclick="downloadCSV(this)" title="Download visible rows as CSV">&#11123; CSV</button>'
         f'  </h2>\n'
         f'  <p class="panel-sub">Generated: {run_ts}</p>\n'
+        f'  {_gc_link}'
         f'  <div class="tbl-wrap">\n'
         f'  <table class="data-tbl">\n'
         f'    <thead><tr><th>Program</th>{COL_HDR}</tr></thead>\n'
@@ -7670,6 +7687,34 @@ def main() -> None:
 
         all_results.extend(results)
         all_tp_outputs.extend(tp_outputs)
+
+    # ── 4d. Group compare across fresh program letters ────────────────────────
+    if not args.dry_run and len(_letter_groups) >= 2:
+        _log('\nRunning cross-letter group compare…')
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(_HERE))
+            from yield_group_compare import run_group_compare_headless as _gc_headless
+            _gc_pairs: list[tuple[str, Path]] = []
+            for _tp_key, _ok, _tp_output_dir, _gz_ts, _r0_label, _tp_output_dir_r0 in all_tp_outputs:
+                if not _ok or str(_gz_ts).startswith('prev:'):
+                    continue
+                _idx = Path(str(_tp_output_dir)) / 'index.html'
+                _m_let = re.search(r'[A-Za-z]\d+([A-Za-z])', _tp_key)
+                _grp = _prog_series + (_m_let.group(1).upper() if _m_let else '?')
+                _gc_pairs.append((_grp, _idx))
+            if len(_gc_pairs) >= 2:
+                # place alongside the last letter's report.html
+                _gc_out = letter_report_paths[-1].parent / 'group_compare.html' if letter_report_paths else base_dir / 'output' / 'group_compare.html'
+                _gc_result = _gc_headless(_gc_pairs, _gc_out, log=_log)
+                if _gc_result:
+                    _log(f'  Group compare OK ({len(_gc_pairs)} groups) \u2192 {_gc_result}')
+            else:
+                _log(f'  Group compare skipped — only {len(_gc_pairs)} fresh TP(s)')
+        except Exception as _gce:
+            import traceback as _tb
+            _log(f'  WARNING: group compare failed: {_gce}')
+            _log(_tb.format_exc())
 
     # ── Flatten results from all letter groups for email ─────────────────────
     results    = all_results
