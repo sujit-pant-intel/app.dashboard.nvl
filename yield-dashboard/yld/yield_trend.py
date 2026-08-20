@@ -5882,7 +5882,8 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
   const topIbins = Object.entries(globalFail)
     .filter(([, v]) => v >= thresh)
     .sort((a, b) => b[1] - a[1]).slice(0, topN)
-    .map(([ib]) => parseInt(ib));
+    .map(([ib, avg]) => ({{ ib:parseInt(ib), avg }}))
+    .reverse();  // highest-failing last so it appears on top of legend/stack
 
   const xPos    = flat.map((_, i) => i);
   const xLabels = flat.map(({{ run }}) => {{
@@ -5894,18 +5895,20 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
   }});
   const traces  = [];
 
-  topIbins.forEach((ib, bi) => {{
+  topIbins.forEach(({{ ib, avg }}, bi) => {{
     const y     = flat.map(({{ stats }}) => stats.failIbins[ib] || 0);
+    const legendLbl = ibinLabel(ib);
     const hover = flat.map(({{ period, run, stats }}) => {{
       const pct = (stats.failIbins[ib] || 0).toFixed(2);
       const totalDies = run.total_dies || Object.values(run.bin_counts || {{}}).reduce((s,v)=>s+v,0) || 1;
       const nFail = Math.round((pct / 100) * totalDies);
       return `<b>${{fullLotLabel(run)}}</b><br>Period: ${{period}}<br>(${{run.material || 'Material-N/A'}})&nbsp;&nbsp;Wafer: ${{run.wafer}}<br>Program: ${{run.program}}<br>Date: ${{run.date}}<br>\u2500\u2500\u2500\u2500<br><b>${{ibinLabel(ib)}}</b><br>Fail: <b>${{nFail}} (${{pct}}%)</b>`;
     }});
-    traces.push({{ type:'bar', x:xPos, y, name:ibinLabel(ib),
+    traces.push({{ type:'bar', x:xPos, y, name:legendLbl,
       hovertext:hover, hoverinfo:'text',
       marker:{{color:PALETTE[bi%PALETTE.length],line:{{color:'white',width:0.4}}}},
-      opacity:0.85, yaxis:'y' }});
+      opacity:0.85, yaxis:'y',
+      legendrank: topIbins.length - 1 - bi }});
   }});
 
   const ffY    = flat.map(({{ stats }}) => stats.ffYield);

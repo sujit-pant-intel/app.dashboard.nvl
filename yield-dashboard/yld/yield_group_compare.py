@@ -2,10 +2,9 @@
 
 Loads one-or-more index.html run folders (or imports a Dashboard.html), lets the
 user assign each TP to a group (default 2 groups: Group A / Group B, more can
-be added), then reuses the EXISTING yield_trend.generate_report() renderer so
-the output looks and behaves exactly like the current compare_report.html —
-Yield Table, Bin Fail Summary, SICC/UPM, CDYN, Digital Dashboard — just with
-each column being a group instead of a single run.
+be added), then generates a self-contained interactive HTML report with live
+Plotly charts — Yield, Interface Bin, and Functional Bin tabs with drag-to-resize
+splitters, threshold/top-N controls, and delta columns.
 
 A single index.html/BinDistribution.html can itself contain multiple test
 programs pooled together (distinguishable by the 'program' field on each
@@ -38,7 +37,6 @@ from yield_trend import (
     find_group_medians, parse_group_medians,
     find_cdyn_medians, parse_cdyn_medians,
     parse_dashboard, read_xlsx, HAVE_OPENPYXL,
-    generate_report, _safe_html_out_path,
 )
 
 # -- palette (matches CompareFrame) -------------------------------------------
@@ -253,7 +251,7 @@ def resolve_index_html_from_dashboard(dash_dir: Path, index_href: str) -> Path |
 
 # ---------------------------------------------------------------------------
 # Group aggregation — counts-based, produces a record shaped exactly like the
-# ones yield_trend.generate_report() already expects (name/data/bin_data/
+# ones _write_interactive_report() already expects (name/data/bin_data/
 # upm_data/cdyn_data), so the report renderer needs no changes at all.
 # ---------------------------------------------------------------------------
 
@@ -363,7 +361,7 @@ def _aggregate_cdyn(members: list[dict]) -> list[dict]:
 
 
 def build_group_record(group_name: str, members: list[dict]) -> dict:
-    """Aggregate a group's member runs into one record shaped for generate_report()."""
+    """Aggregate a group's member runs into one record shaped for _write_interactive_report()."""
     total_die = sum(m['numDie'] or 0 for m in members)
     yield_rows = _aggregate_yield_rows(members)
     summary_rows = _aggregate_bin_counts(members, 'bin_summary_rows')
@@ -383,170 +381,807 @@ def build_group_record(group_name: str, members: list[dict]) -> dict:
         'cdyn_data': _aggregate_cdyn(members),
     }
 
+# Interactive report — self-contained HTML, JS does all aggregation + Plotly
+# ---------------------------------------------------------------------------
 
-def _strip_run_summary_section(out_path: Path) -> None:
-    """Remove the Run Summary section — Program/Lot/Wafer are per-TP metadata
-    that has no single value once runs are pooled into a group, so it only
-    ever shows em-dashes for a group report."""
-    html = out_path.read_text(encoding='utf-8')
-    stripped = re.sub(
-        r'<div class="section">\s*<h2>[^<]*Run Summary</h2>.*?</div>\s*</div>',
-        '', html, count=1, flags=re.DOTALL)
-    stripped = re.sub(
-        r'<div class="dash-link">Source:.*?</div>\s*',
-        '', stripped, count=1, flags=re.DOTALL)
-    if stripped != html:
-        out_path.write_text(stripped, encoding='utf-8')
+# Two levels up from yld/ → shared/library/
+_PLOTLY_JS_PATH = Path(__file__).resolve().parent.parent.parent / 'shared' / 'library' / 'plotly-cartesian.min.js'
 
 
-def _strip_digital_dashboard_section(out_path: Path) -> None:
-    """Remove the Digital Dashboard (Sub Module / Yield Loss) comparison table —
-    not meaningful once individual TPs are pooled into groups."""
-    html = out_path.read_text(encoding='utf-8')
-    found = _find_section_block(html, 'Digital Dashboard')
-    if found:
-        _block, s, e = found
-        out_path.write_text(html[:s] + html[e:], encoding='utf-8')
+def _load_plotly_js() -> str:
+    if _PLOTLY_JS_PATH.exists():
+        return f'<script>{_PLOTLY_JS_PATH.read_text(encoding="utf-8")}</script>'
+    return '<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>'
 
 
-def _move_watermark_to_footer(out_path: Path) -> None:
-    """Replace generate_report()'s fixed top-right watermark badge with a
-    subtle static footer line at the very end of the page."""
-    html = out_path.read_text(encoding='utf-8')
-    stripped = re.sub(
-        r'<div[^>]*id=["\']_wm_div["\'][^>]*>[\s\S]*?</div>\s*<script[^>]*>[\s\S]*?</script>',
-        '', html)
-    footer = ('<div style="text-align:center;color:#aaa;font-size:11px;'
-              'margin:24px 0 8px;padding-top:8px;border-top:1px solid #e0e0e0">'
-              'Pant, Sujit N &mdash; GEMS FTE</div>')
-    if '</body>' in stripped:
-        stripped = stripped.replace('</body>', footer + '\n</body>', 1)
-    else:
-        stripped += footer
-    if stripped != html:
-        out_path.write_text(stripped, encoding='utf-8')
+def _make_serializable(records: list[dict]) -> list[dict]:
+    """Flatten rawBinData into top-level fields so every value is JSON-native."""
+    out = []
+    for rec in records:
+        rbd = rec.get('rawBinData') or {}
+        out.append({
+            'tp': rec.get('tp', ''),
+            'name': rec.get('name', ''),
+            'numDie': rec.get('numDie') or 0,
+            'yield_rows': rbd.get('yield_rows') or [],
+            'bin_summary_rows': rbd.get('bin_summary_rows') or [],
+            'bin_fail_rows': rbd.get('bin_fail_rows') or [],
+            'func_bin_rows': rbd.get('func_bin_rows') or [],
+            'groupMedians': rec.get('groupMedians') or [],
+            'cdynMedians': rec.get('cdynMedians') or [],
+        })
+    return out
 
 
-# NOTE: no separate watermark injection needed here — generate_report() in
-# yield_trend.py already writes the file through _wm_inject(), which adds the
-# same "Pant, Sujit N — GEMS FTE" badge (id=_wm_div) to every report.
+# Placeholders replaced at write time: __PLOTLY_TAG__ __GC_RECORDS__ __GC_ASSIGNMENTS__ __GC_GROUPS__
+_GC_HTML_TEMPLATE = """<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Group Compare \u2014 Interactive</title>
+__PLOTLY_TAG__
+<!-- NEW TEMPLATE v2 -->
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;margin:0;background:#f0f2f5;color:#2c3e50}
+#ctrl{background:#1e2d3d;color:#ecf0f1;padding:12px 20px;border-bottom:3px solid #2980b9}
+#ctrl h2{margin:0 0 8px;font-size:16px;color:#5dade2;letter-spacing:.3px}
+#tp-table{width:100%;border-collapse:collapse}
+#tp-table td{padding:3px 8px;font-size:12px;font-family:Consolas,monospace}
+#tp-table tr:nth-child(even){background:rgba(255,255,255,.06)}
+#tp-table tr:hover{background:rgba(93,173,226,.15)}
+#tp-table select{background:#0d1b26;color:#ecf0f1;border:1px solid #3498db;
+  padding:2px 4px;border-radius:3px;font-size:12px}
+.grp-inp{background:#0d1b26;color:#ecf0f1;border:1px solid #5dade2;
+  padding:3px 7px;border-radius:3px;width:110px;font-size:12px}
+.cbtn{background:#2980b9;color:#fff;border:none;padding:4px 12px;border-radius:4px;
+  cursor:pointer;font-size:12px;font-weight:bold;transition:background .15s}
+.cbtn:hover{background:#3498db}
+.cbtn.grn{background:#1e8449}.cbtn.grn:hover{background:#27ae60}
+.tab-bar{background:#fff;padding:0 20px;border-bottom:2px solid #d5d8dc;display:flex;gap:0;
+  box-shadow:0 2px 4px rgba(0,0,0,.07)}
+.tab-btn{padding:10px 20px;cursor:pointer;border:none;background:none;font-size:13px;
+  font-weight:600;color:#7f8c8d;border-bottom:3px solid transparent;margin-bottom:-2px;
+  transition:color .15s,border-color .15s}
+.tab-btn:hover{color:#2c3e50}
+.tab-btn.active{color:#2980b9;border-bottom-color:#2980b9}
+.tab-panel{display:none;padding:16px 20px}
+.tab-panel.active{display:block}
+.two-col{display:flex;gap:0;align-items:stretch;width:100%;min-height:500px;max-height:calc(100vh - 220px);resize:vertical;overflow:auto}
+.two-col>.card{overflow:auto;box-sizing:border-box;min-width:80px}
+.two-col>.card:first-child{flex:0 0 45%;width:45%}
+.two-col>.card:last-child{flex:1 1 0;display:flex;flex-direction:column}
+.splitter{width:20px;flex:0 0 20px;cursor:col-resize;background:#dde3ea;
+  border-left:1px solid #c8d0da;border-right:1px solid #c8d0da;
+  transition:background .15s;align-self:stretch;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.splitter:hover,.splitter.dragging{background:#c8d6e0}
+.spl-btn{width:16px;height:16px;padding:0;border:1px solid #aaa;border-radius:2px;
+  background:#fff;color:#555;font-size:9px;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;line-height:1;flex-shrink:0}
+.spl-btn:hover{background:#2980b9;color:#fff;border-color:#2980b9}
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.09);
+  padding:16px;margin-bottom:14px;box-sizing:border-box}
+h3{font-size:13px;font-weight:700;color:#1a252f;margin:0 0 10px;
+  padding-bottom:6px;border-bottom:2px solid #ebedef;text-transform:uppercase;
+  letter-spacing:.5px}
+/* table wrapper — no internal scroll; table grows to fit all rows */
+.tbl-wrap{width:100%;overflow-x:auto}
+.cmp-tbl{border-collapse:collapse;font-size:14px;width:100%;min-width:max-content}
+.cmp-tbl th{background:#34495e;color:#ecf0f1;padding:6px 10px;text-align:left;
+  white-space:nowrap;font-size:13px}
+.cmp-tbl td{padding:4px 10px;border-bottom:1px solid #eee;white-space:nowrap}
+.cmp-tbl tr:hover td{background:#f9f9f9!important}
+.cmp-tbl tbody tr.sel td{background:#d6eaf8!important;outline:2px solid #2980b9;}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+/* ---- ctrl ---- */
+input[type=range]{accent-color:#3498db;width:130px;vertical-align:middle}
+input[type=number]{background:#0d1b26;color:#ecf0f1;border:1px solid #5dade2;
+  padding:3px 5px;border-radius:3px;width:60px;font-size:12px}
+.ctrl-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px}
+.ctrl-lbl{font-size:11px;color:#95a5a6}
+.chart-div{flex:1;min-height:200px;overflow:hidden;position:relative}
+.chart-resizer{position:absolute;bottom:0;right:0;width:18px;height:18px;cursor:nwse-resize;
+  background:linear-gradient(135deg,transparent 40%,#a0adb8 40%,#a0adb8 55%,transparent 55%,
+    transparent 65%,#a0adb8 65%,#a0adb8 80%,transparent 80%);
+  z-index:10;border-radius:0 0 4px 0}
+.chart-resizer:hover{background:linear-gradient(135deg,transparent 40%,#2980b9 40%,#2980b9 55%,transparent 55%,
+    transparent 65%,#2980b9 65%,#2980b9 80%,transparent 80%)}
+footer{text-align:center;color:#aaa;font-size:11px;margin:20px 0 8px;
+  padding-top:8px;border-top:1px solid #e0e0e0}
+</style>
+</head>
+<body>
+<div id="ctrl">
+  <h2>&#128202; Group Compare \u2014 Interactive</h2>
+  <div id="groups-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"></div>
+  <button class="cbtn" onclick="addGroup()">+ Add Group</button>
+  <div style="margin-top:8px;max-height:190px;overflow-y:auto">
+    <table id="tp-table"></table>
+  </div>
+  <div class="ctrl-row">
+    <span class="ctrl-lbl">Pareto threshold:</span>
+    <input type="range" id="threshold" min="0" max="5" step="0.1" value="0.1"
+      oninput="document.getElementById('thr-val').textContent=parseFloat(this.value).toFixed(1)+'%';gcDebounce();">
+    <span id="thr-val" style="font-size:12px;width:34px">0.1%</span>
+    <span class="ctrl-lbl" style="margin-left:8px">Top N bars:</span>
+    <input type="number" id="topn" value="20" min="1" max="500" oninput="gcDebounce()">
+    <span class="ctrl-lbl" style="margin-left:8px">Top fail bins (yield):</span>
+    <input type="number" id="topfail" value="16" min="1" max="200" oninput="gcDebounce()">
+    <button class="cbtn grn" style="margin-left:6px" onclick="applyGroups()">&#9654; Refresh</button>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('yield',this)">Yield</button>
+  <button class="tab-btn" onclick="showTab('ibin',this)">Interface Bin</button>
+  <button class="tab-btn" onclick="showTab('fbin',this)">Functional Bin</button>
+</div>
+
+<div id="tab-yield" class="tab-panel active">
+  <div class="two-col">
+    <div class="card">
+      <h3>Yield Table</h3>
+      <div class="tbl-wrap"><div id="table-yield"></div></div>
+    </div>
+    <div class="splitter" onmousedown="startSplit(event,this)">
+      <button class="spl-btn" onmousedown="event.stopPropagation()" onclick="togglePanel(this,'left')" title="Hide/show table">&#9668;</button>
+      <button class="spl-btn" onmousedown="event.stopPropagation()" onclick="togglePanel(this,'right')" title="Hide/show chart">&#9658;</button>
+    </div>
+    <div class="card">
+      <h3>Yield &amp; Fail Chart</h3>
+      <div id="chart-yield" class="chart-div">
+        <div class="chart-resizer" onmousedown="startHResize(event,this)" title="Drag to resize chart"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="tab-ibin" class="tab-panel">
+  <div class="two-col">
+    <div class="card">
+      <h3>Bin Fail Summary <small style="font-weight:normal;color:#888">(click row to highlight)</small></h3>
+      <div class="tbl-wrap"><div id="table-ibin"></div></div>
+    </div>
+    <div class="splitter" onmousedown="startSplit(event,this)">
+      <button class="spl-btn" onmousedown="event.stopPropagation()" onclick="togglePanel(this,'left')" title="Hide/show table">&#9668;</button>
+      <button class="spl-btn" onmousedown="event.stopPropagation()" onclick="togglePanel(this,'right')" title="Hide/show chart">&#9658;</button>
+    </div>
+    <div class="card">
+      <h3>Interface Bin Pareto</h3>
+      <div id="chart-ibin" class="chart-div">
+        <div class="chart-resizer" onmousedown="startHResize(event,this)" title="Drag to resize chart"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="tab-fbin" class="tab-panel">
+  <div class="two-col">
+    <div class="card">
+      <h3>Functional Bin Table <small style="font-weight:normal;color:#888">(click row to highlight)</small></h3>
+      <div class="tbl-wrap"><div id="table-fbin"></div></div>
+    </div>
+    <div class="splitter" onmousedown="startSplit(event,this)">
+      <button class="spl-btn" onmousedown="event.stopPropagation()" onclick="togglePanel(this,'left')" title="Hide/show table">&#9668;</button>
+      <button class="spl-btn" onmousedown="event.stopPropagation()" onclick="togglePanel(this,'right')" title="Hide/show chart">&#9658;</button>
+    </div>
+    <div class="card">
+      <h3>Functional Bin Pareto</h3>
+      <div id="chart-fbin" class="chart-div">
+        <div class="chart-resizer" onmousedown="startHResize(event,this)" title="Drag to resize chart"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>Pant, Sujit N &mdash; GEMS FTE</footer>
+
+<script>
+var GC_RECORDS = __GC_RECORDS__;
+var GC_ASSIGNMENTS = __GC_ASSIGNMENTS__;
+var GC_GROUPS = __GC_GROUPS__;
+
+// debounce so slider/topN don't fire on every pixel
+var _gcTimer=null;
+function gcDebounce(){clearTimeout(_gcTimer);_gcTimer=setTimeout(applyGroups,280);}
+
+/* ---- panel toggle (arrow buttons in splitter) ---- */
+function togglePanel(btn,side){
+  var spl=btn.closest('.splitter');
+  var left=spl.previousElementSibling,right=spl.nextElementSibling;
+  if(side==='left'){
+    var hide=left.style.display!=='none';
+    left.style.display=hide?'none':'';
+    if(!hide){left.style.flex='0 0 45%';left.style.width='45%';}
+    btn.textContent=hide?'\u25BA':'\u25C4';
+  }else{
+    var hide=right.style.display!=='none';
+    right.style.display=hide?'none':'';
+    btn.textContent=hide?'\u25C4':'\u25BA';
+  }
+  setTimeout(function(){
+    var cd=right.querySelector('.chart-div');
+    if(cd&&cd.id)try{Plotly.Plots.resize(cd);}catch(x){}
+  },50);
+}
+/* ---- drag-to-resize chart (diagonal grip) ---- */
+function startHResize(e,grip){
+  e.preventDefault();
+  var cd=grip.parentElement;
+  if(!cd||!cd.classList.contains('chart-div')) return;
+  var startX=e.clientX,startY=e.clientY;
+  var startW=cd.getBoundingClientRect().width,startH=cd.getBoundingClientRect().height;
+  function onMove(ev){
+    var w=Math.max(200,startW+(ev.clientX-startX));
+    var h=Math.max(150,startH+(ev.clientY-startY));
+    cd.style.flex='0 0 auto';cd.style.width=w+'px';cd.style.height=h+'px';
+    if(cd.id)try{Plotly.Plots.resize(cd);}catch(x){}
+  }
+  function onUp(){
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    if(cd.id)try{Plotly.Plots.resize(cd);}catch(x){}
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
+/* ---- drag-to-resize splitter ---- */
+function startSplit(e,spl){
+  e.preventDefault();
+  var left=spl.previousElementSibling,right=spl.nextElementSibling;
+  var container=spl.parentElement;
+  var startX=e.clientX,startW=left.getBoundingClientRect().width;
+  spl.classList.add('dragging');
+  function onMove(ev){
+    var totalW=container.getBoundingClientRect().width-6;
+    var newW=Math.max(80,Math.min(totalW-80,startW+(ev.clientX-startX)));
+    left.style.flex='0 0 '+newW+'px';left.style.width=newW+'px';
+    // resize any Plotly chart inside right panel
+    var cd=right.querySelector('.chart-div');if(cd&&cd.id)try{Plotly.Plots.resize(cd);}catch(x){}
+  }
+  function onUp(){
+    spl.classList.remove('dragging');
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    var cd=right.querySelector('.chart-div');if(cd&&cd.id)try{Plotly.Plots.resize(cd);}catch(x){}
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
+
+var COLORS=['#3498db','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e','#16a085','#c0392b'];
+var FAIL_COLORS=['#e74c3c','#e67e22','#f39c12','#2ecc71','#1abc9c','#3498db','#9b59b6','#e8177d','#95a5a6','#34495e'];
+var LINE_COLORS=['#1a73e8','#e53935','#2e7d32','#f57c00'];
+var KEY_BINS=['1/2/3/4','1/2'];
+var KEY_BIN_TITLES={'1/2/3/4':'FF+DF (Bin 1/2/3/4)','1/2':'FF (Bin 1/2)'};
+
+function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':String(s));return d.innerHTML;}
+function binAllGood(b){var ns=(String(b).match(/\\d+/g)||[]);return ns.length&&ns.every(function(n){return parseInt(n)<=4;});}
+function pctClass(s){
+  var n=parseFloat(s); if(isNaN(n)||s==null)return '';
+  if(n>5) return 'p-hi'; if(n>2) return 'p-md'; if(n>0.5) return 'p-lo'; if(n>0) return 'p-ok';
+  return '';
+}
+
+/* ---- JS aggregation mirrors ---- */
+function aggYield(members){
+  var td=members.reduce(function(s,m){return s+(m.numDie||0);},0),acc={};
+  members.forEach(function(m){
+    var nd=m.numDie||0;if(!nd)return;
+    (m.yield_rows||[]).forEach(function(r){
+      if(r.bin==null||r.yield_pct==null)return;
+      if(!acc[r.bin])acc[r.bin]={count:0,exp:r.expected_pct,fb:r.fail_bucket||''};
+      acc[r.bin].count+=r.yield_pct/100*nd;
+    });
+  });
+  return Object.keys(acc).map(function(b){
+    return{bin:b,fail_bucket:acc[b].fb,yield_pct:td?acc[b].count/td*100:null,expected_pct:acc[b].exp};
+  });
+}
+
+function aggBin(members,key){
+  var td=members.reduce(function(s,m){return s+(m.numDie||0);},0),acc={};
+  members.forEach(function(m){
+    (m[key]||[]).forEach(function(r){
+      if(r.ibin==null)return;
+      if(!acc[r.ibin])acc[r.ibin]={cat:r.cat||'',desc:r.desc||'',fb:r.fail_bucket||'',count:0};
+      if(r.fail_count!=null)acc[r.ibin].count+=r.fail_count;
+    });
+  });
+  return Object.keys(acc).map(function(ib){var e=acc[ib];
+    return{ibin:ib,cat:e.cat,desc:e.desc,fail_bucket:e.fb,fail_count:e.count,
+           fail_pct:td?e.count/td*100:null};
+  });
+}
+
+function aggFbin(members){
+  var td=members.reduce(function(s,m){return s+(m.numDie||0);},0),acc={};
+  members.forEach(function(m){
+    (m.func_bin_rows||[]).forEach(function(r){
+      if(r.ibin==null)return;
+      var k=r.ibin+'|'+r.fbin;
+      if(!acc[k])acc[k]={ib:r.ibin,fb:r.fbin,bucket:r.fail_bucket||'',count:0};
+      if(!acc[k].bucket&&r.fail_bucket)acc[k].bucket=r.fail_bucket;
+      if(r.fail_count!=null)acc[k].count+=r.fail_count;
+    });
+  });
+  return Object.values(acc).map(function(e){
+    return{ibin:e.ib,fbin:e.fb,fail_bucket:e.bucket,fail_count:e.count,
+           fail_pct:td?e.count/td*100:null};
+  });
+}
+
+/* ---- group / UI management ---- */
+function renameGroup(idx){
+  var inp=document.querySelectorAll('.grp-inp')[idx];
+  var nv=inp.value.trim();if(!nv||nv===GC_GROUPS[idx])return;
+  var old=GC_GROUPS[idx];GC_GROUPS[idx]=nv;inp.dataset.orig=nv;
+  document.querySelectorAll('#tp-table select').forEach(function(sel){
+    Array.from(sel.options).forEach(function(o){if(o.value===old){o.value=nv;o.textContent=nv;}});
+    if(sel.value===old)sel.value=nv;
+  });
+  applyGroups();
+}
+function addGroup(){
+  var n=GC_GROUPS.length+1,name='Group '+String.fromCharCode(64+n);
+  while(GC_GROUPS.indexOf(name)>=0)name='Group '+(++n);
+  GC_GROUPS.push(name);renderGroupsRow();
+  document.querySelectorAll('#tp-table select').forEach(function(sel){
+    var opt=document.createElement('option');opt.value=name;opt.textContent=name;
+    sel.insertBefore(opt,sel.lastElementChild);
+  });
+}
+function renderGroupsRow(){
+  var row=document.getElementById('groups-row');row.innerHTML='';
+  GC_GROUPS.forEach(function(g,i){
+    var inp=document.createElement('input');
+    inp.className='grp-inp';inp.value=g;inp.dataset.orig=g;
+    inp.onblur=function(){renameGroup(i);};
+    inp.onkeydown=function(e){if(e.key==='Enter')renameGroup(i);};
+    row.appendChild(inp);
+  });
+}
+function renderTpTable(){
+  var tbl=document.getElementById('tp-table');tbl.innerHTML='';
+  GC_RECORDS.forEach(function(rec,i){
+    var tr=document.createElement('tr');
+    var td1=document.createElement('td');
+    td1.textContent=rec.tp+'  ('+rec.name+', die='+rec.numDie+')';
+    var td2=document.createElement('td');td2.style.width='155px';
+    var sel=document.createElement('select');sel.id='assign-'+i;
+    GC_GROUPS.forEach(function(g){
+      var o=document.createElement('option');o.value=g;o.textContent=g;
+      if(g===GC_ASSIGNMENTS[i])o.selected=true;sel.appendChild(o);
+    });
+    var excl=document.createElement('option');excl.value='(exclude)';excl.textContent='(exclude)';
+    if(GC_ASSIGNMENTS[i]==='(exclude)')excl.selected=true;
+    sel.appendChild(excl);
+    sel.onchange=function(){applyGroups();};
+    td2.appendChild(sel);tr.appendChild(td1);tr.appendChild(td2);tbl.appendChild(tr);
+  });
+}
+function showTab(id,btn){
+  document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');p.style.display='none';});
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
+  var panel=document.getElementById('tab-'+id);panel.classList.add('active');panel.style.display='block';
+  btn.classList.add('active');
+}
+function buildGroupMap(){
+  var map={};
+  GC_RECORDS.forEach(function(rec,i){
+    var sel=document.getElementById('assign-'+i);if(!sel)return;
+    var g=sel.value;if(g==='(exclude)')return;
+    if(!map[g])map[g]=[];map[g].push(rec);
+  });
+  return map;
+}
+
+/* ---- exact CSS from static report ---- */
+var ID_COLORS=['#2980b9','#27ae60','#e74c3c','#f39c12','#8e44ad','#16a085','#d35400','#2c3e50','#c0392b','#1abc9c'];
+var CAT_PALETTE=['#dbeeff','#e0f5e0','#fef3cd','#fde0d0','#ece0f8','#d0f4f4','#fce4ec','#e8f5e9','#fff3e0','#e3f2fd','#f3e5f5','#e8eaf6'];
+
+/* cell highlight: bold-red when |v - mean| > 10 pp */
+function cellHl(v,rowVals,extraStyle){
+  var nums=rowVals.filter(function(x){return x!=null;});
+  if(v==null)return '<td class="num" style="'+(extraStyle||'')+'">';
+  var alert=nums.length>=2&&Math.abs(v-nums.reduce(function(a,b){return a+b;},0)/nums.length)>10;
+  var st=(extraStyle||'')+(alert?'color:#c0392b;font-weight:bold;':'');
+  return '<td class="num" style="'+st+'">';
+}
+
+/* delta td */
+function deltaTd(v,base,bg,invert){
+  if(base!=null&&v!=null){
+    var d=v-base,sign=d>0?'+':'';
+    var c=d===0?'#555':(d>0?(invert?'#27ae60':'#c0392b'):(invert?'#c0392b':'#27ae60'));
+    return '<td class="num" style="color:'+c+';font-weight:bold'+(bg?';background:'+bg:'')+'">'+sign+d.toFixed(2)+'%</td>';
+  }
+  return '<td class="num"'+(bg?' style="background:'+bg+'"':'')+'>&#8212;</td>';
+}
+
+/* run-header th with ID_COLOR */
+function runTh(name,ri,extra){
+  return '<th style="background:'+ID_COLORS[ri%ID_COLORS.length]+';color:#fff;font-weight:bold;padding:5px 8px'+(extra?';'+extra:'')+'">'+esc(name)+'</th>';
+}
+/* delta-header th */
+function deltaTh(a,b){
+  return '<th style="background:#34495e;color:#fff;font-weight:bold;padding:5px 8px;font-size:11px">\u0394 '+esc(a)+'<br>vs '+esc(b)+'</th>';
+}
+
+/* ---- YIELD TABLE (exact replica of build_rdnd_table_html) ---- */
+function buildYieldTable(groups,byG,binOrder){
+  var hdr='<th>BIN</th><th>Fail Bucket</th><th>Expected (%)</th>';
+  groups.forEach(function(g,ri){hdr+=runTh(g,ri);});
+  if(groups.length>=2){
+    for(var ri=1;ri<groups.length;ri++){
+      hdr+=deltaTh(groups[ri],groups[0]);
+      if(ri>=2)hdr+=deltaTh(groups[ri],groups[ri-1]);
+    }
+  }
+  var rows='';
+  (binOrder||[]).forEach(function(b){
+    var fb='',exp=null;
+    groups.forEach(function(g){var r=byG[g].find(function(x){return x.bin===b;});if(r){if(r.fail_bucket)fb=r.fail_bucket;if(r.expected_pct!=null)exp=r.expected_pct;}});
+    var cells='<td style="white-space:nowrap;font-size:20px">'+esc(b)+'</td>'
+              +'<td style="font-size:20px">'+esc(fb)+'</td>'
+              +'<td class="num" style="color:#555">'+(exp!=null?exp.toFixed(1)+'%':'')+'</td>';
+    var runVals=groups.map(function(g){var r=byG[g].find(function(x){return x.bin===b;});return r&&r.yield_pct!=null?r.yield_pct:null;});
+    var allVals=runVals.slice();
+    runVals.forEach(function(v){cells+=cellHl(v,allVals,'')+(v!=null?v.toFixed(1)+'%':'')+'</td>';});
+    if(groups.length>=2){
+      for(var ri=1;ri<groups.length;ri++){
+        // yield table: positive delta means HIGHER yield = good (green), invert=true
+        cells+=deltaTd(runVals[ri],runVals[0],null,true);
+        if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],null,true);
+      }
+    }
+    rows+='<tr>'+cells+'</tr>';
+  });
+  return '<table class="cmp-tbl"><thead><tr>'+hdr+'</tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+/* ---- IBIN TABLE (exact replica of build_bin_fail_table_html) ---- */
+function buildIbinTable(groups,byG,useSummary){
+  var catColor={},catPalIdx=0;
+  var allRows=[];
+  // collect union of ibins from first non-empty group
+  var srcKey=useSummary?'bin_summary_rows':'bin_fail_rows';
+  groups.forEach(function(g){if(!allRows.length)(byG[g]||[]).forEach(function(r){allRows.push({ibin:r.ibin,cat:r.cat||'',desc:r.desc||'',fail_bucket:r.fail_bucket||'',fb:r.fail_bucket||''});});});
+
+  var hdr=useSummary?'<th>Bin</th><th>Category</th><th>Description</th>':'<th>Interface Bin</th><th>Fail Bucket</th>';
+  groups.forEach(function(g,ri){
+    hdr+=useSummary
+      ?'<th style="background:'+ID_COLORS[ri%ID_COLORS.length]+';color:#fff;font-weight:bold;padding:5px 8px">'+esc(g)+'<br><span style="font-size:11px;font-weight:normal">Yield/Fail%</span></th>'
+      :runTh(g,ri);
+  });
+  if(groups.length>=2){for(var ri=1;ri<groups.length;ri++){hdr+=deltaTh(groups[ri],groups[0]);if(ri>=2)hdr+=deltaTh(groups[ri],groups[ri-1]);}}
+
+  var rows='';
+  allRows.forEach(function(row){
+    var ib=row.ibin;
+    var bg='#ffffff';
+    if(useSummary){
+      var ck=(row.cat||'').trim().toLowerCase();
+      if(ck){if(catColor[ck]==null){catColor[ck]=CAT_PALETTE[catPalIdx%CAT_PALETTE.length];catPalIdx++;}bg=catColor[ck];}
+    }
+    var cells=useSummary
+      ?('<td style="background:'+bg+'">'+esc(ib)+'</td>'
+        +'<td style="background:'+bg+'">'+esc(row.cat||'')+'</td>'
+        +'<td style="background:'+bg+'">'+esc(row.desc||'')+'</td>')
+      :('<td>'+esc(ib)+'</td><td>'+esc(row.fb||'')+'</td>');
+    var runVals=groups.map(function(g){var r=(byG[g]||[]).find(function(x){return x.ibin===ib;});return r&&r.fail_pct!=null?r.fail_pct:null;});
+    var allVals=runVals.slice();
+    runVals.forEach(function(v){cells+=cellHl(v,allVals,useSummary?'background:'+bg+';':'')+(v!=null?v.toFixed(2)+'%':'\u2014')+'</td>';});
+    if(groups.length>=2){for(var ri=1;ri<groups.length;ri++){cells+=deltaTd(runVals[ri],runVals[0],useSummary?bg:null,false);if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],useSummary?bg:null,false);}}
+    rows+='<tr>'+cells+'</tr>';
+  });
+  return '<table class="cmp-tbl" style="border-collapse:collapse"><thead><tr>'+hdr+'</tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+/* ---- FBIN TABLE (exact replica of build_func_bin_table_html) ---- */
+function buildFbinTable(groups,byG){
+  // union of (ibin,fbin) keys
+  var keyMap={};
+  groups.forEach(function(g){
+    (byG[g]||[]).forEach(function(r){
+      var k=r.ibin+'|'+r.fbin;
+      if(!keyMap[k])keyMap[k]={ibin:r.ibin,fbin:r.fbin,fail_bucket:r.fail_bucket||''};
+      else if(!keyMap[k].fail_bucket&&r.fail_bucket)keyMap[k].fail_bucket=r.fail_bucket;
+    });
+  });
+  var allRows=Object.values(keyMap).sort(function(a,b){
+    var ai=parseInt(a.ibin)||9999,bi2=parseInt(b.ibin)||9999;
+    if(ai!==bi2)return ai-bi2;
+    return (parseInt(a.fbin)||9999)-(parseInt(b.fbin)||9999);
+  });
+  var hdr='<th>Interface Bin</th><th>Functional Bin</th><th>Fail Bucket</th>';
+  groups.forEach(function(g,ri){hdr+=runTh(g,ri);});
+  if(groups.length>=2){for(var ri=1;ri<groups.length;ri++){hdr+=deltaTh(groups[ri],groups[0]);if(ri>=2)hdr+=deltaTh(groups[ri],groups[ri-1]);}}
+  var rows='';
+  allRows.forEach(function(row){
+    var cells='<td>'+esc(row.ibin)+'</td><td>'+esc(row.fbin||'')+'</td><td>'+esc(row.fail_bucket)+'</td>';
+    var runVals=groups.map(function(g){var r=(byG[g]||[]).find(function(x){return x.ibin===row.ibin&&x.fbin===row.fbin;});return r&&r.fail_pct!=null?r.fail_pct:null;});
+    var allVals=runVals.slice();
+    runVals.forEach(function(v){cells+=cellHl(v,allVals,'')+(v!=null?v.toFixed(1)+'%':'\u2014')+'</td>';});
+    if(groups.length>=2){for(var ri=1;ri<groups.length;ri++){cells+=deltaTd(runVals[ri],runVals[0],null,false);if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],null,false);}}
+    rows+='<tr>'+cells+'</tr>';
+  });
+  return '<table class="cmp-tbl" style="border-collapse:collapse"><thead><tr>'+hdr+'</tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+/* ---- chart highlight on row click ---- */
+var _selIbin=null, _selFbin=null;
+
+function _doHighlight(chartId, yMatch, stateVar, tr){
+  // toggle off
+  if(window['_sel'+stateVar]===tr){
+    tr.classList.remove('sel');window['_sel'+stateVar]=null;
+    var div=document.getElementById(chartId);if(!div||!div.data)return;
+    div.data.forEach(function(_t,ti){
+      var n=(div.data[ti].y||[]).length;
+      Plotly.restyle(chartId,{'marker.opacity':[Array(n).fill(0.85)]},[ti]);
+    });
+    return;
+  }
+  if(window['_sel'+stateVar])window['_sel'+stateVar].classList.remove('sel');
+  tr.classList.add('sel');window['_sel'+stateVar]=tr;
+  var div=document.getElementById(chartId);if(!div||!div.data)return;
+  div.data.forEach(function(_t,ti){
+    var ops=(div.data[ti].y||[]).map(function(lbl){
+      return String(lbl).indexOf(yMatch)>=0?1.0:0.2;
+    });
+    Plotly.restyle(chartId,{'marker.opacity':[ops]},[ti]);
+  });
+}
+
+// row-click callbacks stored by table — called as strings from onclick attr
+var _ibinRowLabels=[], _fbinRowLabels=[];
+function onIbinRowClick(tr,ri){_doHighlight('chart-ibin',_ibinRowLabels[ri],'Ibin',tr);}
+function onFbinRowClick(tr,ri){_doHighlight('chart-fbin',_fbinRowLabels[ri],'Fbin',tr);}
+
+/* ---- YIELD — bars from ibin data, lines from yield_rows ---- */
+function renderYield(gmap){
+  var groups=Object.keys(gmap);
+
+  // ibin data for stacked fail bars (same source as ibin chart)
+  var byGib={}, ibMax={}, ibCat={}, ibDesc={};
+  groups.forEach(function(g){
+    var agg=aggBin(gmap[g],'bin_summary_rows');
+    if(!agg.length) agg=aggBin(gmap[g],'bin_fail_rows');
+    byGib[g]=agg;
+    agg.forEach(function(r){
+      // skip ibins 1-4 (good bins)
+      if(parseInt(r.ibin)<=4) return;
+      var v=r.fail_pct||0;
+      if(v>(ibMax[r.ibin]||0)){ibMax[r.ibin]=v;ibCat[r.ibin]=r.cat||'';ibDesc[r.ibin]=r.desc||'';}
+    });
+  });
+
+  var topFail=parseInt((document.getElementById('topfail')||{value:'16'}).value)||16;
+  // sort desc so index 0 = highest fail; reverse for trace push so highest ends up last (top of legend/stack)
+  var failBins=Object.keys(ibMax).sort(function(a,b){return ibMax[b]-ibMax[a];}).slice(0,topFail).reverse();
+
+  // yield_rows data for key-bin lines only
+  var byGy={};
+  groups.forEach(function(g){ byGy[g]=aggYield(gmap[g]); });
+  var yBinOrder=byGy[groups[0]]?byGy[groups[0]].map(function(r){return r.bin;}):[];
+  var kbins=yBinOrder.filter(function(b){return KEY_BINS.indexOf(b)>=0;});
+  if(!kbins.length) kbins=yBinOrder.filter(binAllGood).slice(0,2);
+
+  var traces=[];
+
+  // stacked bars per ibin — highest-failing last so it appears on top of legend
+  failBins.forEach(function(ib,si){
+    var parts=['IB '+ib];
+    if(ibCat[ib]) parts.push(ibCat[ib]);
+    if(ibDesc[ib]) parts.push(ibDesc[ib]);
+    var segLbl=parts.join(' - ');
+    var vals=groups.map(function(g){var r=byGib[g].find(function(x){return x.ibin===ib;});return r&&r.fail_pct!=null?+r.fail_pct.toFixed(2):0;});
+    var texts=vals.map(function(v){return v>=0.8?v.toFixed(1)+'%':'';});
+    traces.push({type:'bar',name:segLbl,x:groups,y:vals,
+      text:texts,textposition:'inside',insidetextanchor:'middle',
+      textfont:{size:10,color:'white'},constraintext:'inside',
+      marker:{color:FAIL_COLORS[si%FAIL_COLORS.length],opacity:0.85,
+              line:{color:'white',width:0.5}},
+      yaxis:'y',hovertemplate:'%{y:.2f}%<extra>'+esc(segLbl)+'</extra>'});
+  });
+
+  // line per key-bin on right y-axis + full-width shapes for expected
+  var shapes=[], annotations=[];
+  kbins.slice(0,2).forEach(function(b,ki){
+    var lbl=KEY_BIN_TITLES[b]||('Bin '+b);
+    var vals=groups.map(function(g){var r=byGy[g].find(function(x){return x.bin===b;});return r&&r.yield_pct!=null?+r.yield_pct.toFixed(2):null;});
+    var ptLabels=vals.map(function(v){return v!=null?v.toFixed(1)+'%':'';});
+    traces.push({type:'scatter',mode:'lines+markers+text',name:lbl,
+      x:groups,y:vals,cliponaxis:false,
+      text:ptLabels,textposition:'top center',textfont:{size:11,color:LINE_COLORS[ki]},
+      marker:{size:9,color:LINE_COLORS[ki]},
+      line:{width:2.5,color:LINE_COLORS[ki]},
+      yaxis:'y2',hovertemplate:'%{y:.1f}%<extra>'+esc(lbl)+'</extra>'});
+    var firstVal=vals.find(function(v){return v!=null;});
+    if(firstVal!=null){
+      annotations.push({xref:'paper',yref:'y2',x:0,y:firstVal,
+        text:'<b>'+lbl+'</b> '+firstVal.toFixed(1)+'%',
+        showarrow:false,xanchor:'left',yanchor:'bottom',
+        font:{size:11,color:LINE_COLORS[ki]}});
+    }
+    var expVals=groups.map(function(g){var r=byGy[g].find(function(x){return x.bin===b;});return r&&r.expected_pct!=null?r.expected_pct:null;});
+    var expVal=expVals.find(function(v){return v!=null;});
+    if(expVal!=null){
+      shapes.push({type:'line',xref:'paper',yref:'y2',
+        x0:0,y0:expVal,x1:1,y1:expVal,
+        line:{color:LINE_COLORS[ki],width:1.6,dash:'dot'}});
+      annotations.push({xref:'paper',yref:'y2',x:0,y:expVal,
+        text:'Exp '+expVal.toFixed(1)+'%',
+        showarrow:false,xanchor:'left',yanchor:'bottom',
+        font:{size:10,color:LINE_COLORS[ki]}});
+    }
+  });
+
+  // y-axis range: max stacked ibin total × 2.5 to leave headroom above bars
+  var allStackedTotals=groups.map(function(g){
+    return failBins.reduce(function(s,ib){var r=byGib[g].find(function(x){return x.ibin===ib;});return s+(r&&r.fail_pct!=null?r.fail_pct:0);},0);
+  });
+  var maxFail=Math.max.apply(null,allStackedTotals.concat([0]));
+  var failYlim=Math.min(100,Math.max(5,maxFail*2.5));
+
+  document.getElementById('table-yield').innerHTML=buildYieldTable(groups,byGy,yBinOrder);
+
+  Plotly.react('chart-yield',traces,{
+    barmode:'stack',
+    yaxis:{title:{text:'Fail (%)',standoff:10},titlefont:{size:13},side:'left',range:[0,failYlim],
+           gridcolor:'#e5e5e5',showgrid:true,zeroline:true,gridwidth:1,griddash:'dash'},
+    yaxis2:{title:{text:'Yield (%)',standoff:10},titlefont:{size:13},side:'right',overlaying:'y',range:[0,100],
+            showgrid:false,zeroline:false},
+    xaxis:{tickangle:-15,tickfont:{size:12},range:[-0.5,groups.length-0.5]},
+    title:{text:'Yield (%) and Fail (%) Chart',font:{size:14,color:'#2c3e50',weight:'bold'}},
+    legend:{orientation:'v',x:1.08,y:1,xanchor:'left',yanchor:'top',font:{size:12},bgcolor:'rgba(255,255,255,0.85)',bordercolor:'#ccc',borderwidth:1},
+    shapes:shapes,annotations:annotations,
+    autosize:true,
+    margin:{l:80,r:160,t:50,b:80},
+    plot_bgcolor:'#fafbfc',paper_bgcolor:'#fff'
+  },{responsive:true});
+}
+
+/* ---- INTERFACE BIN pareto ---- */
+function renderIbin(gmap){
+  var thr=parseFloat(document.getElementById('threshold').value)||0.1;
+  var topn=parseInt(document.getElementById('topn').value)||20;
+  var groups=Object.keys(gmap),byG={},ibMax={},ibBkt={};
+  groups.forEach(function(g){
+    var agg=aggBin(gmap[g],'bin_summary_rows');
+    if(!agg.length)agg=aggBin(gmap[g],'bin_fail_rows');
+    byG[g]=agg;
+    agg.forEach(function(r){var v=r.fail_pct||0;if(v>(ibMax[r.ibin]||0)){ibMax[r.ibin]=v;ibBkt[r.ibin]=r.fail_bucket||'';}});
+  });
+  var major=Object.keys(ibMax).filter(function(k){return ibMax[k]>=thr;})
+    .sort(function(a,b){return ibMax[b]-ibMax[a];}).slice(0,topn);
+  var minor=Object.keys(ibMax).filter(function(k){return ibMax[k]<thr;});
+  var labels=major.concat(minor.length?['__MISC__']:[]);
+  var yLbls=labels.map(function(k){
+    return k==='__MISC__'?'Misc (<'+thr.toFixed(1)+'%)':'iBin '+k+' \u2502 '+(ibBkt[k]||'');
+  });
+
+  // build table — exact static replica; also populate row-labels for chart highlight
+  _ibinRowLabels=major.map(function(ib){return 'iBin '+ib+' \u2502';});
+  var useSummary=groups.some(function(g){return (byG[g]||[]).some(function(r){return r.cat;});});
+  _selIbin=null;
+  document.getElementById('table-ibin').innerHTML=buildIbinTable(groups,byG,useSummary);
+  // re-attach onclick after innerHTML replace
+  document.querySelectorAll('#table-ibin tbody tr').forEach(function(tr,ri){
+    tr.style.cursor='pointer';
+    tr.onclick=function(){onIbinRowClick(tr,ri);};
+  });
+
+  var traces=groups.map(function(g,gi){
+    var agg=byG[g]||[];
+    var vals=labels.map(function(k){
+      if(k==='__MISC__')return minor.reduce(function(s,mk){var r=agg.find(function(x){return x.ibin===mk;});return s+(r?r.fail_pct||0:0);},0);
+      var r=agg.find(function(x){return x.ibin===k;});return r?r.fail_pct||0:0;
+    });
+    return{type:'bar',orientation:'h',name:g,x:vals,y:yLbls,
+      marker:{color:COLORS[gi%COLORS.length],opacity:0.85},
+      hovertemplate:'%{x:.2f}%<extra>'+esc(g)+'</extra>'};
+  });
+  Plotly.react('chart-ibin',traces,{
+    barmode:'group',xaxis:{title:'Fail (%)'},
+    yaxis:{autorange:'reversed'},
+    title:{text:'Interface Bin Pareto (\u2265'+thr.toFixed(1)+'%)',font:{size:14,color:'#2c3e50'}},
+    height:Math.max(320,labels.length*44),margin:{l:230,r:15,t:50,b:40},
+    legend:{orientation:'h',y:-0.1},
+    plot_bgcolor:'#fafbfc',paper_bgcolor:'#fff'
+  },{responsive:true});
+}
+
+/* ---- FUNCTIONAL BIN pareto ---- */
+function renderFbin(gmap){
+  var thr=parseFloat(document.getElementById('threshold').value)||0.1;
+  var topn=parseInt(document.getElementById('topn').value)||20;
+  var groups=Object.keys(gmap),byG={},kMax={},kBkt={};
+  groups.forEach(function(g){
+    var agg=aggFbin(gmap[g]);byG[g]=agg;
+    agg.forEach(function(r){var k=r.ibin+'|'+r.fbin,v=r.fail_pct||0;
+      if(v>(kMax[k]||0)){kMax[k]=v;kBkt[k]=r.fail_bucket||'';}
+    });
+  });
+  var major=Object.keys(kMax).filter(function(k){return kMax[k]>=thr;})
+    .sort(function(a,b){return kMax[b]-kMax[a];}).slice(0,topn);
+  var minor=Object.keys(kMax).filter(function(k){return kMax[k]<thr;});
+  var labels=major.concat(minor.length?['__MISC__']:[]);
+  var yLbls=labels.map(function(k){
+    if(k==='__MISC__')return 'Misc (<'+thr.toFixed(1)+'%)';
+    var p=k.split('|');return 'iBin '+p[0]+' \u2192 fBin '+p[1]+' \u2502 '+(kBkt[k]||'');
+  });
+
+  _fbinRowLabels=major.map(function(k){var p=k.split('|');return 'iBin '+p[0]+' \u2192 fBin '+p[1];});
+  _selFbin=null;
+  document.getElementById('table-fbin').innerHTML=buildFbinTable(groups,byG);
+  document.querySelectorAll('#table-fbin tbody tr').forEach(function(tr,ri){
+    tr.style.cursor='pointer';
+    tr.onclick=function(){onFbinRowClick(tr,ri);};
+  });
+
+  var traces=groups.map(function(g,gi){
+    var agg=byG[g]||[];
+    var vals=labels.map(function(k){
+      if(k==='__MISC__')return minor.reduce(function(s,mk){var p=mk.split('|');var r=agg.find(function(x){return x.ibin===p[0]&&x.fbin===p[1];});return s+(r?r.fail_pct||0:0);},0);
+      var p=k.split('|');var r=agg.find(function(x){return x.ibin===p[0]&&x.fbin===p[1];});return r?r.fail_pct||0:0;
+    });
+    return{type:'bar',orientation:'h',name:g,x:vals,y:yLbls,
+      marker:{color:COLORS[gi%COLORS.length],opacity:0.85},
+      hovertemplate:'%{x:.2f}%<extra>'+esc(g)+'</extra>'};
+  });
+  Plotly.react('chart-fbin',traces,{
+    barmode:'group',xaxis:{title:'Fail (%)'},
+    yaxis:{autorange:'reversed'},
+    title:{text:'Functional Bin Pareto (\u2265'+thr.toFixed(1)+'%)',font:{size:14,color:'#2c3e50'}},
+    height:Math.max(320,labels.length*44),margin:{l:270,r:15,t:50,b:40},
+    legend:{orientation:'h',y:-0.1},
+    plot_bgcolor:'#fafbfc',paper_bgcolor:'#fff'
+  },{responsive:true});
+}
+
+function applyGroups(){
+  var gmap=buildGroupMap();
+  if(!Object.keys(gmap).length)return;
+  renderYield(gmap);renderIbin(gmap);renderFbin(gmap);
+}
+
+renderGroupsRow();
+renderTpTable();
+applyGroups();
+
+// relay chart-div resize events to Plotly so responsive layout reflows
+(function(){
+  var ids=['chart-yield','chart-ibin','chart-fbin'];
+  if(typeof ResizeObserver==='undefined') return;
+  var ro=new ResizeObserver(function(entries){
+    entries.forEach(function(e){
+      if(ids.indexOf(e.target.id)>=0) Plotly.Plots.resize(e.target);
+    });
+  });
+  ids.forEach(function(id){var el=document.getElementById(id);if(el)ro.observe(el);});
+})();
+</script>
+</body>
+</html>"""
 
 
-_PCT_RE = re.compile(r'([+-]?\d+\.\d{2,})%')
-
-
-def _round_percents_to_one_decimal(out_path: Path) -> None:
-    """Reformat every N.NN% (or longer) in the report to a single decimal place."""
-    html = out_path.read_text(encoding='utf-8')
-    rounded = _PCT_RE.sub(lambda m: f'{float(m.group(1)):.1f}%', html)
-    if rounded != html:
-        out_path.write_text(rounded, encoding='utf-8')
-
-
-def _find_section_block(html: str, header_substr: str):
-    """Return (block_html, start_idx, end_idx) for the first depth-balanced
-    <div class="section">...</div> block whose <h2> contains header_substr."""
-    idx = 0
-    while True:
-        idx = html.find('<div class="section">', idx)
-        if idx == -1:
-            return None
-        i, depth, end = idx, 0, None
-        while i < len(html):
-            nd = html.find('<div', i)
-            nc = html.find('</div>', i)
-            if nc == -1:
-                break
-            if nd != -1 and nd <= nc:
-                depth += 1
-                i = nd + 4
-            else:
-                depth -= 1
-                i = nc + 6
-                if depth == 0:
-                    end = i
-                    break
-        if end is None:
-            idx += len('<div class="section">')
-            continue
-        block = html[idx:end]
-        h2_m = re.search(r'<h2>(.*?)</h2>', block)
-        if h2_m and header_substr in h2_m.group(1):
-            return block, idx, end
-        idx = end
-
-
-_TAB_DEFS = [
-    ('gc-yield', 'Yield Compare', ['Yield Information', 'Yield Table']),
-    ('gc-ibin', 'Interface Bin Compare', ['Bin Fail Summary', 'Interface Bin Fail Pareto']),
-    ('gc-fbin', 'Functional Bin Compare', ['Functional Bin Fail Summary', 'Functional Bin Fail Pareto']),
-]
-_SIDE_BY_SIDE_TABS = {'gc-ibin', 'gc-fbin'}
-
-
-def _build_tabbed_layout(out_path: Path) -> None:
-    """Pull the Yield / Interface Bin / Functional Bin chart+table sections out of
-    the long scrolling report and regroup each pair under its own tab (table and
-    plot placed side by side for the Interface/Functional Bin tabs)."""
-    html = out_path.read_text(encoding='utf-8')
-
-    insert_at = None
-    tab_content: dict[str, str] = {}
-    for tab_id, _label, headers in _TAB_DEFS:
-        pieces = []
-        for h in headers:
-            found = _find_section_block(html, h)
-            if not found:
-                continue
-            block, s, e = found
-            pieces.append(block)
-            if insert_at is None:
-                insert_at = s
-            html = html[:s] + html[e:]
-        if tab_id in _SIDE_BY_SIDE_TABS and len(pieces) == 2:
-            tab_content[tab_id] = (
-                '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
-                f'<div style="flex:1;min-width:340px">{pieces[0]}</div>'
-                f'<div style="flex:1;min-width:340px">{pieces[1]}</div>'
-                '</div>'
-            )
-        else:
-            tab_content[tab_id] = ''.join(pieces)
-
-    if insert_at is None or not any(tab_content.values()):
-        return
-
-    buttons = ''.join(
-        f'<div class="gc-tab-btn{" active" if i == 0 else ""}" '
-        f'onclick="gcShowTab(\'{tid}\',this)">{label}</div>'
-        for i, (tid, label, _h) in enumerate(_TAB_DEFS)
-    )
-    panels = ''.join(
-        f'<div class="gc-tab-panel" id="{tid}" style="display:{"block" if i == 0 else "none"}">'
-        f'{tab_content[tid]}</div>'
-        for i, (tid, _l, _h) in enumerate(_TAB_DEFS)
-    )
-    tabs_html = (
-        '<div class="gc-tabs-wrap">'
-        '<style>'
-        '.gc-tab-btn{display:inline-block;padding:8px 18px;margin-right:4px;cursor:pointer;'
-        'background:#dce1e7;color:#2c3e50;border-radius:6px 6px 0 0;font-weight:bold;font-size:16px}'
-        '.gc-tab-btn.active{background:#2980b9;color:white}'
-        '</style>'
-        f'<div class="gc-tabs-bar">{buttons}</div>'
-        f'{panels}'
-        '</div>'
-        '<script>'
-        'function gcShowTab(id,btn){'
-        'document.querySelectorAll(".gc-tab-panel").forEach(function(p){p.style.display="none";});'
-        'document.querySelectorAll(".gc-tab-btn").forEach(function(b){b.classList.remove("active");});'
-        'document.getElementById(id).style.display="block";'
-        'btn.classList.add("active");'
-        '}'
-        '</script>'
-    )
-
-    html = html[:insert_at] + tabs_html + html[insert_at:]
+def _write_interactive_report(records: list[dict], assignments: list[str], out_path: Path) -> None:
+    """Write a self-contained interactive HTML; all aggregation and charting runs in the browser."""
+    records_json = json.dumps(_make_serializable(records), separators=(',', ':'))
+    assignments_json = json.dumps(assignments, separators=(',', ':'))
+    seen: set = set()
+    groups: list[str] = []
+    for g in assignments:
+        if g not in seen:
+            seen.add(g)
+            groups.append(g)
+    html = (_GC_HTML_TEMPLATE
+            .replace('__PLOTLY_TAG__', _load_plotly_js())
+            .replace('__GC_RECORDS__', records_json)
+            .replace('__GC_ASSIGNMENTS__', assignments_json)
+            .replace('__GC_GROUPS__', json.dumps(groups, separators=(',', ':'))))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding='utf-8')
 
 
@@ -555,8 +1190,17 @@ def run_group_compare_headless(
     out_path: Path,
     log=print,
 ) -> Path | None:
-    """Headless group compare for automation — no tkinter required."""
-    group_records = []
+    """Headless group compare for automation — no tkinter required.
+
+    Each (group_name, index_html) pair produces one or more individual TP
+    records (via build_tp_records).  All records are passed directly to
+    _write_interactive_report together with their group assignments so the
+    browser-side JS can aggregate them — the same way the GUI does it.
+    """
+    all_recs: list[dict] = []
+    all_assignments: list[str] = []
+    groups_seen: set[str] = set()
+
     for group_name, index_html in group_index_htmls:
         if not index_html.exists():
             log(f'  SKIP {group_name}: {index_html} not found')
@@ -568,21 +1212,19 @@ def run_group_compare_headless(
             continue
         if not recs:
             continue
-        group_records.append(build_group_record(group_name, recs))
+        for rec in recs:
+            all_recs.append(rec)
+            all_assignments.append(group_name)
+        groups_seen.add(group_name)
         log(f'  {group_name}: {len(recs)} TP(s), die={sum(r["numDie"] or 0 for r in recs)}')
 
-    if len(group_records) < 2:
-        log(f'  Group compare skipped — need \u22652 groups, got {len(group_records)}')
+    if len(groups_seen) < 2:
+        log(f'  Group compare skipped — need \u22652 groups, got {len(groups_seen)}')
         return None
 
     try:
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        generate_report(group_records, out_path)
-        _strip_run_summary_section(out_path)
-        _strip_digital_dashboard_section(out_path)
-        _round_percents_to_one_decimal(out_path)
-        _build_tabbed_layout(out_path)
-        _move_watermark_to_footer(out_path)
+        _write_interactive_report(all_recs, all_assignments, out_path)
         log(f'  Group compare \u2192 {out_path}')
         return out_path
     except Exception as exc:
@@ -655,10 +1297,10 @@ class GroupCompareFrame(tk.Frame):
 
         btn_row = tk.Frame(self, bg=BG)
         btn_row.pack(pady=(6, 2), padx=10, fill='x')
-        self._run_btn = _btn(btn_row, '\u25b6  Generate Group Report', self._generate,
-                             color=GRN, acolor=AGRN)
-        self._run_btn.config(font=('Arial', 10, 'bold'), pady=5)
-        self._run_btn.pack(side='left', expand=True, fill='x', padx=(0, 4))
+        self._interactive_btn = _btn(btn_row, '\u26a1  Generate Interactive Report', self._generate_interactive,
+                                     color='#1f618d', acolor='#2980b9')
+        self._interactive_btn.config(font=('Arial', 10, 'bold'), pady=5)
+        self._interactive_btn.pack(side='left', expand=True, fill='x', padx=(0, 4))
         self._open_btn = _btn(btn_row, '  Open Report  ', self._open_report,
                               color='#935116', acolor='#ca6f1e')
         self._open_btn.config(font=('Arial', 10, 'bold'), pady=5, state='disabled')
@@ -868,42 +1510,43 @@ class GroupCompareFrame(tk.Frame):
 
     # -- generate -----------------------------------------------------------------
 
-    def _generate(self):
+    def _generate_interactive(self):
         if not self._records:
             messagebox.showwarning('No runs', 'Add at least one index.html first.')
             return
         out_str = self._out_var.get().strip()
         out_path = Path(out_str) if out_str else Path(self._records[0]['indexHtml']).parent / 'group_compare.html'
-
-        group_records = []
-        for g in self._groups:
-            members = [rec for rec, gv in zip(self._records, self._group_vars) if gv.get() == g]
-            if not members:
-                continue
-            group_records.append(build_group_record(g, members))
-            self._log_write(f'{g}: {len(members)} TP(s) aggregated\n')
-
-        if not group_records:
-            messagebox.showwarning('No groups', 'Assign at least one run to a group.')
-            return
-
+        assignments = [gv.get() for gv in self._group_vars]
         try:
-            out_path = _safe_html_out_path(out_path, 'group_compare.html')
-            generate_report(group_records, out_path)
-            _strip_run_summary_section(out_path)
-            _strip_digital_dashboard_section(out_path)
-            _round_percents_to_one_decimal(out_path)
-            _build_tabbed_layout(out_path)
-            _move_watermark_to_footer(out_path)
+            _write_interactive_report(self._records, assignments, out_path)
             self._last_report_path = str(out_path)
-            self._log_write(f'Done \u2192 {out_path}\n')
+            self._log_write(f'Interactive \u2192 {out_path}\n')
             self._open_btn.configure(state='normal')
         except Exception as exc:
             self._log_write(f'ERROR: {exc}\n')
 
     def _open_report(self):
         if self._last_report_path and os.path.isfile(self._last_report_path):
-            os.startfile(self._last_report_path)
+            import subprocess, shutil
+            path = self._last_report_path
+            # Try Chrome first (supports --start-maximized reliably)
+            chrome = None
+            for candidate in [
+                r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+                r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+            ]:
+                if os.path.isfile(candidate):
+                    chrome = candidate
+                    break
+            if chrome is None:
+                chrome = shutil.which('chrome') or shutil.which('google-chrome')
+            try:
+                if chrome:
+                    subprocess.Popen([chrome, '--start-maximized', path])
+                else:
+                    subprocess.Popen(['cmd', '/c', 'start', '', '/max', path], shell=False)
+            except Exception:
+                os.startfile(path)
 
     def _log_write(self, msg: str):
         self._log.configure(state='normal')
