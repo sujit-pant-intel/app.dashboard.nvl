@@ -5766,8 +5766,8 @@ def _build_run_report(
             continue   # skip _R0 dirs and unparseable keys
         groups[letter].append((op, item))
 
-    # Sort groups by letter descending (61C first); within each group sort by op descending (newest first)
-    sorted_groups = sorted(groups.items(), reverse=True)
+    # Sort groups ascending (80A before 80B before 80C); within each group sort by op descending (newest first)
+    sorted_groups = sorted(groups.items())
     for letter, entries in sorted_groups:
         entries.sort(key=lambda x: x[0], reverse=True)
 
@@ -5778,7 +5778,9 @@ def _build_run_report(
     categories_html = ""
     _first_card = False  # all BinDist dropdowns start collapsed
     for letter, entries in sorted_groups:
-        prog_name  = letter  # e.g. H61G, M61H
+        # display label: digits+suffix only (e.g. "80A" not "H80A")
+        _m_disp = re.search(r'(\d+[A-Za-z])$', letter)
+        prog_name  = _m_disp.group(1).upper() if _m_disp else letter
         ok_count   = sum(1 for _, item in entries if item[1])
         fail_count = len(entries) - ok_count
         cat_status = (f'<span class="ok">{ok_count} OK</span>'
