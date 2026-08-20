@@ -23,6 +23,7 @@ otherwise swallows silently) is tee'd to logs/run_YYYYMMDD_HHMMSS.log
 next to this script so failures are diagnosable after the fact.
 """
 import importlib.util
+import atexit
 import io
 import logging
 import re
@@ -40,6 +41,9 @@ if hasattr(sys.stderr, 'buffer'):
 _HERE = Path(__file__).resolve().parent
 _YA   = _HERE / "yield_automation.py"
 
+_real_stdout = sys.stdout
+_real_stderr = sys.stderr
+
 
 class _Tee:
     """Mirror writes to multiple streams (console + log file)."""
@@ -52,7 +56,10 @@ class _Tee:
 
     def flush(self):
         for s in self._streams:
-            s.flush()
+            try:
+                s.flush()
+            except Exception:
+                pass
 
 
 def _product_label() -> str:
@@ -68,8 +75,22 @@ _logs_dir.mkdir(parents=True, exist_ok=True)
 _safe_label = re.sub(r'[^\w]', '_', _product_label())
 _log_path   = _logs_dir / f"run_{_safe_label}_{_datetime_cls.now().strftime('%Y%m%d_%H%M%S')}.log"
 _log_fh     = open(_log_path, "w", encoding="utf-8")
-sys.stdout  = _Tee(sys.stdout, _log_fh)
-sys.stderr  = _Tee(sys.stderr, _log_fh)
+sys.stdout  = _Tee(_real_stdout, _log_fh)
+sys.stderr  = _Tee(_real_stderr, _log_fh)
+
+
+def _restore_streams():
+    """Restore real streams before Python shutdown so _Tee isn't flushed during teardown."""
+    try:
+        sys.stdout = _real_stdout
+        sys.stderr = _real_stderr
+        _log_fh.flush()
+        _log_fh.close()
+    except Exception:
+        pass
+
+
+atexit.register(_restore_streams)
 
 spec = importlib.util.spec_from_file_location("_yield_auto", str(_YA))
 mod  = importlib.util.module_from_spec(spec)
