@@ -6166,7 +6166,8 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
         if not m:
             continue
         letter, ts = m.group(1).upper(), m.group(2)
-        prog_key = letter   # e.g. "H61G", "M61H"
+        # display label: digits+suffix only (e.g. "80A" not "0H80A")
+        prog_key = re.search(r'(\d+[A-Z])$', letter).group(1) if re.search(r'(\d+[A-Z])$', letter) else letter
         if _run_count.get(prog_key, 0) >= _MAX_HISTORY:
             continue
         _run_count[prog_key] = _run_count.get(prog_key, 0) + 1
@@ -6189,9 +6190,10 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             })
 
     for prog_key in history:
-        history[prog_key].sort(key=lambda x: x["ts"], reverse=True)
-    # Sort by letter desc (CA > CB... but reversed so C comes before A in display)
-    sorted_letters = sorted(history.keys(), key=lambda k: k[-1], reverse=True)
+        # oldest first so the latest run appears as the last row in the table
+        history[prog_key].sort(key=lambda x: x["ts"])
+    # sort ascending so 80A appears before 80B before 80C
+    sorted_letters = sorted(history.keys(), key=lambda k: k[-1])
 
     # ── helpers ───────────────────────────────────────────────────────────────
     def _pct_val(s):
@@ -6311,7 +6313,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
     for letter in sorted_letters:
         if not history[letter]:
             continue
-        e    = history[letter][0]
+        e    = history[letter][-1]   # last entry is the latest run
         link = _idx_uri(e)
         prog_cell = (
             f'<td class="c-prog"><a href="{link}" class="tl">'
@@ -6367,10 +6369,10 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
                 if link else f'<td class="c-prog">{pill}</td>'
             )
         hist_rows = "".join(
-            _material_rows_for_entry(e, i == 0, prog_prefix=_prog_cell(e, letter))
+            _material_rows_for_entry(e, i == len(entries) - 1, prog_prefix=_prog_cell(e, letter))
             for i, e in enumerate(entries)
         )
-        latest_ff = _sum_bins(entries[0]["summary"], [1, 2])
+        latest_ff = _sum_bins(entries[-1]["summary"], [1, 2])
         try:
             lyf = float(latest_ff.rstrip('%'))
             badge_col = "#66bb6a" if lyf >= 60 else "#ffa726" if lyf >= 40 else "#ef5350"
@@ -6398,7 +6400,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
     for letter in sorted_letters:
         if not history[letter]:
             continue
-        ff = _sum_bins(history[letter][0]["summary"], [1, 2])
+        ff = _sum_bins(history[letter][-1]["summary"], [1, 2])
         n  = len(history[letter])
         sb += (
             f'<li><button class="tab-btn" data-panel="{letter}">'
