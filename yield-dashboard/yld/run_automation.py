@@ -41,7 +41,11 @@ class _Tee:
 
     def write(self, data):
         for s in self._streams:
-            s.write(data)
+            try:
+                s.write(data)
+            except UnicodeEncodeError:
+                # console may be cp1252; replace unencodable chars rather than crash
+                s.write(data.encode(s.encoding or 'utf-8', errors='replace').decode(s.encoding or 'utf-8', errors='replace'))
 
     def flush(self):
         for s in self._streams:
