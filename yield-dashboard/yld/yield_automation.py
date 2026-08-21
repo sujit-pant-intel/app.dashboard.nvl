@@ -6192,10 +6192,10 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
             })
 
     for prog_key in history:
-        # oldest first so the latest run appears as the last row in the table
-        history[prog_key].sort(key=lambda x: x["ts"])
-    # sort ascending so 80A appears before 80B before 80C
-    sorted_letters = sorted(history.keys(), key=lambda k: k[-1])
+        # newest first so the latest run appears at the top of the table
+        history[prog_key].sort(key=lambda x: x["ts"], reverse=True)
+    # sort descending: newest generation/letter first (e.g. 80H before 80A before 61H)
+    sorted_letters = sorted(history.keys(), key=lambda k: (int(k[:-1]) if k[:-1].isdigit() else 0, k[-1]), reverse=True)
 
     # ── helpers ───────────────────────────────────────────────────────────────
     def _pct_val(s):
@@ -6315,7 +6315,7 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
     for letter in sorted_letters:
         if not history[letter]:
             continue
-        e    = history[letter][-1]   # last entry is the latest run
+        e    = history[letter][0]   # first entry is the latest run (sorted newest-first)
         link = _idx_uri(e)
         prog_cell = (
             f'<td class="c-prog"><a href="{link}" class="tl">'
@@ -6371,10 +6371,10 @@ def _build_email_report_html(output_dir: Path, run_ts: str,
                 if link else f'<td class="c-prog">{pill}</td>'
             )
         hist_rows = "".join(
-            _material_rows_for_entry(e, i == len(entries) - 1, prog_prefix=_prog_cell(e, letter))
+            _material_rows_for_entry(e, i == 0, prog_prefix=_prog_cell(e, letter))
             for i, e in enumerate(entries)
         )
-        latest_ff = _sum_bins(entries[-1]["summary"], [1, 2])
+        latest_ff = _sum_bins(entries[0]["summary"], [1, 2])
         try:
             lyf = float(latest_ff.rstrip('%'))
             badge_col = "#66bb6a" if lyf >= 60 else "#ffa726" if lyf >= 40 else "#ef5350"

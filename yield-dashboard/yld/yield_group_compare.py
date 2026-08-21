@@ -216,8 +216,21 @@ def build_tp_records(index_html: Path) -> list[dict]:
             bin_counts_single = next(iter(by_prog.values()), {})
             total = sum(bin_counts_single.values()) or num_die_whole or 0
             rbd = dict(rbd) if rbd else {}
+            # exact (ibin,fbin) pair lookup — only hits when parse_bin_html had real pairs
+            fb_label_pair = {(str(row['ibin']), str(row['fbin'])): row.get('fail_bucket', '')
+                             for row in (rbd.get('func_bin_rows') or [])}
+            # fbin-only lookup covers parse_bin_html's fake ibin=fbin rows from FP_DATA
+            fb_label_fbin = {str(row['fbin']): row.get('fail_bucket', '')
+                             for row in (rbd.get('func_bin_rows') or [])}
+            # ibin-only fallback from bin_summary_rows; use cat when fail_bucket is absent
+            ib_label = {str(row['ibin']): (row.get('fail_bucket', '') or row.get('cat', ''))
+                        for row in (rbd.get('bin_summary_rows') or [])}
             rbd['func_bin_rows'] = [
-                {'ibin': ib, 'fbin': fb, 'fail_bucket': '', 'fail_count': cnt,
+                {'ibin': ib, 'fbin': fb,
+                 'fail_bucket': (fb_label_pair.get((str(ib), str(fb)), '')
+                                 or fb_label_fbin.get(str(fb), '')
+                                 or ib_label.get(str(ib), '')),
+                 'fail_count': cnt,
                  'fail_pct': (cnt / total * 100) if total else None}
                 for (ib, fb), cnt in fb_counts.items()
             ]
@@ -489,6 +502,13 @@ input[type=number]{background:#0d1b26;color:#ecf0f1;border:1px solid #5dade2;
     transparent 65%,#2980b9 65%,#2980b9 80%,transparent 80%)}
 footer{text-align:center;color:#aaa;font-size:11px;margin:20px 0 8px;
   padding-top:8px;border-top:1px solid #e0e0e0}
+.search-inp{width:100%;padding:5px 8px;margin-bottom:8px;border:1px solid #bdc3c7;
+  border-radius:4px;font-size:12px;box-sizing:border-box;color:#2c3e50}
+.search-inp:focus{outline:none;border-color:#3498db}
+.cmp-tbl th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:22px!important}
+.cmp-tbl th.sortable::after{content:' \u2195';font-size:10px;opacity:0.5;position:absolute;right:5px}
+.cmp-tbl th.sort-asc::after{content:' \u25b2';opacity:1}
+.cmp-tbl th.sort-desc::after{content:' \u25bc';opacity:1}
 </style>
 </head>
 <body>
@@ -522,6 +542,7 @@ footer{text-align:center;color:#aaa;font-size:11px;margin:20px 0 8px;
   <div class="two-col">
     <div class="card">
       <h3>Yield Table</h3>
+      <input type="text" class="search-inp" id="search-yield" placeholder="Filter rows…" oninput="filterTable('table-yield',this.value)">
       <div class="tbl-wrap"><div id="table-yield"></div></div>
     </div>
     <div class="splitter" onmousedown="startSplit(event,this)">
@@ -540,6 +561,7 @@ footer{text-align:center;color:#aaa;font-size:11px;margin:20px 0 8px;
   <div class="two-col">
     <div class="card">
       <h3>Bin Fail Summary <small style="font-weight:normal;color:#888">(click row to highlight)</small></h3>
+      <input type="text" class="search-inp" id="search-ibin" placeholder="Filter rows…" oninput="filterTable('table-ibin',this.value)">
       <div class="tbl-wrap"><div id="table-ibin"></div></div>
     </div>
     <div class="splitter" onmousedown="startSplit(event,this)">
@@ -558,6 +580,7 @@ footer{text-align:center;color:#aaa;font-size:11px;margin:20px 0 8px;
   <div class="two-col">
     <div class="card">
       <h3>Functional Bin Table <small style="font-weight:normal;color:#888">(click row to highlight)</small></h3>
+      <input type="text" class="search-inp" id="search-fbin" placeholder="Filter rows…" oninput="filterTable('table-fbin',this.value)">
       <div class="tbl-wrap"><div id="table-fbin"></div></div>
     </div>
     <div class="splitter" onmousedown="startSplit(event,this)">
@@ -828,10 +851,10 @@ function buildYieldTable(groups,byG,binOrder){
     var allVals=runVals.slice();
     runVals.forEach(function(v){cells+=cellHl(v,allVals,'')+(v!=null?v.toFixed(1)+'%':'')+'</td>';});
     if(groups.length>=2){
+      var isYieldBin=['1/2/3/4','1/2','1'].indexOf(b)>=0;
       for(var ri=1;ri<groups.length;ri++){
-        // yield table: positive delta means HIGHER yield = good (green), invert=true
-        cells+=deltaTd(runVals[ri],runVals[0],null,true);
-        if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],null,true);
+        cells+=deltaTd(runVals[ri],runVals[0],null,isYieldBin);
+        if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],null,isYieldBin);
       }
     }
     rows+='<tr>'+cells+'</tr>';
@@ -871,7 +894,8 @@ function buildIbinTable(groups,byG,useSummary){
     var runVals=groups.map(function(g){var r=(byG[g]||[]).find(function(x){return x.ibin===ib;});return r&&r.fail_pct!=null?r.fail_pct:null;});
     var allVals=runVals.slice();
     runVals.forEach(function(v){cells+=cellHl(v,allVals,useSummary?'background:'+bg+';':'')+(v!=null?v.toFixed(2)+'%':'\u2014')+'</td>';});
-    if(groups.length>=2){for(var ri=1;ri<groups.length;ri++){cells+=deltaTd(runVals[ri],runVals[0],useSummary?bg:null,false);if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],useSummary?bg:null,false);}}
+    var isGoodIb=String(ib)==='1';
+    if(groups.length>=2){for(var ri=1;ri<groups.length;ri++){cells+=deltaTd(runVals[ri],runVals[0],useSummary?bg:null,isGoodIb);if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],useSummary?bg:null,isGoodIb);}}
     rows+='<tr>'+cells+'</tr>';
   });
   return '<table class="cmp-tbl" style="border-collapse:collapse"><thead><tr>'+hdr+'</tr></thead><tbody>'+rows+'</tbody></table>';
@@ -902,7 +926,8 @@ function buildFbinTable(groups,byG){
     var runVals=groups.map(function(g){var r=(byG[g]||[]).find(function(x){return x.ibin===row.ibin&&x.fbin===row.fbin;});return r&&r.fail_pct!=null?r.fail_pct:null;});
     var allVals=runVals.slice();
     runVals.forEach(function(v){cells+=cellHl(v,allVals,'')+(v!=null?v.toFixed(1)+'%':'\u2014')+'</td>';});
-    if(groups.length>=2){for(var ri=1;ri<groups.length;ri++){cells+=deltaTd(runVals[ri],runVals[0],null,false);if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],null,false);}}
+    var isGoodFb=String(row.fbin)==='101';
+    if(groups.length>=2){for(var ri=1;ri<groups.length;ri++){cells+=deltaTd(runVals[ri],runVals[0],null,isGoodFb);if(ri>=2)cells+=deltaTd(runVals[ri],runVals[ri-1],null,isGoodFb);}}
     rows+='<tr>'+cells+'</tr>';
   });
   return '<table class="cmp-tbl" style="border-collapse:collapse"><thead><tr>'+hdr+'</tr></thead><tbody>'+rows+'</tbody></table>';
@@ -1025,6 +1050,7 @@ function renderYield(gmap){
   var failYlim=Math.min(100,Math.max(5,maxFail*2.5));
 
   document.getElementById('table-yield').innerHTML=buildYieldTable(groups,byGy,yBinOrder);
+  makeSortable(document.querySelector('#table-yield table'));
 
   Plotly.react('chart-yield',traces,{
     barmode:'stack',
@@ -1066,6 +1092,7 @@ function renderIbin(gmap){
   var useSummary=groups.some(function(g){return (byG[g]||[]).some(function(r){return r.cat;});});
   _selIbin=null;
   document.getElementById('table-ibin').innerHTML=buildIbinTable(groups,byG,useSummary);
+  makeSortable(document.querySelector('#table-ibin table'));
   // re-attach onclick after innerHTML replace
   document.querySelectorAll('#table-ibin tbody tr').forEach(function(tr,ri){
     tr.style.cursor='pointer';
@@ -1115,6 +1142,7 @@ function renderFbin(gmap){
   _fbinRowLabels=major.map(function(k){var p=k.split('|');return 'iBin '+p[0]+' \u2192 fBin '+p[1];});
   _selFbin=null;
   document.getElementById('table-fbin').innerHTML=buildFbinTable(groups,byG);
+  makeSortable(document.querySelector('#table-fbin table'));
   document.querySelectorAll('#table-fbin tbody tr').forEach(function(tr,ri){
     tr.style.cursor='pointer';
     tr.onclick=function(){onFbinRowClick(tr,ri);};
@@ -1138,6 +1166,37 @@ function renderFbin(gmap){
     legend:{orientation:'h',y:-0.1},
     plot_bgcolor:'#fafbfc',paper_bgcolor:'#fff'
   },{responsive:true});
+}
+
+function filterTable(divId,q){
+  var div=document.getElementById(divId);if(!div)return;
+  var tbl=div.querySelector('table');if(!tbl)return;
+  var lq=(q||'').toLowerCase().trim();
+  Array.from(tbl.tBodies[0].rows).forEach(function(tr){
+    tr.style.display=(!lq||tr.textContent.toLowerCase().indexOf(lq)>=0)?'':'none';
+  });
+}
+function makeSortable(tbl){
+  if(!tbl||!tbl.tHead||!tbl.tHead.rows[0])return;
+  Array.from(tbl.tHead.rows[0].cells).forEach(function(th,ci){
+    th.classList.add('sortable');th._sortDir=0;
+    th.addEventListener('click',function(){
+      var dir=th._sortDir===1?-1:1;
+      Array.from(tbl.tHead.rows[0].cells).forEach(function(h){h._sortDir=0;h.classList.remove('sort-asc','sort-desc');});
+      th._sortDir=dir;th.classList.add(dir===1?'sort-asc':'sort-desc');
+      var rows=Array.from(tbl.tBodies[0].rows);
+      rows.sort(function(a,b){
+        var av=a.cells[ci]?a.cells[ci].textContent.trim():'';
+        var bv=b.cells[ci]?b.cells[ci].textContent.trim():'';
+        var an=parseFloat(av.replace('%','')),bn=parseFloat(bv.replace('%',''));
+        if(!isNaN(an)&&!isNaN(bn))return dir*(an-bn);
+        return dir*av.localeCompare(bv);
+      });
+      rows.forEach(function(r){tbl.tBodies[0].appendChild(r);});
+      // re-apply active search filter after sort
+      var wrap=tbl.parentElement;if(wrap&&wrap.id){var inp=document.getElementById('search-'+wrap.id.replace('table-',''));if(inp&&inp.value)filterTable(wrap.id,inp.value);}
+    });
+  });
 }
 
 function applyGroups(){
