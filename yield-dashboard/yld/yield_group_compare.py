@@ -431,7 +431,7 @@ _GC_HTML_TEMPLATE = """<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Group Compare \u2014 Interactive</title>
+<title>Test Program Comparison</title>
 __PLOTLY_TAG__
 <!-- NEW TEMPLATE v2 -->
 <style>
@@ -486,7 +486,7 @@ h3{font-size:13px;font-weight:700;color:#1a252f;margin:0 0 10px;
 .cmp-tbl td{padding:4px 10px;border-bottom:1px solid #eee;white-space:nowrap}
 .cmp-tbl tr:hover td{background:#f9f9f9!important}
 .cmp-tbl tbody tr.sel td{background:#d6eaf8!important;outline:2px solid #2980b9;}
-td.num{text-align:right;font-variant-numeric:tabular-nums}
+td.num{text-align:left;font-variant-numeric:tabular-nums}
 /* ---- ctrl ---- */
 input[type=range]{accent-color:#3498db;width:130px;vertical-align:middle}
 input[type=number]{background:#0d1b26;color:#ecf0f1;border:1px solid #5dade2;
@@ -513,7 +513,7 @@ footer{text-align:center;color:#aaa;font-size:11px;margin:20px 0 8px;
 </head>
 <body>
 <div id="ctrl">
-  <h2>&#128202; Group Compare \u2014 Interactive</h2>
+  <h2>&#128202; Test Program Comparison</h2>
   <div id="groups-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"></div>
   <button class="cbtn" onclick="addGroup()">+ Add Group</button>
   <div style="margin-top:8px;max-height:190px;overflow-y:auto">
