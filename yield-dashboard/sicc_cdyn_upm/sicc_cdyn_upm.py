@@ -4006,31 +4006,36 @@ def generate_html_svg(data: dict, output_path: str, title: str = '') -> str:
         f'var IS_CDYN=false;\n'
     )
 
-    # ── Assemble HTML (identical structure to generate_dashboard_html.py) ────
-    # Embed Plotly inline so the HTML is fully self-contained and can be shared
-    # without requiring access to local file paths.
+    # ── Phase 1/2: write sicc/plotly.min.js, sicc/sicc_data.js, sicc/sicc_dashboard.js ──
     _PLOTLY_ABS = os.path.normpath(os.path.join(
-        str(_THIS_DIR),
-        '..', '..', 'shared', 'library', 'plotly-3.5.0.min.js'
+        str(_THIS_DIR), '..', '..', 'shared', 'library', 'plotly-3.5.0.min.js'
     ))
-    with open(_PLOTLY_ABS, 'r', encoding='utf-8') as _pf:
-        _plotly_src = _pf.read()
-    _plotly_tag = f'<script charset="utf-8">{_plotly_src}</script>\n'
-
-    html = (
-        build_page_open(display_title, tabs_html).replace(
-            '</head>', _plotly_tag + '</head>', 1)
-        + tabs_panels_html
-        + build_page_close()
-        + '<script>\n(function(){\n'
-        + data_js
+    _sicc_dir = Path(output_path).parent
+    _sicc_dir.mkdir(exist_ok=True)
+    # copy Plotly as a standalone file so sicc_dashboard.js stays small
+    import shutil as _shutil
+    _shutil.copy2(_PLOTLY_ABS, str(_sicc_dir / 'plotly.min.js'))
+    (_sicc_dir / 'sicc_data.js').write_text(data_js, encoding='utf-8')
+    _sicc_dashboard_js = (
+        '(function(){\n'
         + SHARED_JS
         + tabs_js
-        + _INNER_RESIZE_OBS_JS          # ← inside IIFE: has access to render_* fns
-        + 'if(document.readyState===\'loading\')document.addEventListener(\'DOMContentLoaded\',init);\nelse init();\n'
+        + _INNER_RESIZE_OBS_JS
+        + "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);\nelse init();\n"
         + '})();\n'
         + RESIZE_JS
-        + '\n</script></body></html>'
+    )
+    (_sicc_dir / 'sicc_dashboard.js').write_text(_sicc_dashboard_js, encoding='utf-8')
+
+    # ── Assemble HTML (identical structure to generate_dashboard_html.py) ────
+    html = (
+        build_page_open(display_title, tabs_html)
+        + tabs_panels_html
+        + build_page_close()
+        + '<script src="plotly.min.js"></script>\n'
+        + '<script src="sicc_data.js"></script>\n'
+        + '<script src="sicc_dashboard.js"></script>\n'
+        + '</body></html>'
     )
 
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -4878,7 +4883,7 @@ def run_python_pipeline(csv_path: str,
         status_cb('Generating interactive HTML…')
         csv_stem   = Path(csv_path).stem
         html_name  = f'{csv_stem}_sicc_analysis.html'
-        html_path  = Path(dashboard_dir) / html_name
+        html_path  = Path(dashboard_dir) / 'sicc' / html_name
         generate_html_svg(data, str(html_path))
 
         done_cb(str(html_path))

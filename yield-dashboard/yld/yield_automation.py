@@ -144,7 +144,8 @@ def find_xlsx(dash_dir: Path, index_href: str):
     out_folder = idx_path.parent
     if not out_folder.exists():
         return None
-    candidates = sorted(out_folder.glob('*_out.xlsx'), key=lambda p: p.stat().st_mtime, reverse=True)
+    _bd = out_folder / 'bin_dist'
+    candidates = sorted((_bd if _bd.exists() else out_folder).glob('*_out.xlsx'), key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
@@ -153,16 +154,19 @@ def find_xlsx(dash_dir: Path, index_href: str):
 # ---------------------------------------------------------------------------
 
 def find_bin_html(output_dir: Path):
-    """Return Path to *_BinDistribution.html in output_dir, or None."""
-    candidates = sorted(output_dir.glob('*_BinDistribution.html'),
+    """Return Path to *_BinDistribution.html in output_dir/bin_dist, or None."""
+    _bd = output_dir / 'bin_dist'
+    candidates = sorted((_bd if _bd.exists() else output_dir).glob('*_BinDistribution.html'),
                         key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
 def find_group_medians(output_dir: Path):
-    """Return Path to Group_Medians.csv in output_dir, or None."""
-    candidates = sorted(output_dir.glob('Group_Medians.csv'),
-                        key=lambda p: p.stat().st_mtime, reverse=True)
+    """Return Path to Group_Medians.csv in output_dir or sicc/, or None."""
+    candidates = sorted(
+        list(output_dir.glob('Group_Medians.csv')) +
+        list((output_dir / 'sicc').glob('Group_Medians.csv')),
+        key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
@@ -301,9 +305,11 @@ def parse_group_medians(csv_path: Path) -> list[dict]:
 
 
 def find_cdyn_medians(output_dir: Path):
-    """Return Path to cdyn_medians.csv in output_dir, or None."""
-    candidates = sorted(output_dir.glob('cdyn_medians.csv'),
-                        key=lambda p: p.stat().st_mtime, reverse=True)
+    """Return Path to cdyn_medians.csv in output_dir or sicc/, or None."""
+    candidates = sorted(
+        list(output_dir.glob('cdyn_medians.csv')) +
+        list((output_dir / 'sicc').glob('cdyn_medians.csv')),
+        key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
@@ -1434,23 +1440,36 @@ def parse_index_meta(dash_dir: Path, index_href: str) -> dict:
             return result
         # Find the best BinDistribution.html: prefer *_reticle_material_BinDistribution.html
         bin_html = None
+        _bd_dir = out_folder / 'bin_dist'
+        _glob_dir = _bd_dir if _bd_dir.exists() else out_folder
         for pat in ('*_reticle_material_BinDistribution.html',
                     '*_material_merged_*BinDistribution.html',
                     '*BinDistribution.html'):
-            cands = sorted(out_folder.glob(pat), key=lambda p: p.stat().st_mtime, reverse=True)
+            cands = sorted(_glob_dir.glob(pat), key=lambda p: p.stat().st_mtime, reverse=True)
             if cands:
                 bin_html = cands[0]
                 break
         if not bin_html:
             return result
-        content = bin_html.read_text(encoding='utf-8', errors='replace')
-        # Extract var DATA = {...}; — ends before the next var declaration
-        m = re.search(r'var\s+DATA\s*=\s*(\{[\s\S]*?\});\s*(?:var\s|\Z)', content)
-        if not m:
-            m = re.search(r'var\s+DATA\s*=\s*(\{[\s\S]*?\});', content)
+        # Try data_summary.js (new format: window.DATA={...}) then inline bin_html
+        _ds_js = bin_html.parent / 'data_summary.js'
+        content = None
+        _data_pattern = r'(?:var\s+DATA|window\.DATA)\s*=\s*'
+        for _src in [_ds_js, bin_html]:
+            try:
+                _txt = _src.read_text(encoding='utf-8', errors='replace')
+                if re.search(_data_pattern, _txt):
+                    content = _txt
+                    break
+            except Exception:
+                continue
+        if content is None:
+            return result
+        # Extract DATA = {...}
+        m = re.search(_data_pattern, content)
         if m:
             try:
-                data = _json_idx.loads(m.group(1))
+                data, _ = _json_idx.JSONDecoder().raw_decode(content, m.end())
                 rows = data.get('rows', [])
                 programs, lots, wafers, mats = set(), set(), set(), set()
                 for row in rows:
@@ -2652,7 +2671,7 @@ def main():
             data = read_xlsx(xlsx_p)
             if not data:
                 print(f'    WARNING: Could not parse {xlsx_p}')
-            output_dir = xlsx_p.parent
+            output_dir = xlsx_p.parent.parent if xlsx_p.parent.name == 'bin_dist' else xlsx_p.parent
         else:
             print(f'  [{rec["name"]}] WARNING: *_out.xlsx not found')
             # Try to resolve output_dir from index_href even without xlsx
@@ -5022,15 +5041,27 @@ def _extract_yield_summary(tp_dir: Path, row_filter: "set | None" = None) -> dic
     row_filter: optional set of "lot|wafer" strings; when provided only those rows are counted.
     """
     # Try BinDistribution.html first (current pipeline output)
-    bd_files = sorted(tp_dir.glob("*_BinDistribution.html"))
+    _tp_bd = tp_dir / 'bin_dist'
+    bd_files = sorted((_tp_bd if _tp_bd.exists() else tp_dir).glob("*_BinDistribution.html"))
     dd = bd_files[0] if bd_files else tp_dir / "digital_dashboard.html"
     if not dd.exists():
         return None
     try:
         txt = dd.read_text(encoding="utf-8", errors="replace")
 
-        # --- New format: var DATA = {...} in *_BinDistribution.html ---
-        m_data = re.search(r'var DATA\s*=\s*', txt)
+        # --- New format: window.DATA={...} in data_summary.js, or var DATA inline ---
+        _ds_js = dd.parent / 'data_summary.js'
+        _data_pat = r'(?:var\s+DATA|window\.DATA)\s*=\s*'
+        m_data = None
+        txt = ''
+        for _src in [_ds_js, dd]:
+            try:
+                txt = _src.read_text(encoding='utf-8', errors='replace')
+            except Exception:
+                continue
+            m_data = re.search(_data_pat, txt)
+            if m_data:
+                break
         if m_data:
             decoder = json.JSONDecoder()
             data, _ = decoder.raw_decode(txt, m_data.end())
@@ -5141,13 +5172,24 @@ def _extract_per_material_summaries(tp_dir: Path) -> list[tuple[str, dict | None
     and return [(mat_type, summary_dict), ...] sorted by material type.
     Returns an empty list if only one material type is found (no breakdown needed).
     Falls back to empty list on any error."""
-    bd_files = sorted(tp_dir.glob("*_BinDistribution.html"))
+    _tp_bd2 = tp_dir / 'bin_dist'
+    bd_files = sorted((_tp_bd2 if _tp_bd2.exists() else tp_dir).glob("*_BinDistribution.html"))
     dd = bd_files[0] if bd_files else tp_dir / "digital_dashboard.html"
     if not dd.exists():
         return []
     try:
-        txt = dd.read_text(encoding="utf-8", errors="replace")
-        m_data = re.search(r'var DATA\s*=\s*', txt)
+        _ds_js2 = dd.parent / 'data_summary.js'
+        _data_pat2 = r'(?:var\s+DATA|window\.DATA)\s*=\s*'
+        m_data = None
+        txt = ''
+        for _src2 in [_ds_js2, dd]:
+            try:
+                txt = _src2.read_text(encoding='utf-8', errors='replace')
+            except Exception:
+                continue
+            m_data = re.search(_data_pat2, txt)
+            if m_data:
+                break
         if not m_data:
             return []
         decoder = json.JSONDecoder()
@@ -5341,7 +5383,8 @@ def _build_compare_section(sorted_groups: list, run_dir: Path, prog_series: str 
             tp_path = Path(tp_dir) if tp_dir else None
             bd_html = ""
             if tp_path and tp_path.exists():
-                bdfiles = sorted(tp_path.glob("*BinDistribution*.html"))
+                _bd_sub2 = tp_path / 'bin_dist'
+                bdfiles = sorted((_bd_sub2 if _bd_sub2.exists() else tp_path).glob("*BinDistribution*.html"))
                 if bdfiles:
                     try:
                         bd_content = bdfiles[0].read_text(encoding="utf-8", errors="replace")
@@ -5824,7 +5867,8 @@ def _build_run_report(
                     links += f' &nbsp;&nbsp; <a href="{r0_pcm.as_uri()}">PCM Analysis (+ R0)</a>'
 
             # BinDistribution: always use plain (non-R0) dir
-            bd_search_dir = tp_dir
+            _bd_sub = tp_dir / 'bin_dist'
+            bd_search_dir = _bd_sub if _bd_sub.exists() else tp_dir
 
             # Inline BinDistribution via srcdoc — open only for latest series-C, collapsed otherwise
             bd_open = not is_stale and letter[-1] == 'C'

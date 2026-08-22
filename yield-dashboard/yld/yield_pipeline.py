@@ -231,7 +231,7 @@ class PipelineHtmlMixin:
             # Detect IBIN wafer maps so BFS rows can link to wafermap.html
             _wm_url = ''
             try:
-                _wm_url = 'wafermap.html' if any((_od / 'heatmap').glob('*_IBIN_WaferMap_*.html')) else ''
+                _wm_url = 'wafermap/wafermap.html' if any((_od / 'wafermap').glob('*_IBIN_WaferMap_*.html')) else ''
             except Exception:
                 pass
 
@@ -242,7 +242,7 @@ class PipelineHtmlMixin:
                 if _wm_url:
                     import re as _re_wmf
                     import pandas as _pd_wmf
-                    _hd_wmf = _od / 'heatmap'
+                    _hd_wmf = _od / 'wafermap'
                     _stem_wmf = _P(resolved_csv).stem
                     def _lot_safe_wmf(s):
                         return _re_wmf.sub(r'[^0-9A-Za-z_-]', '_', str(s))
@@ -259,11 +259,16 @@ class PipelineHtmlMixin:
                         _lot_col_wmf = next(
                             (c for c in _df_wmf.columns if 'lot' in c.lower() and 'slot' not in c.lower()), None)
                     if _lot_col_wmf:
+                        # Build a sanitized-lot → file map from actual files (stem may differ from resolved_csv)
+                        _wf_by_lot = {
+                            _wf.stem.split('_IBIN_WaferMap_', 1)[-1]: _wf
+                            for _wf in _hd_wmf.glob('*_IBIN_WaferMap_*.html')
+                        } if _hd_wmf.exists() else {}
                         for _lv_wmf in _df_wmf[_lot_col_wmf].dropna().unique():
                             _ls_wmf = _lot_safe_wmf(str(_lv_wmf))
-                            _wf_wmf = _hd_wmf / f'{_stem_wmf}_IBIN_WaferMap_{_ls_wmf}.html'
-                            if _wf_wmf.exists():
-                                _wm_files_dict[str(_lv_wmf)] = f'heatmap/{_wf_wmf.name}'
+                            _wf_wmf = _wf_by_lot.get(_ls_wmf)
+                            if _wf_wmf and _wf_wmf.exists():
+                                _wm_files_dict[str(_lv_wmf)] = f'wafermap/{_wf_wmf.name}'
             except Exception:
                 pass
 
@@ -2079,9 +2084,9 @@ function exportTblCsv(headId,bodyId,fname){
 
             # ── inject into BinDistribution HTML ──────────────────────────
             csv_stem = _P(resolved_csv).stem
-            bin_html = _od / f'{csv_stem}_BinDistribution.html'
+            bin_html = _od / 'bin_dist' / f'{csv_stem}_BinDistribution.html'
             if not bin_html.exists():
-                _bh_cands = sorted(_od.glob('*_BinDistribution.html'),
+                _bh_cands = sorted((_od / 'bin_dist').glob('*_BinDistribution.html'),
                                    key=lambda p: p.stat().st_mtime, reverse=True)
                 if _bh_cands:
                     bin_html = _bh_cands[0]
@@ -2226,351 +2231,6 @@ function exportTblCsv(headId,bodyId,fname){
                                     ha='center', va='center', fontsize=4,
                                     color='blue', fontweight='bold', alpha=0.7, zorder=6)
 
-                    _pareto_dir = _od / 'heatmap' / 'pareto'
-                    _pareto_dir.mkdir(parents=True, exist_ok=True)
-
-                    counts = counts.iloc[:0]  # pareto entries removed from sidebar; skip per-bin wafermap rendering
-                    for _ri, _rr in counts.iterrows():
-                        try:
-                            _fbv = int(_rr[fb_col])
-                            _fc = int(_rr['FailCount'])
-                            _fp = float(_rr['FailPct'])
-                            _bkt_e, _de = _fb_bucket_desc(_fbv)
-                            _mask = (df[ib_col] > 4) & (df[fb_col] == _fbv)
-
-                            _e_coords, _e_vals = [], []
-                            for (_xv, _yv), _grp in _coord_df.groupby(['_hx', '_hy']):
-                                _tot = len(_grp)
-                                _hits = _mask[_grp.index].sum()
-                                _e_coords.append((int(_xv), int(_yv)))
-                                _e_vals.append((_hits / _tot) * 100 if _tot else 0.0)
-                            if not _e_coords:
-                                continue
-
-                            _xs_e = _np.array([c[0] for c in _e_coords])
-                            _ys_e = _np.array([c[1] for c in _e_coords])
-                            _vs_e = _np.rint(_np.array(_e_vals)).astype(float)
-
-                            # lot/wafer breakdown
-                            _g_cols = [c for c in [_lot_col, _wfr_col] if c]
-                            if _g_cols:
-                                _lw_e = []
-                                for _gk, _grp2 in df.groupby(_g_cols):
-                                    _t2 = len(_grp2)
-                                    _h2 = int(_mask[_grp2.index].sum())
-                                    _p2 = int(round(_h2 / _t2 * 100)) if _t2 else 0
-                                    if not isinstance(_gk, tuple):
-                                        _gk = (_gk,)
-                                    _mat2 = str(_grp2[_mat_col].iloc[0]) if _mat_col and not _grp2[_mat_col].dropna().empty else ''
-                                    _lw_e.append((str(_gk[0] if len(_gk) >= 1 else ''),
-                                                  str(_gk[1] if len(_gk) >= 2 else ''),
-                                                  _mat2, f'{_t2:,}', f'{_h2:,}', f'{_p2}%'))
-                            else:
-                                _h2 = int(_mask.sum())
-                                _t2 = len(df)
-                                _p2 = int(round(_h2 / _t2 * 100)) if _t2 else 0
-                                _lw_e = [('ALL', 'ALL', '', f'{_t2:,}', f'{_h2:,}', f'{_p2}%')]
-
-                            # figure — round wafer map (wafer_map_simple.py style)
-                            _fig_e, _ax_e = _plt.subplots(figsize=(7, 7))
-                            # Fixed 0-100% scale across all bins for easy comparison
-                            _vmax_e = 100
-                            _norm_e = _mcolors.Normalize(vmin=0, vmax=_vmax_e)
-                            _cmap_e = _plt.cm.RdYlGn_r
-                            # build per-position value lookup
-                            _pos_val_e = {(_xs_e[_i], _ys_e[_i]): _vs_e[_i] for _i in range(len(_xs_e))}
-                            for (_xv, _yv), _pv in _pos_val_e.items():
-                                _px_e = (_xv - _g_wcx) * _g_die_dx
-                                _py_e = (_yv - _g_wcy) * _g_die_dy
-                                _clr_e = _cmap_e(_norm_e(_pv))
-                                _rect_e = _mpatches.Rectangle(
-                                    (_px_e - _g_die_dx * _g_gap / 2, _py_e - _g_die_dy * _g_gap / 2),
-                                    _g_die_dx * _g_gap, _g_die_dy * _g_gap,
-                                    linewidth=0.3, edgecolor='gray', facecolor=_clr_e,
-                                    rasterized=True
-                                )
-                                _ax_e.add_patch(_rect_e)
-                            # annotate top 5 hotspots
-                            try:
-                                for _ti in _np.argsort(_vs_e)[-5:][::-1]:
-                                    _ax_e.text((_xs_e[_ti] - _g_wcx) * _g_die_dx,
-                                               (_ys_e[_ti] - _g_wcy) * _g_die_dy,
-                                               f'{int(_vs_e[_ti])}%',
-                                               color='black', fontsize=7, ha='center', va='center', fontweight='bold')
-                            except Exception:
-                                pass
-                            _sdesc = _de[:40] if _de else f'FB{_fbv}'
-                            _ax_e.set_title(
-                                f'FB{_fbv}  \u2014  {_sdesc}\nFail: {_fc:,}  ({_fp:.1f}%)',
-                                fontsize=10, weight='bold')
-                            _ax_e.set_xlabel('Sort X', fontsize=10)
-                            _ax_e.set_ylabel('Sort Y', fontsize=10)
-                            _ax_e.set_aspect('equal')
-                            _ax_e.set_xlim(-_g_xext, _g_xext)
-                            _ax_e.set_ylim(-_g_yext, _g_yext)
-                            # remap ticks to original coords
-                            _yt_e = [t for t in _ax_e.get_yticks() if -_g_yext <= t <= _g_yext]
-                            _ax_e.set_yticks(_yt_e)
-                            _ax_e.set_yticklabels([f'{v / _g_die_dy + _g_wcy:.0f}' for v in _yt_e], fontsize=8)
-                            _xt_e = [t for t in _ax_e.get_xticks() if -_g_xext <= t <= _g_xext]
-                            _ax_e.set_xticks(_xt_e)
-                            _ax_e.set_xticklabels([f'{v + _g_wcx:.0f}' for v in _xt_e], fontsize=8)
-                            _ax_e.set_xlim(-_g_xext, _g_xext)
-                            _ax_e.set_ylim(-_g_yext, _g_yext)
-                            _ax_e.axhline(0, color='black', linewidth=0.5, linestyle='--', alpha=0.3)
-                            _ax_e.axvline(0, color='black', linewidth=0.5, linestyle='--', alpha=0.3)
-                            _ax_e.grid(True, alpha=0.2)
-                            # ── reticle overlay on FBIN pareto composite ──
-                            _draw_reticle_p(_ax_e)
-                            _sm_e = _plt.cm.ScalarMappable(cmap=_cmap_e, norm=_norm_e)
-                            _sm_e.set_array([])
-                            _cb_e = _fig_e.colorbar(_sm_e, ax=_ax_e, fraction=0.046, pad=0.04)
-                            _cb_e.set_label('% fail', fontsize=9)
-                            _fig_e.tight_layout()
-                            # Save composite as inline SVG (fallback to PNG)
-                            _comp_svg_e = None
-                            try:
-                                from xml.etree import ElementTree as _ET_ce
-                                _ET_ce.register_namespace('', 'http://www.w3.org/2000/svg')
-                                _ET_ce.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
-                                _comp_svgid_e = f'pcomp_FB{_fbv}'
-                                _comp_buf_e = _io.StringIO()
-                                _fig_e.savefig(_comp_buf_e, format='svg', bbox_inches='tight')
-                                _comp_s_e = _re2.sub(r'<\?xml[^>]*\?>', '', _comp_buf_e.getvalue()).strip()
-                                _comp_rt_e = _ET_ce.fromstring(_comp_s_e)
-                                if _comp_rt_e.get('viewBox') is None:
-                                    _crw_e = _comp_rt_e.get('width', '800pt'); _crh_e = _comp_rt_e.get('height', '600pt')
-                                    def _cpt_e(s):
-                                        try: return float(_re2.sub(r'[^\d.]', '', s))
-                                        except: return 0
-                                    _comp_rt_e.set('viewBox', f'0 0 {_cpt_e(_crw_e):.1f} {_cpt_e(_crh_e):.1f}')
-                                _comp_rt_e.attrib.pop('width', None); _comp_rt_e.attrib.pop('height', None)
-                                _comp_rt_e.set('width', '100%'); _comp_rt_e.set('id', _comp_svgid_e)
-                                _cidmap_e = {}
-                                for _cel_e in _comp_rt_e.iter():
-                                    _coid_e = _cel_e.get('id')
-                                    if _coid_e and _coid_e != _comp_svgid_e:
-                                        _cnid_e = f'{_comp_svgid_e}_{_coid_e}'; _cidmap_e[_coid_e] = _cnid_e; _cel_e.set('id', _cnid_e)
-                                if _cidmap_e:
-                                    def _cfu_e(v):
-                                        return _re2.sub(r'url\(#([^)]+)\)',
-                                            lambda m: f'url(#{_cidmap_e.get(m.group(1), m.group(1))})', v)
-                                    _cxlh_e = '{http://www.w3.org/1999/xlink}href'
-                                    for _cel_e in _comp_rt_e.iter():
-                                        for _ca_e, _cav_e in list(_cel_e.attrib.items()):
-                                            if 'url(#' in _cav_e: _cel_e.set(_ca_e, _cfu_e(_cav_e))
-                                            if _ca_e in (_cxlh_e, 'href') and _cav_e.startswith('#'):
-                                                _cref_e = _cav_e[1:]
-                                                if _cref_e in _cidmap_e: _cel_e.set(_ca_e, f'#{_cidmap_e[_cref_e]}')
-                                _comp_svg_e = _ET_ce.tostring(_comp_rt_e, encoding='unicode')
-                            except Exception:
-                                _comp_svg_e = None
-                            _plt.close(_fig_e)
-                            if not _comp_svg_e:
-                                _buf_e = _io.BytesIO()
-                                # re-render if SVG failed (shouldn't happen)
-                                _buf_e.seek(0)
-                                _b64_e = ''  # will not be used if _comp_svg_e is set
-
-                            # ── per-wafer SVGs for interactive lot/wafer table ──
-                            def _san(s):
-                                return _re2.sub(r'[^0-9A-Za-z_-]', '_', str(s))
-                            from xml.etree import ElementTree as _ET
-                            _lw_svgs_e = []
-                            _g_cols2 = [c for c in [_lot_col, _wfr_col] if c]
-                            if _g_cols2 and _hx is not None and _hy is not None:
-                                for _lw_row_e in _lw_e:
-                                    try:
-                                        _lv_e, _wv_e = _lw_row_e[0], _lw_row_e[1]
-                                        _lw_sel_e = _pd.Series([True] * len(df), index=df.index)
-                                        if _lot_col:
-                                            _lw_sel_e &= df[_lot_col].fillna('').astype(str).eq(_lv_e)
-                                        if _wfr_col:
-                                            _lw_sel_e &= df[_wfr_col].fillna('').astype(str).eq(_wv_e)
-                                        _lw_idx_e = _lw_sel_e[_lw_sel_e].index
-                                        if len(_lw_idx_e) == 0:
-                                            _lw_svgs_e.append((_lv_e, _wv_e, None, None)); continue
-                                        _lx_e2 = _hx[_lw_idx_e].values.astype(float)
-                                        _ly_e2 = _hy[_lw_idx_e].values.astype(float)
-                                        _lmv_e = _mask[_lw_idx_e].values
-                                        _cd_e = {}
-                                        for _ci_e, (_cx_e, _cy_e) in enumerate(zip(_lx_e2.astype(int), _ly_e2.astype(int))):
-                                            _cd_e.setdefault((_cx_e, _cy_e), [0, 0])
-                                            _cd_e[(_cx_e, _cy_e)][0] += 1
-                                            if _lmv_e[_ci_e]:
-                                                _cd_e[(_cx_e, _cy_e)][1] += 1
-                                        _lw_xs_e = _np.array([k[0] for k in _cd_e], dtype=float)
-                                        _lw_ys_e = _np.array([k[1] for k in _cd_e], dtype=float)
-                                        _lw_vs_e = _np.array([v[1] / v[0] * 100 for v in _cd_e.values()])
-                                        _lw_fig_e, _lw_ax_e = _plt.subplots(figsize=(7, 7))
-                                        _lw_xp_e = (_lw_xs_e - _g_wcx) * _g_die_dx
-                                        _lw_yp_e = (_lw_ys_e - _g_wcy) * _g_die_dy
-                                        for _di_e in range(len(_lw_xp_e)):
-                                            _clr_e2 = _cmap_e(_norm_e(float(_np.rint(_lw_vs_e[_di_e]))))
-                                            _lw_ax_e.add_patch(_mpatches.Rectangle(
-                                                (_lw_xp_e[_di_e] - _g_die_dx * _g_gap / 2,
-                                                 _lw_yp_e[_di_e] - _g_die_dy * _g_gap / 2),
-                                                _g_die_dx * _g_gap, _g_die_dy * _g_gap,
-                                                linewidth=0.3, edgecolor='gray', facecolor=_clr_e2,
-                                                rasterized=True))
-                                        _lw_ax_e.set_title(f'Lot {_lv_e}  Wafer {_wv_e}\nFB{_fbv}', fontsize=9)
-                                        _lw_ax_e.set_aspect('equal')
-                                        _lw_ax_e.set_xlim(-_g_xext, _g_xext); _lw_ax_e.set_ylim(-_g_yext, _g_yext)
-                                        _lw_ax_e.set_xlabel('Sort X', fontsize=8); _lw_ax_e.set_ylabel('Sort Y', fontsize=8)
-                                        _yt_lw = [t for t in _lw_ax_e.get_yticks() if -_g_yext <= t <= _g_yext]
-                                        _lw_ax_e.set_yticks(_yt_lw)
-                                        _lw_ax_e.set_yticklabels([f'{v / _g_die_dy + _g_wcy:.0f}' for v in _yt_lw], fontsize=7)
-                                        _xt_lw = [t for t in _lw_ax_e.get_xticks() if -_g_xext <= t <= _g_xext]
-                                        _lw_ax_e.set_xticks(_xt_lw)
-                                        _lw_ax_e.set_xticklabels([f'{v + _g_wcx:.0f}' for v in _xt_lw], fontsize=7)
-                                        _lw_ax_e.axhline(0, color='black', linewidth=0.5, linestyle='--', alpha=0.3)
-                                        _lw_ax_e.axvline(0, color='black', linewidth=0.5, linestyle='--', alpha=0.3)
-                                        _lw_ax_e.grid(True, alpha=0.2)
-                                        _draw_reticle_p(_lw_ax_e)
-                                        try:
-                                            _sm_lw = _plt.cm.ScalarMappable(cmap=_cmap_e, norm=_norm_e)
-                                            _sm_lw.set_array([])
-                                            _lw_fig_e.colorbar(_sm_lw, ax=_lw_ax_e, fraction=0.046, pad=0.04, label='% fail')
-                                        except Exception:
-                                            pass
-                                        _lw_fig_e.tight_layout()
-                                        _svgbuf_e = _io.StringIO()
-                                        _lw_fig_e.savefig(_svgbuf_e, format='svg', bbox_inches='tight')
-                                        _plt.close(_lw_fig_e)
-                                        _svgs_e = _re2.sub(r'<\?xml[^>]*\?>', '', _svgbuf_e.getvalue()).strip()
-                                        _svgid_e = f'psvg_{_san(_lv_e)}_{_san(_wv_e)}_FB{_fbv}'
-                                        try:
-                                            _ET.register_namespace('', 'http://www.w3.org/2000/svg')
-                                            _ET.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
-                                            _rt_e = _ET.fromstring(_svgs_e)
-                                            if _rt_e.get('viewBox') is None:
-                                                _rw_e = _rt_e.get('width', '800pt'); _rh_e = _rt_e.get('height', '600pt')
-                                                def _pt_e(s):
-                                                    try: return float(_re2.sub(r'[^\d.]', '', s))
-                                                    except: return 0
-                                                _rt_e.set('viewBox', f'0 0 {_pt_e(_rw_e):.1f} {_pt_e(_rh_e):.1f}')
-                                            _rt_e.attrib.pop('width', None); _rt_e.attrib.pop('height', None)
-                                            _rt_e.set('width', '100%'); _rt_e.set('id', _svgid_e)
-                                            _idmap_e = {}
-                                            for _el_e in _rt_e.iter():
-                                                _oid_e = _el_e.get('id')
-                                                if _oid_e and _oid_e != _svgid_e:
-                                                    _nid_e = f'{_svgid_e}_{_oid_e}'; _idmap_e[_oid_e] = _nid_e; _el_e.set('id', _nid_e)
-                                            if _idmap_e:
-                                                def _fu_e(v):
-                                                    return _re2.sub(r'url\(#([^)]+)\)',
-                                                        lambda m: f'url(#{_idmap_e.get(m.group(1), m.group(1))})', v)
-                                                _xlh_e = '{http://www.w3.org/1999/xlink}href'
-                                                for _el_e in _rt_e.iter():
-                                                    for _a_e, _av_e in list(_el_e.attrib.items()):
-                                                        if 'url(#' in _av_e: _el_e.set(_a_e, _fu_e(_av_e))
-                                                        if _a_e in (_xlh_e, 'href') and _av_e.startswith('#'):
-                                                            _ref_e = _av_e[1:]
-                                                            if _ref_e in _idmap_e: _el_e.set(_a_e, f'#{_idmap_e[_ref_e]}')
-                                            _svgs_e = _ET.tostring(_rt_e, encoding='unicode')
-                                        except Exception:
-                                            pass
-                                        _lw_svgs_e.append((_lv_e, _wv_e, _svgs_e, _svgid_e))
-                                    except Exception as _lw_exc_e:
-                                        _lw_svgs_e.append((_lv_e, _wv_e, None, None))
-
-                            # build SVG blocks + row onclick attrs
-                            _irows_e = [
-                                ('Rank', str(_ri + 1)),
-                                ('Functional Bin', str(_fbv)),
-                                ('Description', _de),
-                                ('Count', f'{_fc:,}'),
-                                ('Fail %', f'{_fp:.1f}%'),
-                            ]
-                            _ihtml = ''.join(
-                                f'<tr><td>{_esc(k)}</td><td>{_esc(v)}</td></tr>\n'
-                                for k, v in _irows_e)
-                            _svg_blocks_e = ''
-                            _svg_id_map_e = {}
-                            for _lv2_e, _wv2_e, _svgstr_e, _sid_e in _lw_svgs_e:
-                                if _svgstr_e and _sid_e:
-                                    _svg_id_map_e[(_lv2_e, _wv2_e)] = _sid_e
-                                    _svg_blocks_e += (
-                                        f'<div id="wrap_{_sid_e}" class="hm-wafer-view" '
-                                        f'style="display:none;width:570px">{_svgstr_e}</div>\n'
-                                    )
-                            _has_svgs_e = bool(_svg_blocks_e)
-                            _lwhtml = ''
-                            for rr in _lw_e:
-                                _sid2_e = _svg_id_map_e.get((rr[0], rr[1]))
-                                _oc_e = f' onclick="hmShowWafer(\'{_sid2_e}\',this)"' if _sid2_e else ''
-                                _cs_e = ' cursor:pointer;' if _sid2_e else ''
-                                _lwhtml += (
-                                    f'<tr class="lw-row"{_oc_e} style="{_cs_e}">'
-                                    f'<td>{_esc(rr[0])}</td><td>{_esc(rr[1])}</td>'
-                                    + (f'<td>{_esc(rr[2])}</td>' if _mat_col else '')
-                                    + f'<td class="num">{_esc(rr[3] if _mat_col else rr[2])}</td>'
-                                    f'<td class="num">{_esc(rr[4] if _mat_col else rr[3])}</td>'
-                                    f'<td class="num">{_esc(rr[5] if _mat_col else rr[4])}</td></tr>\n'
-                                )
-                            _tot_units = sum(int(rr[3 if _mat_col else 2].replace(',','')) for rr in _lw_e)
-                            _tot_fails = sum(int(rr[4 if _mat_col else 3].replace(',','')) for rr in _lw_e)
-                            _tot_pct = int(round(_tot_fails / _tot_units * 100)) if _tot_units else 0
-                            _lwhtml += (
-                                f'<tr style="font-weight:bold;background:#dde8f7">'
-                                + (f'<td colspan="3">TOTAL</td>' if _mat_col else '<td colspan="2">TOTAL</td>')
-                                + f'<td class="num">{_tot_units:,}</td>'
-                                f'<td class="num">{_tot_fails:,}</td>'
-                                f'<td class="num">{_tot_pct}%</td></tr>\n'
-                            )
-                            _js_e = ''
-                            if _has_svgs_e:
-                                _js_e = (
-                                    '<script>\n'
-                                    'function hmShowWafer(svgId,row){\n'
-                                    '  var allViews=document.querySelectorAll(".hm-wafer-view");\n'
-                                    '  var allRows=document.querySelectorAll(".lw-row");\n'
-                                    '  var composite=document.getElementById("hm-composite");\n'
-                                    '  var alreadyActive=row.classList.contains("lw-active");\n'
-                                    '  allViews.forEach(function(d){d.style.display="none";});\n'
-                                    '  allRows.forEach(function(r){r.classList.remove("lw-active");r.style.background="";});\n'
-                                    '  if(alreadyActive){composite.style.display="block";}\n'
-                                    '  else{composite.style.display="none";\n'
-                                    '    var el=document.getElementById("wrap_"+svgId);\n'
-                                    '    if(el)el.style.display="block";\n'
-                                    '    row.classList.add("lw-active");row.style.background="#ddeeff";}\n'
-                                    '}\n</script>\n'
-                                    '<style>.lw-row:hover td{background:#f0f4ff !important;cursor:pointer;}'
-                                    '.lw-row.lw-active td{background:#ddeeff !important;}</style>\n'
-                                )
-                            _hint_e = ' <span style="font-size:10px;font-weight:normal;color:#666">(click row to show wafer map)</span>' if _has_svgs_e else ''
-                            _comp_inner_e = (_comp_svg_e if _comp_svg_e
-                                             else f'<img src="data:image/png;base64,{_b64_e}" style="max-width:100%;height:auto"/>')
-                            _entry_html_str = (
-                                '<!doctype html>\n<html><head><meta charset="utf-8">\n'
-                                '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
-                                '<style>\n'
-                                'html,body{margin:0;padding:8px;background:#fff;font-family:Arial,sans-serif;font-size:12px}\n'
-                                'img{max-width:100%;height:auto;display:block;margin-bottom:14px}\n'
-                                '.info-table,.lw-table{border-collapse:collapse;font-size:11px;margin-bottom:14px}\n'
-                                '.info-table td,.lw-table th,.lw-table td{padding:3px 10px;border:1px solid #ccc;'
-                                'white-space:nowrap;text-align:left}\n'
-                                '.info-table td:first-child,.lw-table th{font-weight:bold;background:#f0f0f0}\n'
-                                '.lw-table tr:hover td{background:#f5f5f5}\n'
-                                '.num{text-align:right}\n'
-                                '#hm-composite{max-width:700px}\n'
-                                f'</style>{_js_e}</head><body>\n'
-                                f'<div id="hm-composite">{_comp_inner_e}</div>\n'
-                                f'{_svg_blocks_e}'
-                                '<table class="info-table"><tbody>' + _ihtml + '</tbody></table>\n'
-                                f'<h3 style="font-size:12px;margin:8px 0 4px"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:3px"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg> Lot / Wafer breakdown{_hint_e}</h3>\n'
-                                '<table class="lw-table">\n'
-                                + ('<thead><tr><th>LOT</th><th>WAFER</th><th>MATERIAL TYPE</th><th>Total Count</th><th>Count</th><th>% FAIL</th></tr></thead>\n' if _mat_col else '<thead><tr><th>LOT</th><th>WAFER</th><th>Total Count</th><th>Count</th><th>% FAIL</th></tr></thead>\n')
-                                + '<tbody>' + _lwhtml + '</tbody></table>\n'
-                                '</body></html>'
-                            )
-                            _fname = f'pareto_{_ri + 1:02d}_FB{_fbv}.html'
-                            _ep = _pareto_dir / _fname
-                            _ep.write_text(_wm_inject(_entry_html_str), encoding='utf-8')
-                            _short_lbl = _de[:25] if _de else f'FB{_fbv}'
-                            _pareto_entries.append((_ri + 1, f'FB{_fbv} {_short_lbl}', _ep))
-                        except Exception:
-                            pass
             except Exception:
                 pass
 
@@ -2578,10 +2238,11 @@ function exportTblCsv(headId,bodyId,fname){
         except Exception:
             return None, [], None, None, None, []
 
-    def _build_master_html(self, resolved_csv, dashboard_path=None, plot_html=None, plot_tag_files=None, sicc_links=None, output_dir=None, opener_port=None, bindef_csv=None, bucket_json=None, tag=None):
+    def _build_master_html(self, resolved_csv, dashboard_path=None, plot_html=None, plot_tag_files=None, sicc_links=None, output_dir=None, opener_port=None, bindef_csv=None, bucket_json=None, tag=None, wpa_only=False):
         """Build output/index.html with a sidebar linking BinDistribution, heatmap HTMLs, plots, and Excel files.
         sicc_links: list of (abs_path, label, css_class) from SICC/UPM headless run.
-        output_dir: explicit output folder; defaults to <csv_parent>/output."""
+        output_dir: explicit output folder; defaults to <csv_parent>/output.
+        wpa_only: if True, build only wafermap.html (WPA) and return without index.html."""
         try:
             from pathlib import Path as _P
             import os as _os2
@@ -2592,23 +2253,24 @@ function exportTblCsv(headId,bodyId,fname){
                 out_dir = csv_p.parent / 'output'
             out_dir.mkdir(parents=True, exist_ok=True)
             stem = csv_p.stem
-            bin_html = out_dir / f'{stem}_BinDistribution.html'
+            bin_html = out_dir / 'bin_dist' / f'{stem}_BinDistribution.html'
             # Fallback 1: any *_BinDistribution.html already written in this folder
             # (e.g. from the pre-reticle CSV whose stem differs from the merged CSV)
             if not bin_html.exists():
                 _bin_cands = sorted(
-                    out_dir.glob('*_BinDistribution.html'),
+                    (out_dir / 'bin_dist').glob('*_BinDistribution.html'),
                     key=lambda p: p.stat().st_mtime, reverse=True)
                 if _bin_cands:
                     bin_html = _bin_cands[0]
-            heat_dir = out_dir / 'heatmap'
+            heat_dir = out_dir / 'wafermap'
             heat_htmls = sorted(
                 f for f in (heat_dir.glob('*.html') if heat_dir.exists() else [])
                 if '_IBIN_WaferMap_' not in f.name
                 and '_IBIN_ALL_WaferMap' not in f.name
+                and f.name != 'wafermap.html'
             )
-            # Detect per-lot IBIN wafer maps (generated by generate_all_ibin_wafer_map)
-            _wm_files = sorted(heat_dir.glob(f'{stem}_IBIN_WaferMap_*.html')) if heat_dir.exists() else []
+            # Detect per-lot IBIN wafer maps (stem may differ if sort CSV was used)
+            _wm_files = sorted(heat_dir.glob('*_IBIN_WaferMap_*.html')) if heat_dir.exists() else []
             # plots HTML
             plots_html_path = _P(plot_html) if plot_html and os.path.isfile(str(plot_html)) else None
 
@@ -2642,7 +2304,8 @@ function exportTblCsv(headId,bodyId,fname){
             _dd_xlsx_path = None
             ibin_pareto_html_path = None
             ibin_pareto_entries = []
-            try:
+            if not wpa_only:
+             try:
                 _pareto_result = self._build_pareto_html(resolved_csv, bindef_csv, out_dir, tag=tag, dashboard_html=dashboard_path, bucket_json=bucket_json)
                 if isinstance(_pareto_result, tuple) and len(_pareto_result) >= 6:
                     _pareto, pareto_entries, _dd_html_path, _dd_xlsx_path, _ibin_pareto, ibin_pareto_entries = _pareto_result
@@ -2661,7 +2324,7 @@ function exportTblCsv(headId,bodyId,fname){
                     pareto_entries = []
                 if _pareto and os.path.isfile(_pareto):
                     pareto_html_path = _P(_pareto)
-            except Exception:
+             except Exception:
                 pass
 
             def _nav(label, href):
@@ -2680,7 +2343,7 @@ function exportTblCsv(headId,bodyId,fname){
                         f'{label}</a>\n')
 
             # ── Yield section (was "Bin Distribution") ─────────────────────────
-            yield_section = _nav('&#128229; Yield Dashboard', bin_html.name) if bin_html.exists() else ''
+            yield_section = _nav('&#128229; Yield Dashboard', f'bin_dist/{bin_html.name}') if bin_html.exists() else ''
 
 
             heat_section = ''
@@ -2725,7 +2388,7 @@ function exportTblCsv(headId,bodyId,fname){
 
                 for h in sorted(heat_htmls, key=_heat_sort_key):
                     label = h.stem.replace(f'{stem}_Heatmap_bin_', 'Bin ').replace('_', '/')
-                    heat_section += _sub_nav(label, f'heatmap/{h.name}')
+                    heat_section += _sub_nav(label, f'wafermap/{h.name}')
             if not heat_section:
                 heat_section = '<span class="nav-link sub-link" style="opacity:0.45;cursor:default">Bin Heatmaps (skipped)</span>\n'
 
@@ -2739,8 +2402,8 @@ function exportTblCsv(headId,bodyId,fname){
             elif plots_html_path and plots_html_path.exists():
                 plots_section = _nav('&#128202; Plots', plots_html_path.name)
 
-            first_src = (bin_html.name if bin_html.exists()
-                         else (f'heatmap/{heat_htmls[0].name}' if heat_htmls else ''))
+            first_src = (f'bin_dist/{bin_html.name}' if bin_html.exists()
+                         else (f'wafermap/{heat_htmls[0].name}' if heat_htmls else ''))
 
             # SICC/UPM sidebar — plot.html + SICC/CDYN Report HTML + UPM-tagged plots
             import re as _re4
@@ -2748,11 +2411,11 @@ function exportTblCsv(headId,bodyId,fname){
             _plot_html_candidate = out_dir / 'plot.html'
             if _plot_html_candidate.exists():
                 sicc_section += _nav('&#128202; SICC / CDYN / UPM Dashboard', 'plot.html')
-            # Python SICC/CDYN Report (most recent *_sicc_analysis.html in run output folder)
-            _sa_cands = sorted(out_dir.glob('*_sicc_analysis.html'),
-                               key=lambda p: p.stat().st_mtime, reverse=True)
+            # Python SICC/CDYN Report (most recent *_sicc_analysis.html in sicc/ subfolder)
+            _sa_cands = sorted((out_dir / 'sicc').glob('*_sicc_analysis.html'),
+                               key=lambda p: p.stat().st_mtime, reverse=True) if (out_dir / 'sicc').exists() else []
             if _sa_cands:
-                sicc_section += _nav('&#128202; UPM/SICC/CDYN Dashboard', _sa_cands[0].name)
+                sicc_section += _nav('&#128202; UPM/SICC/CDYN Dashboard', f'sicc/{_sa_cands[0].name}')
             if plot_tag_files:
                 for _ptag, _p in plot_tag_files.items():
                     _pp = _P(_p)
@@ -2773,7 +2436,7 @@ function exportTblCsv(headId,bodyId,fname){
             # ── UPM Distribution analysis from config JSON ─────────────────────
             _upm_dist_section = ''
             try:
-                if bucket_json and os.path.isfile(str(bucket_json)):
+                if not wpa_only and bucket_json and os.path.isfile(str(bucket_json)):
                     import json as _json_upm
                     import pandas as _pd_upm
                     import matplotlib
@@ -3309,7 +2972,19 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
             _tag_display = tag if tag else 'Yield Analysis'
             # Build combined Wafer Map page — single entry in sidebar
             _wm_nav = ''
-            if _wm_files:
+            _wm_combined_path = out_dir / 'wafermap' / 'wafermap.html'
+            if _wm_files and _wm_combined_path.exists() and not wpa_only:
+                # wafermap.html already built by parallel WPA subprocess — skip rebuild
+                _wm_nav = (
+                    f'  <div class="sec">Wafer Map</div>\n'
+                    f'  <a class="nav-link" href="wafermap/wafermap.html" '
+                    f'onclick="loadWpa(this);return false;">'
+                    f'&#128202; Wafer Pattern Analysis</a>\n'
+                    f'  <a class="nav-link" href="wafermap/wafermap.html" '
+                    f'onclick="load(\'wafermap/wafermap.html\',this);return false;">'
+                    f'&#128507; IBIN Wafer Map</a>\n'
+                )
+            elif _wm_files:
                 try:
                     import pandas as _pd_wm
                     import re as _re_wm
@@ -3331,7 +3006,7 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                             _df_wm = _df_wm[_df_wm[_wm_filt_col].notna() & ~_df_wm[_wm_filt_col].astype(str).str.strip().str.lower().isin(_wm_null)]
                     _mat_wm = next((c for c in _df_wm.columns if 'material' in c.lower()), None)
                     # map sanitized lot → href
-                    _lot_href_map = {_wf.stem[len(f'{stem}_IBIN_WaferMap_'):]: f'heatmap/{_wf.name}' for _wf in _wm_files}
+                    _lot_href_map = {_wf.stem.split('_IBIN_WaferMap_', 1)[-1]: _wf.name for _wf in _wm_files}
                     def _find_lot_href(lot_v):
                         _k = _wm_sanitize(str(lot_v))
                         if _k in _lot_href_map: return _lot_href_map[_k]
@@ -3442,7 +3117,16 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                     if _x_wm and _y_wm and _ib_wm and _lot_wm and _wfr_wm:
                         try:
                             import pandas as _pd_pat
+                            import numpy as _np_pat
                             _grp_wm_cols_p = [_lot_wm, _wfr_wm] + ([_prg_wm] if _prg_wm else [])
+                            # Pre-convert coordinate/bin columns once across the full dataframe
+                            _df_wm['_px'] = _pd_pat.to_numeric(_df_wm[_x_wm], errors='coerce')
+                            _df_wm['_py'] = _pd_pat.to_numeric(_df_wm[_y_wm], errors='coerce')
+                            _df_wm['_pib'] = _pd_pat.to_numeric(_df_wm[_ib_wm], errors='coerce')
+                            if _fb_wm:
+                                _df_wm['_pfb'] = _pd_pat.to_numeric(_df_wm[_fb_wm], errors='coerce')
+                            for _uc in _upm_cols_matched:
+                                _df_wm[f'_pupm_{_uc}'] = _pd_pat.to_numeric(_df_wm[_uc], errors='coerce')
                             _grp_wm = _df_wm.groupby(_grp_wm_cols_p)
                             for _grp_key_p, _wdf_p in _grp_wm:
                                 if _prg_wm:
@@ -3450,52 +3134,48 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                                 else:
                                     _lv_p, _wv_p = _grp_key_p; _pv_p = ''
                                 _pk = f'{_lv_p}::{_wv_p}::{_pv_p}'
-                                _dies_p = []
-                                _die_cols = [_x_wm, _y_wm, _ib_wm] + ([_fb_wm] if _fb_wm else []) + _upm_cols_matched
-                                _arr = _wdf_p[_die_cols].values
-                                _upm_start = (4 if _fb_wm else 3)
-                                for _r in _arr:
-                                    try:
-                                        _dx_p = int(float(_r[0])) if _r[0] is not None and str(_r[0]) not in ('nan','None','') else None
-                                        _dy_p = int(float(_r[1])) if _r[1] is not None and str(_r[1]) not in ('nan','None','') else None
-                                        _ib_p = int(float(_r[2])) if _r[2] is not None and str(_r[2]) not in ('nan','None','') else None
-                                        _fb_p = int(float(_r[3])) if _fb_wm and _r[3] is not None and str(_r[3]) not in ('nan','None','') else None
-                                        _upm_p = [round(float(_r[_upm_start+_ui]), 1) if _r[_upm_start+_ui] is not None and str(_r[_upm_start+_ui]) not in ('nan','None','') else None for _ui in range(len(_upm_cols_matched))]
-                                        if _dx_p is not None and _dy_p is not None:
-                                            _dies_p.append([_dx_p, _dy_p, _ib_p, _fb_p] + _upm_p)
-                                    except Exception:
-                                        pass
+                                # Vectorized: filter valid x/y rows, no per-row Python loop
+                                _valid = _wdf_p['_px'].notna() & _wdf_p['_py'].notna()
+                                _vdf = _wdf_p[_valid]
+                                _xs_v = _vdf['_px'].astype(int).tolist()
+                                _ys_v = _vdf['_py'].astype(int).tolist()
+                                _ibs_v = _vdf['_pib'].where(_vdf['_pib'].notna(), _np_pat.nan)
+                                _ibs_v = [int(v) if v == v else None for v in _ibs_v]
+                                if _fb_wm:
+                                    _fbs_v = [int(v) if v == v else None for v in _vdf['_pfb']]
+                                else:
+                                    _fbs_v = [None] * len(_xs_v)
+                                _upm_arrs = [_vdf[f'_pupm_{_uc}'].tolist() for _uc in _upm_cols_matched]
+                                _dies_p = [
+                                    [_xs_v[_i], _ys_v[_i], _ibs_v[_i], _fbs_v[_i]] +
+                                    [round(_upm_arrs[_ui][_i], 1) if _upm_arrs[_ui][_i] == _upm_arrs[_ui][_i] else None for _ui in range(len(_upm_cols_matched))]
+                                    for _i in range(len(_xs_v))
+                                ]
+                                # Vectorized ib→fb mapping via groupby
                                 _ib_fb_p = {}
                                 if _fb_wm:
                                     try:
-                                        _fb_arr_p = _wdf_p[[_ib_wm, _fb_wm]].values
-                                        for _fr in _fb_arr_p:
-                                            try:
-                                                _fib_p = int(float(_fr[0])) if _fr[0] is not None and str(_fr[0]) not in ('nan','None','') else None
-                                                _ffb_p = int(float(_fr[1])) if _fr[1] is not None and str(_fr[1]) not in ('nan','None','') else None
-                                                if _fib_p is not None and _ffb_p is not None:
-                                                    _fibk = str(_fib_p); _ffbk = str(_ffb_p)
-                                                    if _fibk not in _ib_fb_p: _ib_fb_p[_fibk] = {}
-                                                    _ib_fb_p[_fibk][_ffbk] = _ib_fb_p[_fibk].get(_ffbk, 0) + 1
-                                            except Exception:
-                                                pass
+                                        _fbdf = _vdf[['_pib', '_pfb']].dropna()
+                                        _fbdf = _fbdf.astype(int)
+                                        for (_fib, _ffb), _cnt in _fbdf.groupby(['_pib', '_pfb']).size().items():
+                                            _k = str(_fib)
+                                            if _k not in _ib_fb_p: _ib_fb_p[_k] = {}
+                                            _ib_fb_p[_k][str(_ffb)] = int(_cnt)
                                     except Exception:
                                         pass
+                                # Vectorized ib→hw mapping via groupby
                                 _ib_hw_p = {}
                                 if _hw_cols_wm:
                                     try:
-                                        _hw_arr_p = _wdf_p[[_ib_wm] + _hw_cols_wm].values
-                                        for _hr in _hw_arr_p:
-                                            try:
-                                                _hib_p = int(float(_hr[0])) if _hr[0] is not None and str(_hr[0]) not in ('nan','None','') else None
-                                                if _hib_p is None: continue
-                                                _hvals_p = [str(_hr[i+1]).strip() if _hr[i+1] is not None and str(_hr[i+1]) not in ('nan','None','') else '' for i in range(len(_hw_cols_wm))]
-                                                _hkey_p = '|'.join(_hvals_p)
-                                                _hibk_p = str(_hib_p)
-                                                if _hibk_p not in _ib_hw_p: _ib_hw_p[_hibk_p] = {}
-                                                _ib_hw_p[_hibk_p][_hkey_p] = _ib_hw_p[_hibk_p].get(_hkey_p, 0) + 1
-                                            except Exception:
-                                                pass
+                                        _hwdf = _vdf[['_pib'] + _hw_cols_wm].copy()
+                                        _hwdf['_pib'] = _hwdf['_pib'].where(_hwdf['_pib'].notna()).dropna()
+                                        _hwdf = _hwdf.dropna(subset=['_pib'])
+                                        _hwdf['_pib'] = _hwdf['_pib'].astype(int)
+                                        _hwdf['_hwkey'] = _hwdf[_hw_cols_wm].fillna('').astype(str).apply(lambda r: '|'.join(r.values), axis=1)
+                                        for (_hib, _hkey), _cnt in _hwdf.groupby(['_pib', '_hwkey']).size().items():
+                                            _k = str(_hib)
+                                            if _k not in _ib_hw_p: _ib_hw_p[_k] = {}
+                                            _ib_hw_p[_k][_hkey] = int(_cnt)
                                     except Exception:
                                         pass
                                 if _dies_p:
@@ -4010,7 +3690,7 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         '.wm-pat-bincb:hover{background:#f0f4fa}\n'
                         '.wm-pat-bincb input{cursor:pointer;margin:0}\n'
                         '.wm-pat-binsw{width:10px;height:10px;border-radius:2px;flex-shrink:0;display:inline-block}\n'
-                        '.wm-wlbl{font-size:12px;font-weight:bold;color:#2c3e50;text-align:center;margin-bottom:3px}\n'
+                        '.wm-wlbl{font-size:12px;font-weight:bold;color:#2c3e50;text-align:center;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}\n'
                         '.wm-pat-close{background:none;border:none;color:#a9dfbf;cursor:pointer;font-size:20px;line-height:1;padding:0}\n'
                         '.wm-pat-close:hover{color:#fff}\n'
                         '.wm-dd-btn{font-size:11px;padding:2px 9px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0}\n'
@@ -4916,9 +4596,9 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         '      ctx.lineWidth=0.7;\n'
                         '      _pkShots.forEach(function(s,si){\n'
                         '        var sx=pad+(s[0]-xMin)*cs,sy=pad+(yMax-s[3])*csy,sw=(s[2]-s[0]+1)*cs,sh=(s[3]-s[1]+1)*csy;\n'
-                        '        ctx.strokeStyle=failShotIdx.has(si)?"#c0392b":"#2471a3";\n'
-                        '        ctx.lineWidth=failShotIdx.has(si)?1.5:0.7;\n'
-                        '        ctx.globalAlpha=failShotIdx.has(si)?0.9:0.35;\n'
+                        '        ctx.strokeStyle="#2471a3";\n'
+                        '        ctx.lineWidth=0.7;\n'
+                        '        ctx.globalAlpha=0.35;\n'
                         '        ctx.strokeRect(sx,sy,sw,sh);ctx.globalAlpha=1;\n'
                         '      });\n'
                         '    }\n'
@@ -5002,11 +4682,6 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         '        var sx=(pad+(s[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-s[3])*csy).toFixed(1),sw=((s[2]-s[0]+1)*cs).toFixed(1),sh=((s[3]-s[1]+1)*csy).toFixed(1);\n'
                         '        retOut+=\'<rect x="\'+sx+\'" y="\'+sy+\'" width="\'+sw+\'" height="\'+sh+\'" fill="none" stroke="#2471a3" stroke-width="0.7" opacity="0.35"/>\';\n'
                         '        if(cs>=6){var tx=(+sx+(+sw)/2).toFixed(1),ty=(+sy+7).toFixed(1);retOut+=\'<text x="\'+tx+\'" y="\'+ty+\'" text-anchor="middle" font-size="5" fill="#2471a3" opacity="0.7" pointer-events="none">\'+si+\'</text>\';}\n'
-                        '      });\n'
-                        '      _pkShots.forEach(function(s,si){\n'
-                        '        if(!failShotIdx.has(si))return;\n'
-                        '        var sx=(pad+(s[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-s[3])*csy).toFixed(1),sw=((s[2]-s[0]+1)*cs).toFixed(1),sh=((s[3]-s[1]+1)*csy).toFixed(1);\n'
-                        '        retOut+=\'<rect x="\'+sx+\'" y="\'+sy+\'" width="\'+sw+\'" height="\'+sh+\'" fill="none" stroke="#c0392b" stroke-width="1.5" opacity="0.9"/>\';\n'
                         '      });\n'
                         '    }\n'
                         '    container.innerHTML=\'<svg width="\'+W+\'" height="\'+H+\'" style="display:block;margin:0 auto;cursor:crosshair" onmousemove="_wmDieHover(event,this)" onmouseleave="_wmDieHoverOut()">\'\n'
@@ -5559,16 +5234,18 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         '        acc.systematic+=sc.systematic;acc.reticle+=sc.reticle;acc.random+=sc.random;\n'
                         '      });\n'
                         '    }\n'
-                        '    mapsHtml+=\'<div class="wm-pat-tile-ph" data-idx="\'+_wmPatLastKeys.indexOf(pk)+\'" style="text-align:center;padding:4px 2px">\'\n'
+                        '    mapsHtml+=\'<div class="wm-pat-tile-ph" data-idx="\'+_wmPatLastKeys.indexOf(pk)+\'" style="text-align:center;padding:4px 2px;width:\'+W+\'px">\'\n'
                         '      +\'<div style="display:inline-block;border-radius:50%;transition:box-shadow 0.12s" onclick="_wmZoomWafer(\\\'\'+pk+\'\\\',this)">\'\n'
                         '      +\'<div class="wm-pat-tile-content" style="width:\'+W+\'px;height:\'+H+\'px;background:#e8ecf0;border-radius:50%;display:inline-block"></div>\'\n'
                         '      +\'</div>\'\n'
-                        '      +\'<div style="font-size:10px;color:\'+pCol+\';font-weight:bold;margin-top:2px">\'+primary+\'</div>\'\n'
+                        '      +\'<div style="font-size:\'+Math.max(8,Math.round(10*_wmPatZoom))+\'px;color:\'+pCol+\';font-weight:bold;margin-top:2px">\'+primary+\'</div>\'\n'
                         '      +(function(){\n'
                         '        var _cb=_wmGetCriteriaMissBins(pk),_ci=_wmGetCriteriaMissInfo(pk);\n'
                         '        var _icon=_cb.length?\'<span data-pk="'+pk+'" style="color:#c0392b;margin-left:5px;font-size:20px;vertical-align:middle;cursor:pointer" title="Click to see yield misses" onclick="event.stopPropagation();_wmShowIconTip(this)">&#9888;</span>\':\'\';\n'
-                        '        return \'<div class="wm-wlbl" style="margin-top:3px;cursor:pointer;font-size:12px" onclick="_wmShowCriteriaTable(\\\''+pk+'\\\',event)">\'+mLot+" W"+mWfr+mProgLbl+_icon+\'</div>\'\n'
-                        '          +(mMat?\'<div style="font-size:9px;color:#8e6a2a;margin-top:1px">\'+mMat+\'</div>\':\'\');\n'
+                        '        var _lblFs=Math.max(9,Math.round(12*_wmPatZoom));\n'
+                        '        var _matFs=Math.max(7,Math.round(9*_wmPatZoom));\n'
+                        '        return \'<div class="wm-wlbl" style="margin-top:3px;cursor:pointer;font-size:\'+_lblFs+\'px" onclick="_wmShowCriteriaTable(\\\''+pk+'\\\',event)">\'+mLot+" W"+mWfr+mProgLbl+_icon+\'</div>\'\n'
+                        '          +(mMat?\'<div style="font-size:\'+_matFs+\'px;color:#8e6a2a;margin-top:1px">\'+mMat+\'</div>\':\'\');\n'
                         '      })()\n'
                         '      +\'</div>\';\n'
                         '    tbHtml+=\'<tr>\'\n'
@@ -5996,27 +5673,54 @@ return{clickCol:clickCol,toggleRow:toggleRow,selAll:selAll,clrAll:clrAll,
                         '</script>\n'
                         '</body></html>\n'
                     )
-                    _wm_combined_path = out_dir / 'wafermap.html'
+                    # Phase 1/2: extract data blob + JS logic into separate files
+                    _WM_JSON_START = '<script type="application/json" id="wm-pat-json">'
+                    _WM_JSON_END   = '</script>'
+                    if _WM_JSON_START in _wm_combined_html:
+                        _wm_p1, _wm_rest = _wm_combined_html.split(_WM_JSON_START, 1)
+                        _wm_json_blob, _wm_rest2 = _wm_rest.split(_WM_JSON_END, 1)
+                        # logic block is the final <script>...</script>
+                        _wm_ls = _wm_rest2.find('<script>') + len('<script>')
+                        _wm_le = _wm_rest2.rfind('</script>')
+                        _wm_logic = _wm_rest2[_wm_ls:_wm_le]
+                        _wm_after = _wm_rest2[_wm_le + len('</script>'):]
+                        _wm_dir = out_dir / 'wafermap'
+                        _wm_dir.mkdir(exist_ok=True)
+                        (_wm_dir / 'wafermap_data.js').write_text(
+                            f'var WM_PAT={_wm_json_blob};\n', encoding='utf-8')
+                        # strip the stale JSON.parse line — WM_PAT is already set by wafermap_data.js
+                        _wm_logic_clean = _wm_logic.lstrip()
+                        if _wm_logic_clean.startswith('var WM_PAT=JSON.parse('):
+                            _wm_logic = _wm_logic_clean[_wm_logic_clean.index('\n')+1:]
+                        (_wm_dir / 'wafermap.js').write_text(_wm_logic, encoding='utf-8')
+                        _wm_combined_html = (
+                            _wm_p1
+                            + '<script src="wafermap_data.js"></script>\n'
+                            + '<script src="wafermap.js"></script>\n'
+                            + _wm_after
+                        )
                     _wm_combined_path.write_text(_wm_inject(_wm_combined_html), encoding='utf-8')
                     _wm_nav = (
                         f'  <div class="sec">Wafer Map</div>\n'
-                        f'  <a class="nav-link" href="wafermap.html" '
+                        f'  <a class="nav-link" href="wafermap/wafermap.html" '
                         f'onclick="loadWpa(this);return false;">'
                         f'&#128202; Wafer Pattern Analysis</a>\n'
-                        f'  <a class="nav-link" href="wafermap.html" '
-                        f'onclick="load(\'wafermap.html\',this);return false;">'
+                        f'  <a class="nav-link" href="wafermap/wafermap.html" '
+                        f'onclick="load(\'wafermap/wafermap.html\',this);return false;">'
                         f'&#128507; IBIN Wafer Map</a>\n'
                     )
+                    if wpa_only:
+                        return str(_wm_combined_path)  # done — caller only wanted wafermap.html
                 except Exception as _wm_ex:
                     import traceback as _tb_wm
                     print(f'[WPA ERROR] {_wm_ex}')
                     _tb_wm.print_exc()
                     _wm_entries = ''
                     for _wf in _wm_files:
-                        lot_part = _wf.stem[len(f'{stem}_IBIN_WaferMap_'):]
+                        lot_part = _wf.stem.split('_IBIN_WaferMap_', 1)[-1]
                         _wm_entries += (
-                            f'  <a class="nav-link" href="heatmap/{_wf.name}" '
-                            f'onclick="load(\'heatmap/{_wf.name}\',this);return false;">'
+                            f'  <a class="nav-link" href="wafermap/{_wf.name}" '
+                            f'onclick="load(\'wafermap/{_wf.name}\',this);return false;">'
                             f'&#128507; {lot_part}</a>\n'
                         )
                     _wm_nav = f'  <div class="sec">Wafer Map</div>\n{_wm_entries}'
@@ -6109,7 +5813,7 @@ function loadWpa(el){{
   el.classList.add('active');
   var f=document.getElementById('frame');
   var src=f.src||'';
-  var isWm=src.indexOf('wafermap.html')>=0||(src.indexOf('/serve?')>=0&&src.indexOf('wafermap')>=0);
+  var isWm=src.indexOf('wafermap/wafermap.html')>=0||(src.indexOf('/serve?')>=0&&src.indexOf('wafermap')>=0);
   if(isWm){{
     try{{
       var cw=f.contentWindow;
@@ -6117,7 +5821,7 @@ function loadWpa(el){{
     }}catch(e){{}}
     return;
   }}
-  f.src=_gp('wafermap.html#wpa');
+  f.src=_gp('wafermap/wafermap.html#wpa');
 }}
 var first=document.querySelector('.nav-link:not(.xlsx-link)[onclick]');
 if(first){{first.classList.add('active');first.click();}}
@@ -6155,12 +5859,12 @@ window.addEventListener('message',function(e){{
                 '  el.classList.add(\'active\');\n'
                 '  var f=document.getElementById(\'frame\');\n'
                 '  var src=f.src||\'\';\n'
-                '  var isWm=src.indexOf(\'wafermap.html\')>=0||(src.indexOf(\'/serve?\')>=0&&src.indexOf(\'wafermap\')>=0);\n'
+                '  var isWm=src.indexOf(\'wafermap/wafermap.html\')>=0||(src.indexOf(\'/serve?\')>=0&&src.indexOf(\'wafermap\')>=0);\n'
                 '  if(isWm){\n'
                 '    try{var cw=f.contentWindow;if(cw&&cw.wmShowPatLot){cw.wmShowPatLot(cw._wmPatAllLots?cw._wmPatAllLots():null);return;}}catch(e){}\n'
                 '    return;\n'
                 '  }\n'
-                '  f.src=_gp(\'wafermap.html#wpa\');\n'
+                '  f.src=_gp(\'wafermap/wafermap.html#wpa\');\n'
                 '}\n'
                 'var first=document.querySelector(\'.nav-link:not(.xlsx-link)[onclick]\');\n'
                 'if(first){first.classList.add(\'active\');first.click();}\n'
@@ -6247,259 +5951,8 @@ window.addEventListener('message',function(e){{
             return None
 
     def _update_dashboard_html(self, resolved_csv, master_html=None, dashboard_html=None, dashboard_html_dir=None, plot_html=None, plot_tag_files=None, sicc_links=None, output_dir=None):
-        """Create or update Dashboard.html.
-        Location priority: dashboard_html path > dashboard_html_dir > output_dir > CSV parent.
-        Each run gets its own collapsible section, identified by the CSV stem.
-        Existing sections for the same stem are replaced; others are kept.
-        sicc_links: list of (abs_path, label, css_class) from SICC/UPM headless run."""
-        try:
-            from pathlib import Path as _P
-            import os as _os
-            from datetime import datetime as _dt
-
-            csv_p = _P(resolved_csv)
-            out_dir = csv_p.parent / 'output'
-            stem = csv_p.stem
-            # Display name: prefer Identifier, then TestProgram, then TestProgram_folder basename, else stem
-            _tp_name = self.testprogram_id_var.get().strip() or self.testprogram_var.get().strip()
-            if not _tp_name:
-                _tpf = self.tp_folder_var.get().strip()
-                _tp_name = os.path.basename(_tpf) if _tpf else ''
-            report_name = _tp_name if _tp_name else stem
-            # Use the identifier as the unique block key so re-running
-            # the same identifier always overrides the existing block.
-            _identifier = self.testprogram_id_var.get().strip()
-            _safe_id_key = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in _identifier) if _identifier else ''
-            block_key = _safe_id_key if _safe_id_key else stem
-
-            # Determine Dashboard.html location: use configured dashboard html path directly,
-            # fall back to dashboard_html_dir, output_dir parent, or CSV parent.
-            if dashboard_html and dashboard_html.strip():
-                # Use the provided path even if the file doesn't exist yet —
-                # it will be created below.
-                dash_html_path = _P(dashboard_html)
-                dash_dir = dash_html_path.parent
-            elif dashboard_html_dir:
-                dash_dir = _P(dashboard_html_dir)
-                dash_html_path = dash_dir / 'Dashboard.html'
-            elif output_dir:
-                dash_dir = _P(output_dir).parent
-                dash_html_path = dash_dir / 'Dashboard.html'
-            else:
-                dash_dir = csv_p.parent
-                dash_html_path = dash_dir / 'Dashboard.html'
-            dash_dir.mkdir(parents=True, exist_ok=True)
-
-            # Build relative paths from dash_dir to the various output files
-            def _rel(abs_path):
-                try:
-                    return _os.path.relpath(str(abs_path), str(dash_dir)).replace('\\', '/')
-                except Exception:
-                    return str(abs_path)
-
-            # Collect links for this run (Yield Report only; SICC/UPM reserved for JSL run)
-            run_links = []
-            # Dashboard Yield Report (master index.html)
-            _yield_html = master_html
-            if not _yield_html or not _os.path.isfile(str(_yield_html)):
-                # Fallback: look for an existing index.html in the output folder
-                # (from a prior yield run for this same identifier)
-                _scan_dirs_yield = []
-                if output_dir:
-                    _scan_dirs_yield.append(_P(output_dir))
-                _scan_dirs_yield.extend([csv_p.parent / 'output', csv_p.parent])
-                for _sd in _scan_dirs_yield:
-                    _idx_cand = _sd / 'index.html'
-                    if _idx_cand.exists():
-                        _yield_html = str(_idx_cand)
-                        break
-            if not _yield_html or not _os.path.isfile(str(_yield_html)):
-                # Broader fallback: output_dir may be e.g. .../ID-1 or .../ID-cdyn
-                # while index.html lives in .../ID (base identifier folder).
-                # Strip trailing -SUFFIX and check that sibling folder.
-                if output_dir:
-                    import re as _re_yield
-                    _out_p = _P(output_dir)
-                    _base_name = _re_yield.sub(r'-[^/\\]+$', '', _out_p.name)
-                    if _base_name != _out_p.name:
-                        _sibling = _out_p.parent / _base_name
-                        if (_sibling / 'index.html').exists():
-                            _yield_html = str(_sibling / 'index.html')
-                    # Also scan all sibling dirs for index.html (most recent first)
-                    if not _yield_html or not _os.path.isfile(str(_yield_html)):
-                        _siblings = [d / 'index.html' for d in _out_p.parent.iterdir()
-                                     if d.is_dir() and d != _out_p and (d / 'index.html').exists()]
-                        if _siblings:
-                            _siblings.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                            _yield_html = str(_siblings[0])
-            if _yield_html and _os.path.isfile(str(_yield_html)):
-                run_links.append((_rel(_yield_html), 'Dashboard Yield Report', 'report-link'))
-            # SICC/UPM link removed — reserved for SICC/UPM JSL run
-
-            _now = _dt.now()
-            ts_date = _now.strftime('%Y-%m-%d')
-            ts_time = _now.strftime('%H:%M')
-            link_items = '\n'.join(
-                f'<a class="run-link {cls}" href="{href}" target="_blank">{lbl}</a>'
-                for href, lbl, cls in run_links
-            )
-            # Each run block is wrapped in a div with data-stem for replacement detection
-            new_block = (
-                f'<div class="run-block" data-stem="{block_key}">\n'
-                f'<div class="run-header" onclick="toggle(this)">'
-                f'<span class="arrow">&#9660;</span> {report_name}'
-                f'<span class="ts"> - {ts_date} - {ts_time}</span></div>\n'
-                f'<div class="run-body">\n{link_items}\n</div>\n</div>'
-            )
-
-            # CSS + JS template (only written when file is created fresh)
-            page_css = """
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;background:#1a252f;color:#ecf0f1;padding:16px}
-h1{font-size:16px;margin-bottom:14px;color:#3498db;letter-spacing:.5px}
-.run-block{background:#2c3e50;border-radius:6px;margin-bottom:10px;overflow:hidden}
-.run-header{padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:6px;
-  font-weight:bold;font-size:13px;user-select:none}
-.run-header:hover{background:#34495e}
-.arrow{font-size:10px;transition:transform .2s}
-.run-header.collapsed .arrow{transform:rotate(-90deg)}
-.ts{font-weight:normal;font-size:11px;color:#95a5a6;margin-left:auto}
-.run-body{padding:8px 14px 12px;display:flex;flex-wrap:wrap;gap:6px}
-.run-link{display:inline-block;padding:5px 10px;border-radius:4px;font-size:12px;
-  text-decoration:none;white-space:nowrap}
-.report-link{background:#2980b9;color:#fff}
-.report-link:hover{background:#3498db}
-.bin-link{background:#1e8449;color:#fff}
-.bin-link:hover{background:#27ae60}
-.heat-link{background:#7d3c98;color:#fff}
-.heat-link:hover{background:#9b59b6}
-.xlsx-link{background:#1f618d;color:#aed6f1}
-.xlsx-link:hover{background:#2980b9;color:#fff}
-.plot-link{background:#117a65;color:#a9dfbf}
-.plot-link:hover{background:#1abc9c;color:#fff}
-.sicc-link{background:#7b241c;color:#f1948a}
-.sicc-link:hover{background:#922b21;color:#fff}
-.param-link{background:#4a235a;color:#d2b4de}
-.param-link:hover{background:#6c3483;color:#fff}
-.param-link{background:#4a235a;color:#d2b4de}
-.param-link:hover{background:#6c3483;color:#fff}
-"""
-            page_js = """
-function toggle(hdr){
-  hdr.classList.toggle('collapsed');
-  hdr.nextElementSibling.style.display=hdr.classList.contains('collapsed')?'none':'';
-}
-"""
-            # Sentinel comments for the three sections (Yield / Compare TP / Vmin)
-            YIELD_START   = '<!-- YIELD_START -->'
-            YIELD_END     = '<!-- YIELD_END -->'
-            COMPARE_START = '<!-- COMPARE_START -->'
-            COMPARE_END   = '<!-- COMPARE_END -->'
-            VMIN_START    = '<!-- VMIN_START -->'
-            VMIN_END      = '<!-- VMIN_END -->'
-            OLD_START     = '<!-- RUNS_START -->'  # legacy
-            OLD_END       = '<!-- RUNS_END -->'    # legacy
-            START         = YIELD_START
-            END           = YIELD_END
-
-            def _is_valid_html(path):
-                """Return True if the file looks like HTML (not a binary xlsx/zip)."""
-                try:
-                    with open(path, 'rb') as fh:
-                        head = fh.read(256)
-                    # xlsx / zip files start with PK\x03\x04
-                    if head[:4] == b'PK\x03\x04':
-                        return False
-                    # Check for common HTML markers in the first 256 bytes
-                    head_lower = head.lower()
-                    if b'<!doctype' in head_lower or b'<html' in head_lower or b'<head' in head_lower:
-                        return True
-                    # If it's mostly printable text, treat it as HTML
-                    try:
-                        head.decode('utf-8')
-                        return True
-                    except UnicodeDecodeError:
-                        return False
-                except Exception:
-                    return False
-
-            if dash_html_path.exists() and _is_valid_html(dash_html_path):
-                content = dash_html_path.read_text(encoding='utf-8')
-                # Migrate legacy RUNS_START/END sentinels to YIELD_START/END
-                content = content.replace(OLD_START, YIELD_START).replace(OLD_END, YIELD_END)
-                # Inject .sicc-link CSS into existing files that pre-date this feature
-                import re as _re
-                if '.sicc-link' not in content and '</style>' in content:
-                    _sicc_css = ('.sicc-link{background:#7b241c;color:#f1948a}\n'
-                                 '.sicc-link:hover{background:#922b21;color:#fff}\n'
-                                 '.param-link{background:#4a235a;color:#d2b4de}\n'
-                                 '.param-link:hover{background:#6c3483;color:#fff}\n')
-                    content = content.replace('</style>', _sicc_css + '</style>', 1)
-                elif '.param-link' not in content and '</style>' in content:
-                    _param_css = ('.param-link{background:#4a235a;color:#d2b4de}\n'
-                                  '.param-link:hover{background:#6c3483;color:#fff}\n')
-                    content = content.replace('</style>', _param_css + '</style>', 1)
-                # Replace existing section for this block_key if present
-                import re as _re
-
-                def _make_block_re(stem_pattern):
-                    """Build a regex that matches a full run-block div by counting
-                    opening/closing div tags so nested content doesn't break it."""
-                    return _re.compile(
-                        r'<div class="run-block" data-stem="' + stem_pattern +
-                        r'">\s*'
-                        r'<div class="run-header"[^>]*>[\s\S]*?</div>\s*'
-                        r'<div class="run-body">[\s\S]*?</div>\s*'
-                        r'</div>',
-                        _re.MULTILINE
-                    )
-
-                block_re = _make_block_re(_re.escape(block_key))
-                # Only replace the block with the EXACT same data-stem (block_key).
-                # Previous code used a broad substring match that could
-                # accidentally erase unrelated blocks sharing a common prefix.
-                _found = block_re.search(content)
-                if _found:
-                    # Preserve any param-link anchors already injected by the
-                    # parametric runner so they survive a yield pipeline re-run.
-                    _old_body = _found.group(0)
-                    _preserved = _re.findall(
-                        r'<a class="run-link param-link"[^>]*>.*?</a>', _old_body)
-                    if _preserved:
-                        # Append preserved links into new_block's run-body
-                        _extra = '\n' + '\n'.join(_preserved)
-                        new_block = new_block.replace(
-                            '</div>\n</div>', _extra + '\n</div>\n</div>', 1)
-                    content = block_re.sub('', content)
-                    # Clean up any blank lines left behind
-                    content = _re.sub(r'\n{3,}', '\n\n', content)
-                    if START in content:
-                        content = content.replace(START, START + '\n' + new_block)
-                    else:
-                        content = content.replace('</body>', new_block + '\n</body>')
-                elif START in content and END in content:
-                    # Prepend new block inside the runs container
-                    content = content.replace(START, START + '\n' + new_block)
-                else:
-                    # Fallback: append before </body>
-                    content = content.replace('</body>', new_block + '\n</body>')
-                dash_html_path.write_text(_wm_inject(content), encoding='utf-8')
-            else:
-                full_html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>Yield Dashboard</title>
-<style>{page_css}</style></head>
-<body>
-<h1>&#128202; Yield Analysis Dashboard</h1>
-{START}
-{new_block}
-{END}
-<script>{page_js}</script>
-</body></html>"""
-                dash_html_path.write_text(_wm_inject(full_html), encoding='utf-8')
-
-            return str(dash_html_path)
-        except Exception:
-            return None
+        """Removed — Dashboard.html no longer generated."""
+        return None
 
 
 # ════════════════════════════════════════════════════════════════
@@ -7860,7 +7313,7 @@ class PipelineRunnerMixin:
         found = []
         for d in candidates:
             try:
-                pattern = os.path.join(d, '*_BinDistribution.html')
+                pattern = os.path.join(d, 'bin_dist', '*_BinDistribution.html')
                 for p in glob.glob(pattern):
                     if os.path.isfile(p):
                         found.append(os.path.abspath(p))
@@ -7943,8 +7396,8 @@ class PipelineRunnerMixin:
             _safe_bd = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in _run_id_bd) if _run_id_bd else ''
             _id_dir = os.path.join(_out_bd_base, _safe_bd) if (_out_bd_base and _safe_bd) else None
             out_html = (
-                os.path.join(_id_dir, stem + '_BinDistribution.html') if _id_dir and os.path.isfile(os.path.join(_id_dir, stem + '_BinDistribution.html'))
-                else os.path.join(os.path.dirname(resolved_csv), stem + '_BinDistribution.html')
+                os.path.join(_id_dir, 'bin_dist', stem + '_BinDistribution.html') if _id_dir and os.path.isfile(os.path.join(_id_dir, 'bin_dist', stem + '_BinDistribution.html'))
+                else os.path.join(os.path.dirname(resolved_csv), 'bin_dist', stem + '_BinDistribution.html')
             )
             if os.path.isfile(out_html) and 'example' not in os.path.basename(out_html).lower():
                 try:
@@ -8035,7 +7488,8 @@ class PipelineRunnerMixin:
             self.output.see(tk.END)
 
             _PP_py(out_dir).mkdir(parents=True, exist_ok=True)
-            _html_py = str(_PP_py(out_dir) / f'{_PP_py(csv_path).stem}_sicc_analysis.html')
+            (_PP_py(out_dir) / 'sicc').mkdir(exist_ok=True)
+            _html_py = str(_PP_py(out_dir) / 'sicc' / f'{_PP_py(csv_path).stem}_sicc_analysis.html')
             from sicc_cdyn_upm import generate_html_svg as _gh_svg_py
             _gh_svg_py(_data_py, _html_py)
             self.output.insert(tk.END, f'SICC/CDYN Analysis: {_html_py}\n')
@@ -8381,44 +7835,51 @@ class PipelineRunnerMixin:
         self.after(0, _do)
 
     def open_report(self):
-        """Open Dashboard.html (the combined run history dashboard)."""
-        # Use last known Dashboard.html path first
+        """Open index.html for the last run identifier."""
+        # Use last known index.html path first
         try:
             last = getattr(self, '_last_dashboard_html', None)
-            if last and os.path.isfile(last):
-                os.startfile(last)
-                return
+            if last:
+                # Prefer index.html in the same folder as any stored Dashboard.html path
+                _last_idx = os.path.join(os.path.dirname(last), 'index.html')
+                if os.path.isfile(_last_idx):
+                    os.startfile(_last_idx)
+                    return
+                if os.path.isfile(last):
+                    os.startfile(last)
+                    return
         except Exception:
             pass
-        # If the dashboard field points directly to an existing .html file, open it
+        # Derive index.html from the output_folder + identifier subfolder
+        _out_folder = (getattr(self, 'output_folder_var', None) or getattr(self, 'aqua_out_var', None))
+        _out_str = _out_folder.get().strip() if _out_folder else ''
+        _ident = getattr(self, 'testprogram_id_var', None)
+        _ident_str = (_ident.get().strip() if _ident else '') or (getattr(self, 'testprogram_var', None) and self.testprogram_var.get().strip() or '')
+        _safe_id = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in _ident_str)
+        candidates = []
+        if _out_str and _safe_id:
+            candidates.append(os.path.join(_out_str, _safe_id, 'index.html'))
+        if _out_str:
+            candidates.append(os.path.join(_out_str, 'index.html'))
+        # Also check alongside the dashboard_var path
         _dash_raw = self.dashboard_var.get().strip() if hasattr(self, 'dashboard_var') else ''
         if _dash_raw:
             _dash_exp = os.path.expandvars(os.path.expanduser(_dash_raw.strip().strip('"\''))).replace('/', os.sep)
-            if os.path.isfile(_dash_exp):
-                os.startfile(_dash_exp)
-                return
-        # Search: dashboard html dir > CSV parent > JSON parent
-        candidates = []
-        if _dash_raw:
-            _dash_exp = os.path.expandvars(os.path.expanduser(_dash_raw.strip().strip('"\''))).replace('/', os.sep)
-            _dash_dir = os.path.dirname(_dash_exp)
-            if _dash_dir:
-                candidates.append(os.path.join(_dash_dir, 'Dashboard.html'))
-        src = self.aqua_out_var.get().strip()
+            candidates.append(os.path.join(os.path.dirname(_dash_exp), 'index.html'))
+        src = self.aqua_out_var.get().strip() if hasattr(self, 'aqua_out_var') else ''
         if not src and self.json_data.get('aqua_outputfile'):
             src = str(self.json_data['aqua_outputfile'])
         if src:
-            candidates.append(os.path.join(os.path.dirname(src), 'Dashboard.html'))
-        if self.input_path:
-            candidates.append(os.path.join(os.path.dirname(self.input_path), 'Dashboard.html'))
+            candidates.append(os.path.join(os.path.dirname(src), _safe_id, 'index.html') if _safe_id else '')
+            candidates.append(os.path.join(os.path.dirname(src), 'index.html'))
         for c in candidates:
-            if os.path.isfile(c):
+            if c and os.path.isfile(c):
                 try:
                     os.startfile(c)
                     return
                 except Exception:
                     pass
-        messagebox.showwarning('No Dashboard', 'Dashboard.html not found.\nRun the pipeline first, or verify the Dashboard html path points to the correct folder.')
+        messagebox.showwarning('No Dashboard', 'index.html not found.\nRun the pipeline first.')
 
     def save_json(self):
         merged = dict(self.json_data)
@@ -8986,12 +8447,12 @@ if __name__ == '__main__':
         # Derive the actual output subfolder (mirrors _pipeline_runner logic)
         _safe_id    = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in _identifier)
         _actual_out = str(_Pj(_out_folder) / _safe_id) if _safe_id else _out_folder
-        _bindef_csv = str(_Pj(_actual_out) / f'{_identifier}_bindef.csv')
+        _bindef_csv = str(_Pj(_actual_out) / 'bin_dist' / f'{_identifier}_bindef.csv')
         # Fallback: if identifier includes a test-id suffix (e.g. PROG_119325),
         # yield_pipeline names the bindef after just the program (PROG_bindef.csv).
         if not _Pj(_bindef_csv).exists():
             import glob as _glob_bd
-            _bindef_candidates = sorted(_glob_bd.glob(str(_Pj(_actual_out) / '*_bindef.csv')))
+            _bindef_candidates = sorted(_glob_bd.glob(str(_Pj(_actual_out) / 'bin_dist' / '*_bindef.csv')))
             if _bindef_candidates:
                 _bindef_csv = _bindef_candidates[0]
 
@@ -9108,28 +8569,16 @@ if __name__ == '__main__':
             except Exception as _mat_ex:
                 print(f'[json] WARNING: Material join failed: {_mat_ex}')
                 import traceback as _tb_mat; _tb_mat.print_exc()
+        # ── Steps 1.5–1.7: wafermap + BinDistribution + SICC in parallel ──
         _wm_cmd = [sys.executable, '-c',
-            'import sys; sys.path.insert(0, ' + repr(str(_src_dir)) + r'); import yield_analysis as _ya; sys.argv = ' + repr(['generate_heatmap_from_csv', _sort_csv, _actual_out] + ([_prod_cfg] if _prod_cfg and _Pj(_prod_cfg).is_file() else []) + ['--wafermap-only'] + ([f'--bindef={_bindef_csv}'] if _Pj(_bindef_csv).exists() else [])) + r'; _ya._heatmap_main()'
+            'import sys; sys.path.insert(0, ' + repr(str(_src_dir)) + r'); import yield_analysis as _ya; sys.argv = ' + repr(['generate_heatmap_from_csv', _sort_csv, _actual_out] + ([_prod_cfg] if _prod_cfg and _Pj(_prod_cfg).is_file() else []) + ([f'--bindef={_bindef_csv}'] if _Pj(_bindef_csv).exists() else [])) + r'; _ya._heatmap_main()'
         ]
-        _wm_result = _sp.run(_wm_cmd, capture_output=False, text=True, timeout=1800)
-        if _wm_result.returncode != 0:
-            print(f'[json] WARNING: wafermap exited with code {_wm_result.returncode}')
-
-        # ── Step 1.6: generate BinDistribution HTML (yield dashboard) ──────
-        print('\n[json] Generating BinDistribution HTML...')
         _bin_cmd = [sys.executable, '-c',
             'import sys; sys.path.insert(0, ' + repr(str(_src_dir)) + r'); import yield_analysis as _ya; sys.argv = ' + repr(['bin_distribution_html', _sort_csv, _actual_out] + ([_prod_cfg] if _prod_cfg and _Pj(_prod_cfg).is_file() else [])) + r'; _ya._bindist_main()'
         ]
-        # tbl_path (bindef CSV) is auto-discovered from out_dir; pass only if explicit
-        _bin_result = _sp.run(_bin_cmd, capture_output=False, text=True, timeout=1800)
-        if _bin_result.returncode != 0:
-            print(f'[json] WARNING: bin_distribution_html exited with code {_bin_result.returncode}')
-
-        # ── Step 1.7: SICC/CDYN/UPM analysis → *_sicc_analysis.html ───────
-        print('\n[json] Generating SICC/CDYN/UPM analysis HTML...')
         _sicc_src = (_src_dir / '..' / 'sicc_cdyn_upm').resolve()
         _csv_stem = _Pj(_sort_csv).stem
-        _sicc_html_out = str(_Pj(_actual_out) / f'{_csv_stem}_sicc_analysis.html')
+        _sicc_html_out = str(_Pj(_actual_out) / 'sicc' / f'{_csv_stem}_sicc_analysis.html')
         _sicc_script = (
             'import sys, json as _jmod, os as _os\n'
             'sys.path.insert(0, ' + repr(str(_sicc_src)) + ')\n'
@@ -9158,14 +8607,41 @@ if __name__ == '__main__':
             '    print("[sicc] FAILED:", _e)\n'
             '    import traceback as _tb; _tb.print_exc()\n'
         )
-        _sicc_result = _sp.run([sys.executable, '-c', _sicc_script],
-                               capture_output=True, text=True, timeout=1800)
-        if _sicc_result.stdout:
-            print(_sicc_result.stdout, end='')
-        if _sicc_result.stderr:
-            print('[json] SICC stderr:\n', _sicc_result.stderr, end='')
-        if _sicc_result.returncode != 0:
-            print(f'[json] WARNING: SICC analysis exited with code {_sicc_result.returncode}')
+        # WPA (wafermap.html) runs in parallel — it's independent of BinDist and SICC
+        _wpa_script = (
+            'import sys, os\nsys.path.insert(0, ' + repr(str(_src_dir)) + ')\n'
+            'from yield_pipeline import PipelineHtmlMixin\n'
+            'class _Var:\n'
+            '    def __init__(self,v=""): self._v=v\n'
+            '    def get(self): return self._v\n'
+            'class _H(PipelineHtmlMixin):\n'
+            '    _opener_port=None\n'
+            '    testprogram_id_var=_Var(' + repr(_identifier) + ')\n'
+            '    fail_bucket_var=_Var(' + repr(_prod_cfg) + ')\n'
+            '    output_folder_var=_Var(' + repr(_actual_out) + ')\n'
+            '_h=_H()\n'
+            '_h._build_master_html('
+                + repr(_sort_csv) + ','
+                + 'output_dir=' + repr(_actual_out) + ','
+                + 'tag=' + repr(_identifier or None) + ','
+                + 'bucket_json=' + repr(_prod_cfg or None) + ','
+                + 'bindef_csv=' + repr(_bindef_csv if _Pj(_bindef_csv).exists() else None) + ','
+                + 'wpa_only=True'
+            + ')\n'
+        )
+        print('\n[json] Generating wafermap, BinDistribution, SICC, and WPA in parallel...')
+        _wm_proc   = subprocess.Popen(_wm_cmd,  text=True)
+        _bin_proc  = subprocess.Popen(_bin_cmd, text=True)
+        _sicc_proc = subprocess.Popen([sys.executable, '-c', _sicc_script], text=True)
+        _wpa_proc  = subprocess.Popen([sys.executable, '-c', _wpa_script],  text=True)
+        _wm_rc   = _wm_proc.wait()
+        _bin_rc  = _bin_proc.wait()
+        _sicc_rc = _sicc_proc.wait()
+        _wpa_rc  = _wpa_proc.wait()
+        if _wm_rc   != 0: print(f'[json] WARNING: wafermap exited with code {_wm_rc}')
+        if _bin_rc  != 0: print(f'[json] WARNING: bin_distribution_html exited with code {_bin_rc}')
+        if _sicc_rc != 0: print(f'[json] WARNING: SICC analysis exited with code {_sicc_rc}')
+        if _wpa_rc  != 0: print(f'[json] WARNING: WPA (wafermap.html) exited with code {_wpa_rc}')
 
         # ── Step 2: parametric_runner — disabled pending rearchitecture ──
         if False and _cfg.get('run_parametric'):  # noqa: disabled
@@ -9216,7 +8692,7 @@ if __name__ == '__main__':
                 if _par_result.returncode != 0:
                     print(f'[json] WARNING: parametric_runner exited with code {_par_result.returncode}')
 
-        # ── Step 3: build index.html + Dashboard.html ─────────────────
+        # ── Step 3: build index.html ─────────────────────────────────
         print('\n[json] Building yield dashboard HTML...')
         print('[json]   (reading CSV, rendering charts — may take 1-2 min)')
         # Run HTML build as a clean subprocess using only _pipeline_html (no tkinter)
@@ -9242,15 +8718,6 @@ if __name__ == '__main__':
                 + 'bindef_csv=' + repr(_bindef_csv if _Pj(_bindef_csv).exists() else None)
             + ')\n'
             'print("[json] Master report :", _m) if _m else print("[json] WARNING: master HTML build returned None")\n'
-            'if _m:\n'
-            '    print("[json]   Updating Dashboard.html...")\n'
-            '    _h._update_dashboard_html('
-                + repr(_sort_csv) + ','
-                + 'master_html=_m,'
-                + 'dashboard_html=' + repr(_dash_html or None) + ','
-                + 'dashboard_html_dir=' + repr(str(_Pj(_dash_html).parent) if _dash_html else None) + ','
-                + 'output_dir=' + repr(_actual_out)
-            + ')\n'
             'print("[json]   HTML build complete.")\n'
         )
         _html_result = _sp.run(
@@ -9273,6 +8740,18 @@ if __name__ == '__main__':
                 _7z_cleanup_sh.rmtree(_7z_tmp_dir, ignore_errors=True)
             except Exception:
                 pass
+
+        # Zip bindef CSVs to reduce output folder size
+        import zipfile as _zf
+        for _bcsv in (_Pj(_actual_out) / 'bin_dist').glob('*_bindef*.csv'):
+            try:
+                _bzip = _bcsv.with_suffix('.zip')
+                with _zf.ZipFile(str(_bzip), 'w', _zf.ZIP_DEFLATED) as _zobj:
+                    _zobj.write(str(_bcsv), _bcsv.name)
+                _bcsv.unlink()
+                print(f'[bindef] Zipped: {_bzip.name}')
+            except Exception as _ze:
+                print(f'[bindef] Zip failed for {_bcsv.name}: {_ze}')
 
         sys.exit(0)
 
@@ -9510,7 +8989,7 @@ def main():
             bindef_out_cfg = TestProgram + '_bindef.csv'
             p = Path(bindef_out_cfg)
             # Always place bindef CSV into the data file's output folder (use the basename)
-            bindef_csv = (data_output_dir / p.name).resolve()
+            bindef_csv = (data_output_dir / 'bin_dist' / p.name).resolve()
             try:
                 bindef_csv.parent.mkdir(parents=True, exist_ok=True)
             except OSError as _e:
@@ -9575,7 +9054,7 @@ def main():
         bindef_out_cfg = TestProgram + '_bindef.csv'
         p = Path(bindef_out_cfg)
         # Place bindef CSV into the data output folder by default (use the basename)
-        bindef_csv = (data_output_dir / p.name).resolve()
+        bindef_csv = (data_output_dir / 'bin_dist' / p.name).resolve()
         try:
             bindef_csv.parent.mkdir(parents=True, exist_ok=True)
         except OSError as _e:
@@ -9653,7 +9132,7 @@ def main():
                     if _pname and _pname != TestProgram:
                         _extra_progs.add(_pname)
             for _ep in sorted(_extra_progs):
-                _ep_bindef_csv = data_output_dir / f'{_ep}_bindef.csv'
+                _ep_bindef_csv = data_output_dir / 'bin_dist' / f'{_ep}_bindef.csv'
                 if not _ep_bindef_csv.exists():
                     _ep_bindef_path = None
                     for _ec in [testprogram_folder / _ep / 'BinDefinitions.bdefs',
@@ -9685,7 +9164,7 @@ def main():
 
         # ── Merge all bindef CSVs into one 2-column file ────────────────────
         if _extra_bindef_csvs:
-            _merged_bindef_csv = data_output_dir / f'{TestProgram}_bindef_merged.csv'
+            _merged_bindef_csv = data_output_dir / 'bin_dist' / f'{TestProgram}_bindef_merged.csv'
             _primary_bd = _pd_bp.read_csv(str(bindef_csv))
             _desc_col = _primary_bd.columns[1]
             _bd_frames = [_primary_bd]
@@ -9705,7 +9184,7 @@ def main():
     # Use the dashboard path exactly as configured by the user (empty string = skip append)
     dashboard = resolve_path(conf_dashboard) if conf_dashboard else Path('')
 
-    rc = run_get_dd(_dd_input_csv, bindef_csv, dashboard, out_dir=data_output_dir)
+    rc = run_get_dd(_dd_input_csv, bindef_csv, dashboard, out_dir=data_output_dir / 'bin_dist')
     if _dd_7z_tmp:
         import shutil as _dd_sh
         _dd_sh.rmtree(_dd_7z_tmp, ignore_errors=True)

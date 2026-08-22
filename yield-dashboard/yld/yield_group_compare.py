@@ -62,20 +62,35 @@ def _lf(parent, text, color=FG2):
 # Data discovery / extraction — one record per loaded run
 # ---------------------------------------------------------------------------
 
-def _read_bin_data_json(bin_html: Path) -> dict | None:
-    """Parse the 'var DATA = {...}' blob embedded in a *_BinDistribution.html."""
-    try:
-        txt = bin_html.read_text(encoding='utf-8', errors='replace')
-    except Exception:
-        return None
-    m = re.search(r'var DATA\s*=\s*', txt)
-    if not m:
-        return None
-    try:
-        data, _ = json.JSONDecoder().raw_decode(txt, m.end())
-        return data
-    except Exception:
-        return None
+def _read_data_json(bin_html: Path) -> dict | None:
+    """Parse the DATA blob from a BinDistribution.html or its sibling data_summary.js.
+
+    Supports both legacy inline format (var DATA = {...}) and the new external
+    format (window.DATA={...} in data_summary.js).
+    """
+    # New format: data_summary.js in the same directory
+    ds_js = bin_html.parent / 'data_summary.js'
+    for path, pattern in [
+        (ds_js, r'window\.DATA\s*='),
+        (bin_html, r'(?:var\s+DATA|window\.DATA)\s*=\s*'),
+    ]:
+        try:
+            txt = path.read_text(encoding='utf-8', errors='replace')
+        except Exception:
+            continue
+        m = re.search(pattern, txt)
+        if not m:
+            continue
+        try:
+            data, _ = json.JSONDecoder().raw_decode(txt, m.end())
+            return data
+        except Exception:
+            continue
+    return None
+
+
+# keep old name as alias so any external callers still work
+_read_bin_data_json = _read_data_json
 
 
 def _split_bin_counts_by_program(data: dict) -> dict[str, dict[str, int]]:
@@ -163,7 +178,8 @@ def _build_tp_bin_data(bin_counts: dict, fb_counts: dict, whole_run_bin_data: di
 
 
 def _find_xlsx_in_dir(output_dir: Path):
-    candidates = sorted(output_dir.glob('*_out.xlsx'),
+    _bd = output_dir / 'bin_dist'
+    candidates = sorted((_bd if _bd.exists() else output_dir).glob('*_out.xlsx'),
                          key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 

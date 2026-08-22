@@ -96,7 +96,9 @@ def generate(data_path, out_dir=None, tbl_path=None):
 
     out_dir = Path(out_dir) if out_dir else data_csv.parent / 'output'
     out_dir.mkdir(parents=True, exist_ok=True)
-    html_out = out_dir / f"{data_csv.stem}_BinDistribution.html"
+    _bd_out_dir = out_dir / 'bin_dist'
+    _bd_out_dir.mkdir(exist_ok=True)
+    html_out = _bd_out_dir / f"{data_csv.stem}_BinDistribution.html"
 
     # ── HTML: embedded plot image + HTML table ───────────────────────────────
     # Load FAIL BUCKET table
@@ -964,7 +966,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
             try:
                 _rdf = pd.read_csv(data_csv, usecols=_r_load, encoding=encoding, low_memory=False)
             except Exception:
-                _rdf = pd.read_csv(data_csv, usecols=_r_load, encoding=encoding, low_memory=False)
+                _rdf = pd.DataFrame(columns=_r_load)
 
             _all_tracker_cols = _ap_cols_r + _cr_cols_r + _slce_cols_r
             _rdf['_rib'] = pd.to_numeric(
@@ -1220,15 +1222,14 @@ def generate(data_path, out_dir=None, tbl_path=None):
                           if c.lower().startswith('bin description') or
                              c.lower().startswith('bin_description')]
         if _bd_candidates and lot_col and wafer_col and col and fb_col:
-            # Pick the column with the most non-null values
-            _bd_counts = {}
-            for _bdc in _bd_candidates:
-                try:
-                    _s = pd.read_csv(data_csv, usecols=[_bdc], encoding=encoding, low_memory=False)[_bdc]
-                    _bd_counts[_bdc] = int(_s.notna().sum())
-                except Exception:
-                    _bd_counts[_bdc] = 0
-            _bd_col = max(_bd_counts, key=lambda c: _bd_counts[c])
+            # Read all candidates at once to find which has the most non-null values
+            _bd_probe_cols = [c for c in _bd_candidates if c in all_cols]
+            try:
+                _bd_probe = pd.read_csv(data_csv, usecols=_bd_probe_cols, encoding=encoding, low_memory=False)
+                _bd_counts = {c: int(_bd_probe[c].notna().sum()) for c in _bd_probe_cols}
+            except Exception:
+                _bd_counts = {c: 0 for c in _bd_probe_cols}
+            _bd_col = max(_bd_counts, key=lambda c: _bd_counts[c]) if _bd_counts else None
 
             if _bd_counts[_bd_col] > 0:
                 _bd_load = list(dict.fromkeys([lot_col, wafer_col, col, fb_col, _bd_col]))
@@ -1236,7 +1237,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
                 try:
                     _bddf = pd.read_csv(data_csv, usecols=_bd_load, encoding=encoding, low_memory=False)
                 except Exception:
-                    _bddf = pd.read_csv(data_csv, usecols=_bd_load, encoding=encoding, low_memory=False)
+                    _bddf = pd.DataFrame(columns=_bd_load)
 
                 def _parse_bd(val):
                     """'B42340010_FAIL_SCN_ATOM_STUCKAT_ATOM_SB_K_BEGIN_N_VATOM_NOM_LFM_OCC_2'
@@ -1656,7 +1657,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '<input type="checkbox" id="ys-split" onchange="IC.rYield()" style="cursor:pointer"> Split by Material</label>'
         '<button class="yp-btn" onclick="IC.exportYieldCsv()" title="Export to CSV">&#8681; CSV</button>'
         '<button class="yp-btn" onclick="IC.openDlcpModal()">&#128202; DLCP</button>'
-        '<button class="yp-btn" onclick="window.open(\'wafermap.html\',\'_blank\')">&#127759; Wafer Map</button>'
+        '<button class="yp-btn" onclick="window.open(\'wafermap/wafermap.html\',\'_blank\')">&#127759; Wafer Map</button>'
         '<button class="yp-btn" id="ypmin-ys" onclick="ypTgl(\'ys\')" title="Collapse / Expand">&#8722;</button>'
         '<button class="yp-btn" id="ypmax-ys" onclick="ypMax(\'ys\')" title="Full screen">&#10064;</button>'
         '</span></div>\n'
@@ -2006,7 +2007,7 @@ def generate(data_path, out_dir=None, tbl_path=None):
         '      <tbody id="fb-modal-tbody"></tbody>\n'
         '    </table>\n'
         '    <div style="padding:4px 0 6px;display:flex;flex-wrap:wrap;gap:4px">'
-        '<button class="cb" onclick="IC.showFbWaferMap()">Show Wafer Distribution &#9654;</button>'
+        '<button class="cb" onclick="IC.showFbWaferMap()">Show Individual Wafer Map &#9654;</button>'
         '<button class="cb" onclick="IC.showBhHwModal()">HW Breakdown &#128295;</button>'
         +('<button class="cb" onclick="IC.showUpmModal()">Heatmap &#128202;</button>' if _upm_col_defs and _x_col and _y_col else '')
         +('<button class="cb" id="recov-btn" onclick="IC.showRecovModal()" style="display:none">Bin Analysis &#128300;</button>' if (_has_recovery or (sdt_ib_col and _x_col and _y_col)) else '')
@@ -2050,17 +2051,27 @@ def generate(data_path, out_dir=None, tbl_path=None):
         sel_var='sR',
         toggle_fn='IC.toggleRow',
     )
+    # ── Phase 2: write bin_dist/data_summary.js (<script src> works with file://, unlike fetch) ──
+    _data_summary_js = (
+        'window.DATA=' + _ic_data_json + ';\n'
+        'window.HW_COMBO_TABLE_BH=' + _hw_combo_table_bh_json + ';\n'
+        'window.HW_FIELDS_BH=' + _hw_fields_bh_json + ';\n'
+        'window.RECOV_DATA=' + _recov_data_json + ';\n'
+        'window.RECOV_DIE_GRPS=' + _recov_die_grps_json + ';\n'
+        'window.RECOV_TRACKED=' + _recov_tracked_json + ';\n'
+        'window.RECOV_GROUPS=' + _recov_groups_json + ';\n'
+        'window.RECOV_HF=' + _recov_hard_fail_json + ';\n'
+        'window.BINDESC_DATA=' + _bindesc_data_json + ';\n'
+        'window.BINDESC_IBS=' + _bindesc_ibs_json + ';\n'
+        'if(typeof window._initDashboard==="function"){window._initDashboard();}\n'
+    )
+    _bin_dist_dir = out_dir / 'bin_dist'
+    _bin_dist_dir.mkdir(exist_ok=True)
+    (_bin_dist_dir / 'data_summary.js').write_text(_data_summary_js, encoding='utf-8')
+    _html_data_script = '<script src="data_summary.js"></script>\n'
+    # ── Phase 1: dashboard.js content (pure JS logic, no embedded data) ──
     _html_script = (
-      '<script>\nvar DATA=' + _ic_data_json + ';\n'
-      'var HW_COMBO_TABLE_BH=' + _hw_combo_table_bh_json + ';\n'
-      'var HW_FIELDS_BH=' + _hw_fields_bh_json + ';\n'
-      'var RECOV_DATA='     + _recov_data_json     + ';\n'
-      'var RECOV_DIE_GRPS=' + _recov_die_grps_json  + ';\n'
-      'var RECOV_TRACKED='  + _recov_tracked_json   + ';\n'
-      'var RECOV_GROUPS='  + _recov_groups_json  + ';\n'
-      'var RECOV_HF='      + _recov_hard_fail_json + ';\n'
-      'var BINDESC_DATA='  + _bindesc_data_json  + ';\n'
-      'var BINDESC_IBS='   + _bindesc_ibs_json   + ';\n'
+      'window._initDashboard=function(){\n'
       + FILTER_DD_JS
       + r'''var IC=(function(){
 'use strict';
@@ -3010,8 +3021,6 @@ function fbCbChange(cb){var fb=cb.dataset.fb;if(cb.checked)_fbChecked.add(fb);el
 function selectAllFbs(){if(_fbCbTimer){clearTimeout(_fbCbTimer);_fbCbTimer=null;}_fbModalFbKeys.forEach(function(fb){_fbChecked.add(fb);});_renderFbChart();_renderFbCb();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
 function clearFbs(){if(_fbCbTimer){clearTimeout(_fbCbTimer);_fbCbTimer=null;}_fbChecked.clear();_renderFbChart();_renderFbCb();rChart();if(_upmOpen)_renderUpmMaps();if(_recovOpen)_renderRecov();}
 function showFbWaferMap(){
-  if(!_fbModalIb)return;
-  /* Sync FB checkbox state from table */
   document.querySelectorAll('#fb-modal-tbody input[type=checkbox]').forEach(function(inp){
     if(inp.checked)_fbChecked.add(inp.dataset.fb);else _fbChecked.delete(inp.dataset.fb);
   });
@@ -4692,7 +4701,7 @@ function _wmRenderTile(ri,container){
       ctx.globalAlpha=binOn?1:0.08;
       ctx.fillStyle=_wmIbColor(ib);
       ctx.fillRect(pad+(x-xMin)*cs,pad+(yMax-y)*csy,cs*0.9,csy*0.9);
-      if(_wmIsFail(ib)&&ibKey!==null&&binOn&&DATA.hasReticle&&DATA.retMap){var _rt=DATA.retMap[x+','+y];if(_rt)failShotIdx3.add(_rt[2]);}
+
     });
     ctx.globalAlpha=1;
     if(DATA.hasReticle&&DATA.retShots&&DATA.retShots.length){
@@ -4701,7 +4710,7 @@ function _wmRenderTile(ri,container){
       DATA.retShots.forEach(function(shot,si){
         var sx=pad+(shot[0]-xMin)*cs,sy=pad+(yMax-shot[3])*csy,sw=(shot[2]-shot[0]+1)*cs,sh=(shot[3]-shot[1]+1)*csy;
         if(_hlSC){ctx.strokeStyle=_hlSC.has(si)?'#f39c12':'#ddd';ctx.lineWidth=_hlSC.has(si)?1.5:0.5;}
-        else{ctx.strokeStyle=failShotIdx3.has(si)?'#c0392b':'#2471a3';ctx.lineWidth=failShotIdx3.has(si)?1.2:0.5;ctx.globalAlpha=failShotIdx3.has(si)?0.9:0.3;}
+        else{ctx.strokeStyle='#2471a3';ctx.lineWidth=0.5;ctx.globalAlpha=0.3;}
         ctx.strokeRect(sx,sy,sw,sh);ctx.globalAlpha=1;
       });
     }
@@ -4765,7 +4774,7 @@ function _wmRenderTile(ri,container){
       var binOn=(_wmBinChecked===null||_wmBinChecked.has(ibKey));
       var opacity=binOn?'1':'0.08';
       var isFail=_wmIsFail(ib);
-      if(isFail&&ibKey!==null&&binOn&&DATA.hasReticle&&DATA.retMap){var _rt2=DATA.retMap[x+','+y];if(_rt2)failShotIdx3.add(_rt2[2]);}
+
       var clickable=isFail&&ibKey!==null&&binOn;
       rectsT.push('<rect x="'+px+'" y="'+py+'" width="'+(cs*0.9).toFixed(1)+'" height="'+(csy*0.9).toFixed(1)+'" fill="'+fill+'" opacity="'+opacity+'" data-ib="'+(ibKey!==null?ibKey:'')+'" data-tip="('+x+','+y+') '+(ibKey!==null?'IB'+ibKey:'no IB')+'" style="cursor:'+(clickable?'pointer':'default')+'"'+(isFail&&ibKey!==null&&cs>3&&binOn?' stroke="rgba(0,0,0,.25)" stroke-width="0.3"':'')+'/>');
     });
@@ -4783,11 +4792,6 @@ function _wmRenderTile(ri,container){
         DATA.retShots.forEach(function(shot,si){
           var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1),sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
           retOutlinesT+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#2471a3" stroke-width="0.5" opacity="0.3"/>';
-        });
-        DATA.retShots.forEach(function(shot,si){
-          if(!failShotIdx3.has(si))return;
-          var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1),sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
-          retOutlinesT+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#c0392b" stroke-width="1.2" opacity="0.9"/>';
         });
       }
     }
@@ -5118,12 +5122,6 @@ function _wmdRenderPattern(ri){
         var sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
         retOutlines+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#2471a3" stroke-width="0.8" opacity="0.35"/>';
       });
-      DATA.retShots.forEach(function(shot,si){
-        if(!failShotIdx.has(si))return;
-        var sx=(pad+(shot[0]-xMin)*cs).toFixed(1),sy=(pad+(yMax-shot[3])*csy).toFixed(1);
-        var sw=((shot[2]-shot[0]+1)*cs).toFixed(1),sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
-        retOutlines+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#c0392b" stroke-width="2" opacity="0.9"/>';
-      });
     }
   }
   var svgH='<svg width="'+W+'" height="'+H+'" style="display:block">'+clipDef+'<g clip-path="url(#'+clipId+')">'+rects.join('')+retOutlines+'</g>'+borderCircle+'</svg>';
@@ -5250,14 +5248,6 @@ function _wmRenderInline(){
           var sw=((shot[2]-shot[0]+1)*cs).toFixed(1);
           var sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
           retOutlines+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#2471a3" stroke-width="0.5" opacity="0.3"/>';
-        });
-        DATA.retShots.forEach(function(shot,si){
-          if(!failShotIdx.has(si))return;
-          var sx=(pad+(shot[0]-xMin)*cs).toFixed(1);
-          var sy=(pad+(yMax-shot[3])*csy).toFixed(1);
-          var sw=((shot[2]-shot[0]+1)*cs).toFixed(1);
-          var sh=((shot[3]-shot[1]+1)*csy).toFixed(1);
-          retOutlines+='<rect x="'+sx+'" y="'+sy+'" width="'+sw+'" height="'+sh+'" fill="none" stroke="#c0392b" stroke-width="1.2" opacity="0.9"/>';
         });
       }
     }
@@ -6017,6 +6007,7 @@ return{clickBar:clickBar,clickLegend:clickLegend,legendClick:legendClick,toggleB
   _wmInlineToggle:_wmInlineToggle,
   showSdtSec:showSdtSec,_sdtCbChange:_sdtCbChange,sdtSort:sdtSort};
 })();
+window.IC = IC;  // expose to inline onclick handlers (IC is local to _initDashboard wrapper)
 /* Auto-open FB modal when loaded with #ib=N hash (e.g. from wafer pattern analysis popup) */
 window.addEventListener('load',function(){
   var params=new URLSearchParams(location.search);
@@ -6062,11 +6053,16 @@ function ypMax(id){
   if(b)b.classList.remove('yp-col');
   if(on){document.body.style.overflow='hidden';}else{document.body.style.overflow='';}
 }
-</script>
-</body></html>'''
+'''
+      + '};\nif(typeof DATA!=="undefined"){window._initDashboard();}\n'
     )
+    # ── Phase 1: write bin_dist/dashboard.js ──
+    _bin_dist_dir = out_dir / 'bin_dist'
+    _bin_dist_dir.mkdir(exist_ok=True)
+    (_bin_dist_dir / 'dashboard.js').write_text(_html_script, encoding='utf-8')
+    _html_script = '<script src="dashboard.js"></script>\n</body></html>'
 
-    html = _html_head + _html_info + _html_layout + _html_script
+    html = _html_head + _html_info + _html_layout + _html_data_script + _html_script
     html_out.write_text(html, encoding='utf-8')
 
 
@@ -6261,869 +6257,6 @@ def _sanitize_label(s: str):
     return re.sub(r"[^0-9A-Za-z_-]", '_', s)
 
 
-def generate_heatmaps(csv_path, out_dir=None, tbl_path=None, bin_col='INTERFACE_BIN_119325', gui=False, html_only=False, interactive=True, render_wafermap=True, render_ibin_wafermap=True):
-    import shutil
-    csvp = Path(csv_path)
-    outd = Path(out_dir) if out_dir else csvp.parent / 'output'
-    if outd.exists():
-        shutil.rmtree(outd)
-    outd.mkdir(parents=True, exist_ok=True)
-
-    # ── Hardware commonality fields (matched by prefix; real columns may have a _XXXXXX suffix) ──
-    _HW_FIELD_PREFIXES_HM = ["Cell ID", "Unit Tester Id", "Unit Tester Site Id", "Unit TIU", "Thermal Head Id", "Sort Partial Wafer ID"]
-    _HW_FIELD_NAMES_HM = _HW_FIELD_PREFIXES_HM  # kept for reference
-
-    # ── Sniff columns first; load only what we need ───────────────────────────
-    if _HAS_CSV_UTILS:
-        _enc = detect_encoding(csvp)
-        _all_cols = sniff_columns(csvp, encoding=_enc)
-
-        # Resolve actual bin column name from header
-        if bin_col not in _all_cols:
-            _alt_bin = next((c for c in _all_cols
-                             if 'INTERFACE_BIN' in c.upper()
-                             and 'TOTAL' not in c.upper()), None)
-            if _alt_bin:
-                bin_col = _alt_bin
-
-        # Identify coordinate columns from the header
-        _x_hdr = next((c for c in _all_cols
-                        if 'sort_x' in c.lower() or c.lower() == 'x'
-                        or 'coordx' in c.lower()
-                        or c.lower().endswith('_x')
-                        or 'posx' in c.lower()), None)
-        _y_hdr = next((c for c in _all_cols
-                        if 'sort_y' in c.lower() or c.lower() == 'y'
-                        or 'coordy' in c.lower()
-                        or c.lower().endswith('_y')
-                        or 'posy' in c.lower()), None)
-
-        # Reticle overlay columns
-        _lx_hdr = next((c for c in _all_cols if c.lower() in ('layoutx', 'layout_x')), None)
-        _ly_hdr = next((c for c in _all_cols if c.lower() in ('layouty', 'layout_y')), None)
-        _ret_hdr = next((c for c in _all_cols
-                          if c.lower() in ('reticle', 'reticle_number', 'reticlenumber')), None)
-
-        # Lot / wafer columns (needed for per-wafer table)
-        _lot_hdr = next((c for c in _all_cols if c.lower() == 'lot'), None)
-        if _lot_hdr is None:
-            _lot_hdr = next((c for c in _all_cols if 'lot' in c.lower()), None)
-        _wafer_hdr = next((c for c in _all_cols if 'sort_wafer' in c.lower()), None)
-        if _wafer_hdr is None:
-            _wafer_hdr = next((c for c in _all_cols if 'wafer' in c.lower()), None)
-
-        _needed = {bin_col}
-        for _c in (_x_hdr, _y_hdr, _lx_hdr, _ly_hdr, _ret_hdr, _lot_hdr, _wafer_hdr):
-            if _c:
-                _needed.add(_c)
-        for _pfx_hw in _HW_FIELD_PREFIXES_HM:
-            _pfx_lower = _pfx_hw.lower()
-            _match_hw = next((c for c in _all_cols if c.lower().startswith(_pfx_lower)), None)
-            if _match_hw:
-                _needed.add(_match_hw)
-
-        df = read_csv_smart(csvp, usecols=list(_needed), encoding=_enc)
-    else:
-        df = pd.read_csv(csvp, dtype=object)
-
-    _hw_cols_hm = [
-        next((c for c in df.columns if c.lower().startswith(pfx.lower())), None)
-        for pfx in _HW_FIELD_PREFIXES_HM
-    ]
-    _hw_cols_hm = [c for c in _hw_cols_hm if c is not None]
-
-    # load fail bucket table (fall back to built-in list if parsing fails)
-    table_rows = _load_fail_bucket_table(tbl_path if tbl_path else None)
-    if not table_rows:
-        # fallback hard-coded table (match generator fallback)
-        table_rows = [
-            ('1/2/3/4', None, 'SDS FF+DF yield'),
-            ('1/2', None, 'SDS FF yield'),
-            ('1', None, 'SDS FF (No Repair) yield'),
-            ('2', None, 'MBIST Repair'),
-            ('3/4', None, 'Recovery (Defeatured)'),
-            ('3', None, 'Recovery (Atom Defeatured)'),
-            ('4', None, 'Recovery (Core Defeatured)'),
-            ('41/42/47/76/77/81/82', None, 'SCAN (post-recovery)'),
-            ('20/21/33/60/61/62/63/65', None, 'ARRAY MBIST (post-recovery)'),
-            ('11/13/16/25/27/28/32/36/39/46/48/51/64/71/74/75', None, 'ANALOG (post-recovery)'),
-            ('7/8/9/10/15/18/43', None, 'TPI (Foundry)'),
-            ('31/88/91/94/97/98/99 + 93', None, 'TPI (Bump/DiePrep/Test)'),
-            ('19/35', None, 'RESET'),
-            ('12/44/45/70/80/85/86', None, 'Functional'),
-            ('26', None, 'HVQK'),
-        ]
-
-    pct_map = _compute_pct_map(df, bin_col=bin_col)
-
-    # Build canonical mapping from fallback rows so parsed table entries use the known descriptions
-    # Build canonical maps: bin_key -> fail_bucket_desc and expected yield
-    canonical_desc = {}
-    canonical_expected = {}
-    for rt in table_rows:
-        k = re.sub(r"\s+", '', str(rt[0]).lower())
-        # rt format expected: (bin, fail_bucket, expected)
-        descv = rt[1] if len(rt) >= 2 and rt[1] else ''
-        expv = rt[2] if len(rt) >= 3 and rt[2] else ''
-        canonical_desc[k] = descv
-        canonical_expected[k] = expv
-
-    # Build enriched table: (bin_field, computed_pct, expected, desc)
-    enriched = []
-    for tup in table_rows:
-        bin_field = tup[0]
-        # prefer third column as expected/description depending on parsing; normalize desc using canonical_map
-        raw_desc = tup[2] if len(tup) >= 3 and tup[2] else (tup[1] if len(tup) >= 2 else '')
-        # use canonical mapping to avoid accidental concatenation
-        k = re.sub(r"\s+", '', str(bin_field).lower())
-        desc = canonical_desc.get(k, raw_desc)
-        expected = canonical_expected.get(k, '')
-        # try to find a numeric expected value in the row (best-effort)
-        if len(tup) >= 3 and tup[2] and re.search(r"\d", tup[2]):
-            expected = tup[2]
-        elif len(tup) >= 2 and tup[1] and re.search(r"\d", tup[1]):
-            expected = tup[1]
-        comp = _compute_group_pct(bin_field, pct_map)
-        enriched.append((bin_field, comp, expected, desc))
-
-    x_col, y_col = find_coord_columns(df)
-    if not x_col or not y_col:
-        print('Warning: could not find Sort_X/Sort_Y columns; heatmaps require coordinate columns', file=sys.stderr)
-
-    # Build coordinate integer series robustly from the found columns
-    hx = _to_coord_series(df, x_col) if x_col else None
-    hy = _to_coord_series(df, y_col) if y_col else None
-    if hx is None or hy is None:
-        print('Warning: could not parse numeric Sort_X/Sort_Y values from CSV; heatmap generation will be limited', file=sys.stderr)
-
-    # Compute global X/Y axis limits from the entire CSV once — all heatmaps share the same range.
-    global_xl, global_xh, global_yl, global_yh = None, None, None, None
-    if hx is not None and hy is not None:
-        buf = 1
-        global_xl = int(hx.min()) - buf
-        global_xh = int(hx.max()) + buf
-        global_yl = int(hy.min()) - buf
-        global_yh = int(hy.max()) + buf
-
-    # ── detect LayoutX / LayoutY / Reticle columns for reticle overlay ─
-    _lx_col_h = next((c for c in df.columns if c.lower() in ('layoutx', 'layout_x')), None)
-    _ly_col_h = next((c for c in df.columns if c.lower() in ('layouty', 'layout_y')), None)
-    _ret_col_h = next((c for c in df.columns if c.lower() in ('reticle', 'reticle_number', 'reticlenumber')), None)
-    _has_reticle_h = bool(_lx_col_h and _ly_col_h)
-    if _has_reticle_h:
-        print(f'Reticle overlay enabled (bin heatmap): LayoutX={_lx_col_h}, LayoutY={_ly_col_h}'
-              + (f', Reticle={_ret_col_h}' if _ret_col_h else ''))
-
-    # For each fail-bucket row where any numeric token >4 and computed_pct > expected (if expected numeric), create heatmap
-    for bin_field, comp_pct, expected_str, desc in enriched:
-        nums = _parse_bin_tokens(bin_field)
-        if not nums:
-            continue
-        # generate heatmaps for ALL bins that have any occurrence in the CSV
-        if comp_pct <= 0:
-            continue
-
-        # create mask for rows that belong to this bin category (any numeric token match)
-        # Vectorized: build a regex that matches any target bin as a standalone number
-        target_set = set(nums)
-        _bin_pat = r'(?<!\d)(?:' + '|'.join(re.escape(str(n)) for n in sorted(target_set, key=int)) + r')(?!\d)'
-        mask = df[bin_col].fillna('').astype(str).str.contains(_bin_pat, regex=True, na=False)
-        # ── hardware commonality breakdown for this bin ───────────────────────
-        __rows = []
-        if _hw_cols_hm:
-            _hw_bin_total = int(mask.sum())
-            if _hw_bin_total > 0:
-                try:
-                    _hw_bin_df = df.loc[mask, _hw_cols_hm].fillna('').astype(str)
-                    _hw_grp = _hw_bin_df.groupby(_hw_cols_hm, sort=False).size().reset_index(name='count')
-                    _hw_grp = _hw_grp.sort_values('count', ascending=False).head(100)
-                    for _, _hr in _hw_grp.iterrows():
-                        _hrow = {c: str(_hr[c]) for c in _hw_cols_hm}
-                        _hrow['count'] = int(_hr['count'])
-                        _hrow['pct'] = f"{_hr['count'] / _hw_bin_total * 100:.1f}%"
-                        __rows.append(_hrow)
-                except Exception:
-                    pass
-        # Build per-coordinate fallout percent: for each (x,y) position compute percentage of rows at that position that match mask
-        if hx is not None and hy is not None:
-            # use integer coordinate series for grouping
-            coord_df = pd.DataFrame({'_hx': hx, '_hy': hy})
-            grouped = coord_df.join(df[bin_col]).groupby(['_hx', '_hy'])
-            coords = []
-            vals = []
-            for (xv, yv), grp in grouped:
-                total_at_pos = len(grp)
-                if total_at_pos == 0:
-                    continue
-                hits = mask[grp.index].sum()
-                pct = (hits / total_at_pos) * 100
-                coords.append((int(xv), int(yv)))
-                vals.append(pct)
-
-            if not coords:
-                print(f'No coordinate data found for bin {bin_field}; skipping heatmap', file=sys.stderr)
-                continue
-
-            xs = [c[0] for c in coords]
-            ys = [c[1] for c in coords]
-            min_x, max_x = min(xs), max(xs)
-            min_y, max_y = min(ys), max(ys)
-            width = max_x - min_x + 1
-            height = max_y - min_y + 1
-            grid = np.full((height, width), np.nan)
-            for (xv, yv), v in zip(coords, vals):
-                xi = yv - min_y  # note: rows are y
-                yi = xv - min_x  # cols are x
-                try:
-                    grid[xi, yi] = v
-                except Exception:
-                    continue
-
-            # compute per-lot-wafer percentages BEFORE creating figure so we can size dynamically
-            lot_col = (next((c for c in df.columns if c.lower() == 'sort_lot'), None) or
-                       next((c for c in df.columns if 'lot' in c.lower() and 'slot' not in c.lower()), None))
-            wafer_col = next((c for c in df.columns if 'wafer' in c.lower() or 'sort_wafer' in c.lower()), None)
-            mat_col = next((c for c in df.columns if 'material' in c.lower()), None)
-            group_cols = []
-            if lot_col:
-                group_cols.append(lot_col)
-            if wafer_col:
-                group_cols.append(wafer_col)
-            if not group_cols:
-                total = len(df)
-                hits = int(mask.sum())
-                fail_pct = (hits / total) * 100 if total else 0.0
-                lw_rows = [('ALL', 'ALL', '', total, hits, f'{fail_pct:.2f}%')]
-            else:
-                grouped2 = df.groupby(group_cols)
-                lw_rows = []
-                for gkeys, grp in grouped2:
-                    total = len(grp)
-                    hits = int(mask[grp.index].sum())
-                    pct = (hits / total) * 100 if total else 0.0
-                    if isinstance(gkeys, tuple):
-                        keys = gkeys
-                    else:
-                        keys = (gkeys,)
-                    lot_val = keys[0] if len(keys) >= 1 else ''
-                    wafer_val = keys[1] if len(keys) >= 2 else ''
-                    mat_val = str(grp[mat_col].iloc[0]) if mat_col and not grp[mat_col].dropna().empty else ''
-                    lw_rows.append((str(lot_val), str(wafer_val), mat_val, total, hits, f'{pct:.2f}%'))
-                # sort by fail count descending so worst wafers appear first
-                lw_rows.sort(key=lambda r: r[4], reverse=True)
-
-            n_rows = max(1, len(lw_rows))
-            cell_in = 0.22  # inches per unique coordinate value on each axis
-            n_unique_x = max(1, len(np.unique(xs)))
-            n_unique_y = max(1, len(np.unique(ys)))
-            plot_w = max(4.0, n_unique_x * cell_in)
-            plot_h = max(4.0, n_unique_y * cell_in)
-            fig_w = min(12, plot_w + 1.5)
-            fig_h = min(10, plot_h + 0.8)
-            fig, ax_heat = plt.subplots(figsize=(fig_w, fig_h))
-
-            # use raw coords (not shifted) for triangulation and contouring
-            xs_raw = np.array(xs, dtype=float)
-            ys_raw = np.array(ys, dtype=float)
-            vals_raw = np.array(vals)
-
-            # round values to integers for display
-            vals_raw = np.rint(vals_raw).astype(float)
-
-            # ── wafer_map_simple.py approach: center at origin, scale Y ──
-            _wcx = (xs_raw.min() + xs_raw.max()) / 2.0
-            _wcy = (ys_raw.min() + ys_raw.max()) / 2.0
-            _xr  = xs_raw.max() - xs_raw.min()
-            _yr  = ys_raw.max() - ys_raw.min()
-            _die_dy = (_xr / _yr) if _yr > 0 else 1.0
-            # center and scale
-            xs_plot = (xs_raw - _wcx)
-            ys_plot = (ys_raw - _wcy) * _die_dy
-
-            # Bins 1/2/3/4 are yield bins (higher = better): green=100%, red=0%
-            # All other bins are fail bins (higher = worse): green=0%, red=dynamic max
-            _yield_tokens = {'1', '2', '3', '4'}
-            _is_yield_bin = bool(set(_parse_bin_tokens(bin_field)) <= _yield_tokens)
-
-            if _is_yield_bin:
-                _cmap_name = 'RdYlGn'        # NOT reversed: green=high, red=low
-                _vmax = 100
-                _norm_h = mcolors.Normalize(vmin=0, vmax=100)
-                step = 10
-                levels = list(range(0, 101, step))
-            else:
-                _cmap_name = 'RdYlGn_r'      # reversed: green=low, red=high
-                _vmax = 100  # fixed 0-100% scale for easy comparison
-                _norm_h = mcolors.Normalize(vmin=0, vmax=_vmax)
-                step = 10
-                levels = list(range(0, _vmax + step, step))
-
-            # create triangulation and filled contour (on centered+scaled coords)
-            # ── wafer_map_simple.py: draw each die as a Rectangle box ──
-            _die_dx = 1.0
-            gap = 0.9
-            cf = None
-            _cmap_obj = matplotlib.colormaps[_cmap_name]
-            # vectorized colormap: compute all colors at once, NaN dies get gray
-            _clrs_all = np.where(
-                np.isnan(vals_raw)[:, None],
-                np.array([[0.8, 0.8, 0.8, 1.0]]),
-                _cmap_obj(_norm_h(np.where(np.isnan(vals_raw), 0, vals_raw)))
-            )
-            for _i in range(len(xs_plot)):
-                _rect = mpatches.Rectangle(
-                    (xs_plot[_i] - _die_dx * gap / 2, ys_plot[_i] - _die_dy * gap / 2),
-                    _die_dx * gap, _die_dy * gap,
-                    linewidth=0.3, edgecolor='gray', facecolor=_clrs_all[_i],
-                    rasterized=True
-                )
-                ax_heat.add_patch(_rect)
-
-            # annotate top 5 hotspots
-            try:
-                top_idx = np.argsort(vals_raw)[-5:][::-1]
-                for i in top_idx:
-                    ax_heat.text(xs_plot[i], ys_plot[i], f"{int(vals_raw[i])}%", color='black', fontsize=7, ha='center', va='center', fontweight='bold')
-            except Exception:
-                pass
-
-            ax_heat.set_title(
-                f'Wafer heatmap bin {bin_field} {"yield %" if _is_yield_bin else "fallout %"} ({"higher = better" if _is_yield_bin else "higher = worse"})',
-                fontsize=13)
-            ax_heat.set_xlabel('Sort X', fontsize=11)
-            ax_heat.set_ylabel('Sort Y', fontsize=11)
-
-            # ── round wafer (wafer_map_simple.py): no outline, dies form the shape ─
-            ax_heat.set_aspect('equal')
-            # Axis limits: max absolute centered coord + 5%
-            _xext_h = (abs(xs_plot).max() + 0.5) * 1.025
-            _yext_h = (abs(ys_plot).max() + 0.5 * _die_dy) * 1.025
-            ax_heat.set_xlim(-_xext_h, _xext_h)
-            ax_heat.set_ylim(-_yext_h, _yext_h)
-            # Y-axis ticks: remap back to original Sort_Y values
-            y_ticks = [t for t in ax_heat.get_yticks() if -_yext_h <= t <= _yext_h]
-            ax_heat.set_yticks(y_ticks)
-            ax_heat.set_yticklabels([f"{v / _die_dy + _wcy:.0f}" for v in y_ticks], fontsize=8)
-            # X-axis ticks: remap back to original Sort_X values
-            x_ticks = [t for t in ax_heat.get_xticks() if -_xext_h <= t <= _xext_h]
-            ax_heat.set_xticks(x_ticks)
-            ax_heat.set_xticklabels([f"{v + _wcx:.0f}" for v in x_ticks], fontsize=8)
-            ax_heat.set_xlim(-_xext_h, _xext_h)
-            ax_heat.set_ylim(-_yext_h, _yext_h)
-            ax_heat.axhline(0, color="black", linewidth=0.5, linestyle="--", alpha=0.3)
-            ax_heat.axvline(0, color="black", linewidth=0.5, linestyle="--", alpha=0.3)
-            ax_heat.grid(True, alpha=0.2)
-
-            # colorbar via ScalarMappable
-            try:
-                _sm = plt.cm.ScalarMappable(cmap=_cmap_name, norm=_norm_h)
-                _sm.set_array([])
-                cbar = fig.colorbar(_sm, ax=ax_heat, orientation='vertical', fraction=0.046, pad=0.04)
-                cbar.set_label("% yield" if _is_yield_bin else "% fail", fontsize=10)
-            except Exception:
-                pass
-
-            # ── reticle overlay: grid lines + reticle numbers ──────────
-            # Build lookup once; _draw_reticle(ax) reuses it for both composite
-            # and per-wafer SVGs so the boundary lines are always visible.
-            _rlookup_h = {}
-            _xs_u = []
-            _ys_u = []
-            _ret_labels_h = []  # list of (x_plot, y_plot, label_str)
-            if _has_reticle_h and hx is not None and hy is not None:
-                _rdf_h = pd.DataFrame({
-                    'sx': hx.values,
-                    'sy': hy.values,
-                    'lx': pd.to_numeric(df[_lx_col_h], errors='coerce').values,
-                    'ly': pd.to_numeric(df[_ly_col_h], errors='coerce').values,
-                }).dropna()
-                if not _rdf_h.empty:
-                    for _, _rr in _rdf_h.iterrows():
-                        _rlookup_h[(int(_rr['sx']), int(_rr['sy']))] = (_rr['lx'], _rr['ly'])
-                    _xs_u = sorted(_rdf_h['sx'].astype(int).unique())
-                    _ys_u = sorted(_rdf_h['sy'].astype(int).unique())
-                if _ret_col_h:
-                    _ret_df = pd.DataFrame({
-                        'sx': hx.values,
-                        'sy': hy.values,
-                        'ret': df[_ret_col_h].values,
-                    }).dropna()
-                    _ret_seen = set()
-                    for _, _rr in _ret_df.iterrows():
-                        _rk = (int(_rr['sx']), int(_rr['sy']))
-                        if _rk in _ret_seen:
-                            continue
-                        _ret_seen.add(_rk)
-                        try:
-                            _ret_labels_h.append((
-                                _rk[0] - _wcx,
-                                (_rk[1] - _wcy) * _die_dy,
-                                str(int(_rr['ret']))
-                            ))
-                        except (ValueError, TypeError):
-                            pass
-
-            def _draw_reticle(ax):
-                """Draw reticle boundary lines and number labels onto any axis."""
-                if not _rlookup_h or not _xs_u or not _ys_u:
-                    return
-                for _yi in _ys_u:
-                    for _xi_idx in range(len(_xs_u) - 1):
-                        _k1 = (_xs_u[_xi_idx], _yi)
-                        _k2 = (_xs_u[_xi_idx + 1], _yi)
-                        _lx1 = _rlookup_h.get(_k1, (None,))[0]
-                        _lx2 = _rlookup_h.get(_k2, (None,))[0]
-                        if _lx1 is not None and _lx2 is not None and _lx1 != _lx2:
-                            _bx = ((_xs_u[_xi_idx] + _xs_u[_xi_idx + 1]) / 2 - _wcx)
-                            _by_c = (_yi - _wcy) * _die_dy
-                            ax.plot([_bx, _bx],
-                                    [_by_c - _die_dy * 0.5, _by_c + _die_dy * 0.5],
-                                    color='blue', linewidth=0.5, alpha=0.8, zorder=5)
-                for _xi in _xs_u:
-                    for _yi_idx in range(len(_ys_u) - 1):
-                        _k1 = (_xi, _ys_u[_yi_idx])
-                        _k2 = (_xi, _ys_u[_yi_idx + 1])
-                        _ly1 = _rlookup_h.get(_k1, (None, None))[1]
-                        _ly2 = _rlookup_h.get(_k2, (None, None))[1]
-                        if _ly1 is not None and _ly2 is not None and _ly1 != _ly2:
-                            _bx_c = (_xi - _wcx)
-                            _by = ((_ys_u[_yi_idx] + _ys_u[_yi_idx + 1]) / 2 - _wcy) * _die_dy
-                            ax.plot([_bx_c - 0.5, _bx_c + 0.5], [_by, _by],
-                                    color='blue', linewidth=0.5, alpha=0.8, zorder=5)
-                for _rx, _ry, _rlbl in _ret_labels_h:
-                    ax.text(_rx, _ry, _rlbl,
-                            ha='center', va='center', fontsize=3,
-                            color='black', fontweight='bold', alpha=0.9, zorder=6)
-
-            _draw_reticle(ax_heat)
-
-            # Prepare HTML table data (no longer drawn in matplotlib)
-            _info_rows = [
-                ('BIN',               bin_field),
-                ('FAIL BUCKET',       desc if desc else ''),
-                ('YIELD (%)',         f"{int(round(comp_pct))}%"),
-                ('EXPECTED YIELD (%)', expected_str if expected_str else ''),
-            ]
-            _lw_col_labels = ['LOT', 'WAFER'] + (['MATERIAL TYPE'] if mat_col else []) + ['Total Count', 'Count', '% FAIL']
-            _lw_rows = lw_rows
-            # TOTAL row: sum counts across all wafers
-            _lw_total_count = sum(r[3 if mat_col else 2] for r in lw_rows)
-            _lw_fail_count  = sum(r[4 if mat_col else 3] for r in lw_rows)
-            _lw_total_pct   = (_lw_fail_count / _lw_total_count * 100
-                               if _lw_total_count else 0.0)
-
-            # adjust overall spacing
-            try:
-                fig.subplots_adjust(top=0.93, bottom=0.08, left=0.07, right=0.95)
-            except Exception:
-                pass
-
-            def _esc(s):
-                return str(s).replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
-
-            # ── Composite SVG — captured NOW before per-wafer loop changes
-            # the matplotlib "current figure" and may affect fig's layout state.
-            import io as _io_svg
-            _comp_svg = None
-            lw_svgs = []
-            if not render_wafermap:
-                print(f'  Bin Heatmap render skipped (render_wafermap=False) — stats only.')
-            else:
-                from xml.etree import ElementTree as _ET_svg
-                _ET_svg.register_namespace('', 'http://www.w3.org/2000/svg')
-                _ET_svg.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
-                _comp_svgid = f'hmcomp_{_sanitize_label(bin_field)}'
-                try:
-                    _comp_buf = _io_svg.StringIO()
-                    fig.savefig(_comp_buf, format='svg', bbox_inches='tight')
-                    _comp_s = re.sub(r'<\?xml[^>]*\?>', '', _comp_buf.getvalue()).strip()
-                    _comp_rt = _ET_svg.fromstring(_comp_s)
-                    if _comp_rt.get('viewBox') is None:
-                        _crw = _comp_rt.get('width', '800pt'); _crh = _comp_rt.get('height', '600pt')
-                        def _cpt(s):
-                            try: return float(re.sub(r'[^\d.]', '', s))
-                            except: return 0
-                        _comp_rt.set('viewBox', f'0 0 {_cpt(_crw):.1f} {_cpt(_crh):.1f}')
-                    _comp_rt.attrib.pop('width', None); _comp_rt.attrib.pop('height', None)
-                    _comp_rt.set('width', '100%'); _comp_rt.set('id', _comp_svgid)
-                    _cidmap = {}
-                    for _cel in _comp_rt.iter():
-                        _coid = _cel.get('id')
-                        if _coid and _coid != _comp_svgid:
-                            _cnid = f'{_comp_svgid}_{_coid}'; _cidmap[_coid] = _cnid; _cel.set('id', _cnid)
-                    if _cidmap:
-                        def _cfu(v):
-                            return re.sub(r'url\(#([^)]+)\)',
-                                lambda m: f'url(#{_cidmap.get(m.group(1), m.group(1))})', v)
-                        _cxlh = '{http://www.w3.org/1999/xlink}href'
-                        for _cel in _comp_rt.iter():
-                            for _ca, _cav in list(_cel.attrib.items()):
-                                if 'url(#' in _cav: _cel.set(_ca, _cfu(_cav))
-                                if _ca in (_cxlh, 'href') and _cav.startswith('#'):
-                                    _cref = _cav[1:]
-                                    if _cref in _cidmap: _cel.set(_ca, f'#{_cidmap[_cref]}')
-                    _comp_svg = _ET_svg.tostring(_comp_rt, encoding='unicode')
-                except Exception as _comp_exc:
-                    print(f'  Warning: composite SVG failed ({_comp_exc}), will use PNG fallback', file=sys.stderr)
-                    _comp_svg = None
-
-                # ── Per-wafer SVGs for interactive lot/wafer table ──────────
-                _group_ok = (lot_col or wafer_col) and hx is not None and hy is not None
-                if not _group_ok:
-                    print(f'  Per-wafer SVGs skipped: lot_col={lot_col!r} wafer_col={wafer_col!r} hx_ok={hx is not None} hy_ok={hy is not None}', file=sys.stderr)
-                if _group_ok:
-                    from xml.etree import ElementTree as ET
-                    # Build (lot_str, wafer_str) -> row-index mapping using a plain
-                    # 2-column groupby — avoids null-byte separator issues on Windows.
-                    _lw_index_map = {}
-                    if lot_col and wafer_col:
-                        _lw_df = pd.DataFrame({
-                            '_l': df[lot_col].fillna('').astype(str),
-                            '_w': df[wafer_col].fillna('').astype(str),
-                        })
-                        for (_kl, _kw), _gs in _lw_df.groupby(['_l', '_w'], sort=False):
-                            _lw_index_map[(str(_kl), str(_kw))] = _gs.index
-                    elif lot_col:
-                        _lot_ser = df[lot_col].fillna('').astype(str)
-                        for _kl, _gs in _lot_ser.groupby(_lot_ser, sort=False):
-                            _lw_index_map[(str(_kl), '')] = _gs.index
-                    else:
-                        _wfr_ser = df[wafer_col].fillna('').astype(str)
-                        for _kw, _gs in _wfr_ser.groupby(_wfr_ser, sort=False):
-                            _lw_index_map[(str(_kw), '')] = _gs.index
-                    # Register SVG namespaces once outside the wafer loop
-                    ET.register_namespace('', 'http://www.w3.org/2000/svg')
-                    ET.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
-                    print(f'  Per-wafer SVGs: rendering {len(lw_rows)} wafer(s)…')
-                    # Reuse a single figure across wafers to avoid construction overhead
-                    _lw_fig = plt.figure(figsize=(fig_w, fig_h))
-                    for _lw_r in lw_rows:
-                        try:
-                            _lv, _wv = _lw_r[0], _lw_r[1]
-                            _lw_idx = _lw_index_map.get((_lv, _wv))
-                            if _lw_idx is None or len(_lw_idx) == 0:
-                                lw_svgs.append((_lv, _wv, None, None))
-                                continue
-                            _lx = hx[_lw_idx].values.astype(float)
-                            _ly = hy[_lw_idx].values.astype(float)
-                            _lmv = mask[_lw_idx].values
-                            _cdf = pd.DataFrame({'x': _lx.astype(int), 'y': _ly.astype(int),
-                                                 'm': _lmv.astype(np.int8)})
-                            _cg = _cdf.groupby(['x', 'y'], sort=False)['m'].agg(['sum', 'count'])
-                            _lw_xs = _cg.index.get_level_values('x').values.astype(float)
-                            _lw_ys = _cg.index.get_level_values('y').values.astype(float)
-                            _lw_vs = _cg['sum'].values / _cg['count'].values * 100
-                            _lw_fig.clear()
-                            _lw_ax = _lw_fig.add_subplot(111)
-                            _lw_xp = _lw_xs - _wcx
-                            _lw_yp = (_lw_ys - _wcy) * _die_dy
-                            _vs_rint2 = np.rint(_lw_vs).astype(float)
-                            _clrs2 = _cmap_obj(_norm_h(_vs_rint2))
-                            for _di in range(len(_lw_xp)):
-                                _lw_ax.add_patch(mpatches.Rectangle(
-                                    (_lw_xp[_di] - _die_dx * gap / 2, _lw_yp[_di] - _die_dy * gap / 2),
-                                    _die_dx * gap, _die_dy * gap,
-                                    linewidth=0.3, edgecolor='gray', facecolor=_clrs2[_di],
-                                    rasterized=True
-                                ))
-                            _lw_ax.set_title(f'Lot {_lv}  Wafer {_wv}  —  bin {bin_field}', fontsize=10)
-                            _lw_ax.set_aspect('equal')
-                            _lw_ax.set_xlim(-_xext_h, _xext_h)
-                            _lw_ax.set_ylim(-_yext_h, _yext_h)
-                            _lw_ax.set_xlabel('Sort X', fontsize=9)
-                            _lw_ax.set_ylabel('Sort Y', fontsize=9)
-                            _lw_ticks_y = [t for t in _lw_ax.get_yticks() if -_yext_h <= t <= _yext_h]
-                            _lw_ax.set_yticks(_lw_ticks_y)
-                            _lw_ax.set_yticklabels([f'{v / _die_dy + _wcy:.0f}' for v in _lw_ticks_y], fontsize=7)
-                            _lw_ticks_x = [t for t in _lw_ax.get_xticks() if -_xext_h <= t <= _xext_h]
-                            _lw_ax.set_xticks(_lw_ticks_x)
-                            _lw_ax.set_xticklabels([f'{v + _wcx:.0f}' for v in _lw_ticks_x], fontsize=7)
-                            _lw_ax.axhline(0, color='black', linewidth=0.5, linestyle='--', alpha=0.3)
-                            _lw_ax.axvline(0, color='black', linewidth=0.5, linestyle='--', alpha=0.3)
-                            _lw_ax.grid(True, alpha=0.2)
-                            _draw_reticle(_lw_ax)
-                            try:
-                                _sm2 = plt.cm.ScalarMappable(cmap=_cmap_name, norm=_norm_h)
-                                _sm2.set_array([])
-                                _lw_fig.colorbar(_sm2, ax=_lw_ax, fraction=0.046, pad=0.04,
-                                                 label='% yield' if _is_yield_bin else '% fail')
-                            except Exception:
-                                pass
-                            _lw_fig.tight_layout()
-                            _svgbuf = _io_svg.StringIO()
-                            _lw_fig.savefig(_svgbuf, format='svg', bbox_inches='tight')
-                            _svgs = re.sub(r'<\?xml[^>]*\?>', '', _svgbuf.getvalue()).strip()
-                            _svgid = f'hmsvg_{_sanitize_label(str(_lv))}_{_sanitize_label(str(_wv))}_{_sanitize_label(bin_field)}'
-                            try:
-                                _rt = ET.fromstring(_svgs)
-                                if _rt.get('viewBox') is None:
-                                    _rw = _rt.get('width', '800pt'); _rh = _rt.get('height', '600pt')
-                                    def _pt3(s):
-                                        try: return float(re.sub(r'[^\d.]', '', s))
-                                        except: return 0
-                                    _rt.set('viewBox', f'0 0 {_pt3(_rw):.1f} {_pt3(_rh):.1f}')
-                                _rt.attrib.pop('width', None); _rt.attrib.pop('height', None)
-                                _rt.set('width', '100%'); _rt.set('id', _svgid)
-                                _idmap2 = {}
-                                for _el2 in _rt.iter():
-                                    _oid2 = _el2.get('id')
-                                    if _oid2 and _oid2 != _svgid:
-                                        _nid2 = f'{_svgid}_{_oid2}'; _idmap2[_oid2] = _nid2; _el2.set('id', _nid2)
-                                if _idmap2:
-                                    def _fu2(v):
-                                        return re.sub(r'url\(#([^)]+)\)',
-                                            lambda m: f'url(#{_idmap2.get(m.group(1), m.group(1))})', v)
-                                    _xlhref = '{http://www.w3.org/1999/xlink}href'
-                                    for _el2 in _rt.iter():
-                                        for _a2, _av2 in list(_el2.attrib.items()):
-                                            if 'url(#' in _av2: _el2.set(_a2, _fu2(_av2))
-                                            if _a2 in (_xlhref, 'href') and _av2.startswith('#'):
-                                                _ref2 = _av2[1:]
-                                                if _ref2 in _idmap2: _el2.set(_a2, f'#{_idmap2[_ref2]}')
-                                _svgs = ET.tostring(_rt, encoding='unicode')
-                            except Exception:
-                                pass
-                            lw_svgs.append((_lv, _wv, _svgs, _svgid))
-                        except Exception as _lw_exc:
-                            print(f'    Warning: per-wafer SVG failed for ({_lv}, {_wv}): {_lw_exc}', file=sys.stderr)
-                            lw_svgs.append((_lv, _wv, None, None))
-                    plt.close(_lw_fig)  # close shared figure after all wafers are done
-
-            def _build_heatmap_html(b64_png, lw_svgs=None, composite_svg=None):
-                info_rows_html = ''.join(
-                    f'<tr><td>{_esc(k)}</td><td>{_esc(v)}</td></tr>\n'
-                    for k, v in _info_rows
-                )
-                # Build SVG containers (hidden by default)
-                svg_blocks = ''
-                svg_id_map = {}  # (lot, wafer) -> svgid
-                if lw_svgs:
-                    for _lv2, _wv2, _svgstr, _sid in lw_svgs:
-                        if _svgstr and _sid:
-                            svg_id_map[(_lv2, _wv2)] = _sid
-                            svg_blocks += (
-                                f'<div id="wrap_{_sid}" class="hm-wafer-view" '
-                                f'style="display:none;width:570px;min-width:200px">'
-                                f'{_svgstr}</div>\n'
-                            )
-                lw_rows_html = ''
-                for r in _lw_rows:
-                    _sid2 = svg_id_map.get((r[0], r[1]))
-                    _onclick = f' onclick="hmShowWafer(\'{_sid2}\',this)"' if _sid2 else ''
-                    _cursor = ' cursor:pointer;' if _sid2 else ''
-                    lw_rows_html += (
-                        f'<tr class="lw-row"{_onclick} style="{_cursor}">'
-                        f'<td>{_esc(r[0])}</td>'
-                        f'<td>{_esc(r[1])}</td>'
-                        + (f'<td>{_esc(r[2])}</td>' if mat_col else '')
-                        + f'<td class="num">{r[3 if mat_col else 2]:,}</td>'
-                        f'<td class="num">{r[4 if mat_col else 3]:,}</td>'
-                        f'<td class="num">{_esc(r[5 if mat_col else 4])}</td>'
-                        f'</tr>\n'
-                    )
-                lw_total_html = (
-                    f'<tr style="font-weight:bold;background:#dde8f7">'
-                    + (f'<td colspan="3">TOTAL</td>' if mat_col else f'<td colspan="2">TOTAL</td>')
-                    + f'<td class="num">{_lw_total_count:,}</td>'
-                    f'<td class="num">{_lw_fail_count:,}</td>'
-                    f'<td class="num">{_lw_total_pct:.2f}%</td>'
-                    f'</tr>\n'
-                )
-                lw_header = ''.join(f'<th>{_esc(c)}</th>' for c in _lw_col_labels)
-                _has_wafer_svgs = bool(svg_blocks)
-                _js = ''
-                if _has_wafer_svgs:
-                    _js = """
-<script>
-function hmShowWafer(svgId, row) {
-  var allViews = document.querySelectorAll('.hm-wafer-view');
-  var allRows  = document.querySelectorAll('.lw-row');
-  var composite = document.getElementById('hm-composite');
-  var alreadyActive = row.classList.contains('lw-active');
-  allViews.forEach(function(d){ d.style.display='none'; });
-  allRows.forEach(function(r){ r.classList.remove('lw-active'); r.style.background=''; });
-  if (alreadyActive) {
-    composite.style.display='block';
-  } else {
-    composite.style.display='none';
-    var el = document.getElementById('wrap_' + svgId);
-    if (el) el.style.display='block';
-    row.classList.add('lw-active');
-    row.style.background='#ddeeff';
-  }
-}
-</script>
-<style>
-.lw-row:hover td { background:#f0f4ff !important; cursor:pointer; }
-.lw-row.lw-active td { background:#ddeeff !important; }
-</style>"""
-                _hint = ' <span style="font-size:10px;font-weight:normal;color:#666">(click row to show wafer map)</span>' if _has_wafer_svgs else ''
-                _comp_inner = (composite_svg if composite_svg
-                               else f'<img src="data:image/png;base64,{b64_png}" style="max-width:100%;height:auto"/>')
-                # ── hardware breakdown modal ───────────────────────────────────
-                import json as _json_hw_hm
-                _hw_css = _hw_btn = _hw_modal = _hw_js_hm = ''
-                if _hw_cols_hm and __rows:
-                    _hw_css = (
-                        '.hm-hw-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;'
-                        'background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center}'
-                        '.hm-hw-overlay.open{display:flex}'
-                        '.hm-hw-box{background:#fff;border-radius:6px;padding:16px;max-width:90vw;'
-                        'max-height:80vh;overflow:auto;min-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.3)}'
-                        '.hm-hw-tbl{border-collapse:collapse;font-size:11px;width:100%}'
-                        '.hm-hw-tbl th{background:#2c3e50;color:#fff;padding:4px 10px;'
-                        'white-space:nowrap;text-align:left}'
-                        '.hm-hw-tbl td{padding:3px 10px;border-bottom:1px solid #eee;white-space:nowrap}'
-                        '.hm-hw-tbl tr:hover td{background:#f0f4ff}'
-                    )
-                    _hw_btn = (
-                        f'<button onclick="document.getElementById(\'hm-hw-modal\').classList.add(\'open\')" '
-                        f'style="margin:4px 0 8px;padding:4px 12px;font-size:11px;cursor:pointer;'
-                        f'border:1px solid #2980b9;background:#ebf5fb;border-radius:3px;color:#1a5276">'
-                        f'&#9741; Hardware Breakdown</button>'
-                    )
-                    _hw_modal = (
-                        f'<div id="hm-hw-modal" class="hm-hw-overlay" '
-                        f'onclick="if(event.target===this)this.classList.remove(\'open\')">'
-                        f'<div class="hm-hw-box">'
-                        f'<div style="display:flex;align-items:center;margin-bottom:10px">'
-                        f'<b style="font-size:13px;flex:1">Hardware Commonality \u2014 Bin {_esc(bin_field)}</b>'
-                        f'<button onclick="document.getElementById(\'hm-hw-modal\').classList.remove(\'open\')" '
-                        f'style="border:none;background:none;font-size:18px;cursor:pointer;color:#666">'
-                        f'&times;</button></div>'
-                        f'<div id="hm-hw-table"></div></div></div>'
-                    )
-                    _hw_data_j = _json_hw_hm.dumps({'cols': _hw_cols_hm, 'rows': __rows})
-                    _hw_js_hm = (
-                        '<script>(function(){'
-                        'var d=' + _hw_data_j + ';var cols=d.cols;var rows=d.rows;'
-                        'var _gbCols=new Set(cols);'
-                        'function _render(){'
-                        'var activeCols=cols.filter(function(c){return _gbCols.has(c);});'
-                        'var displayCols=activeCols.length>0?activeCols:cols;'
-                        'var groupMap={};'
-                        'rows.forEach(function(r){'
-                        '  var key=activeCols.length>0?activeCols.map(function(c){return String(r[c]||"");}).join("\\x00"):("__idx__"+rows.indexOf(r));'
-                        '  if(!groupMap[key])groupMap[key]={row:r,cnt:0};'
-                        '  groupMap[key].cnt+=r.count;'
-                        '});'
-                        'var grouped=Object.values(groupMap).sort(function(a,b){return b.cnt-a.cnt;});'
-                        'var totalCnt=grouped.reduce(function(s,e){return s+e.cnt;},0);'
-                        'var t=document.getElementById("hm-hw-table");'
-                        'var gbBar=\'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 6px;background:#f0f4ff;border-radius:4px;border:1px solid #c5d4f0;margin-bottom:8px">\''
-                        '  +\'<span style="font-size:11px;font-weight:bold;color:#2c3e50;white-space:nowrap">Group By:</span>\';'
-                        'cols.forEach(function(c){'
-                        '  var chk=_gbCols.has(c)?"checked":"";'
-                        '  gbBar+=\'<label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap">\''
-                        '    +\'<input type="checkbox" \'+chk+\' data-gbcol="\'+c.replace(/"/g,"&quot;")+\'" onchange="_hmHwGbChange(this)"> \'+c+\'</label>\';'
-                        '});'
-                        'gbBar+=\'<button onclick="_hmHwGbAll()" style="font-size:11px;padding:2px 8px;cursor:pointer;border:1px solid #888;border-radius:3px;background:#fff">All</button>\''
-                        '  +\'<button onclick="_hmHwGbNone()" style="font-size:11px;padding:2px 8px;cursor:pointer;border:1px solid #888;border-radius:3px;background:#fff">None</button></div>\';'
-                        'var th=displayCols.map(function(c){return"<th>"+c+"</th>";}).join("")'
-                        '  +"<th>Count</th><th>%</th>";'
-                        'var tb=grouped.map(function(e){'
-                        '  var pct=totalCnt>0?(e.cnt/totalCnt*100).toFixed(1)+"%" :"0.0%";'
-                        '  return"<tr>"+displayCols.map(function(c){return"<td>"+String(e.row[c]||"")+"</td>";}).join("")'
-                        '    +"<td style=\'text-align:right\'>"+e.cnt+"</td><td style=\'text-align:right\'>"+pct+"</td></tr>";'
-                        '}).join("");'
-                        't.innerHTML=gbBar+"<table class=\'hm-hw-tbl\'><thead><tr>"+th+"</tr></thead><tbody>"+tb+"</tbody></table>";'
-                        '}'
-                        'window._hmHwGbChange=function(cb){'
-                        '  var c=cb.getAttribute("data-gbcol");'
-                        '  if(cb.checked){_gbCols.add(c);}else{_gbCols.delete(c);}'
-                        '  _render();};'
-                        'window._hmHwGbAll=function(){cols.forEach(function(c){_gbCols.add(c);});_render();};'
-                        'window._hmHwGbNone=function(){_gbCols.clear();_render();};'
-                        '_render();'
-                        '})()</script>'
-                    )
-                return f"""<!doctype html>
-<html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-html,body{{margin:0;padding:8px;background:#fff;font-family:Arial,sans-serif;font-size:12px}}
-img{{max-width:100%;height:auto;display:block;margin-bottom:14px}}
-.info-table,.lw-table{{border-collapse:collapse;font-size:11px;margin-bottom:14px}}
-.info-table td,.lw-table th,.lw-table td{{padding:3px 10px;border:1px solid #ccc;white-space:nowrap;text-align:left}}
-.info-table td:first-child,.lw-table th{{font-weight:bold;background:#f0f0f0}}
-.lw-table tr:hover td{{background:#f5f5f5}}
-.num{{text-align:right}}
-#hm-composite{{max-width:700px}}
-{_hw_css}</style>{_js}</head><body>
-<div id="hm-composite">{_comp_inner}</div>
-{svg_blocks}
-<table class="info-table">{info_rows_html}</table>
-{_hw_btn}{_hw_modal}
-<h3 style="font-size:12px;margin:8px 0 4px">Lot / Wafer breakdown{_hint}</h3>
-<table class="lw-table"><thead><tr>{lw_header}</tr></thead>
-<tbody>{lw_rows_html}{lw_total_html}</tbody></table>
-{_hw_js_hm}</body></html>"""
-
-            # When running in GUI mode, place heatmap PNGs under output/heatmap
-            if gui:
-                heat_dir = outd / 'heatmap'
-                heat_dir.mkdir(parents=True, exist_ok=True)
-                out_name = heat_dir / f"{csvp.stem}_Heatmap_bin_{_sanitize_label(bin_field)}.png"
-            else:
-                out_name = outd / f"{csvp.stem}_Heatmap_bin_{_sanitize_label(bin_field)}.png"
-            # If html_only requested, save only HTML with inline SVG
-            svg_out = None
-            html_out = None
-            if html_only:
-                try:
-                    heat_dir = outd / 'heatmap' if gui else outd
-                    heat_dir.mkdir(parents=True, exist_ok=True)
-                    html_out = heat_dir / f"{csvp.stem}_Heatmap_bin_{_sanitize_label(bin_field)}.html"
-                    if _comp_svg:
-                        html_out.write_text(_wm_inject(_build_heatmap_html(None, lw_svgs, _comp_svg)), encoding='utf-8')
-                    else:
-                        import io as _io_fb, base64 as _b64_fb
-                        _fb = _io_fb.BytesIO()
-                        fig.savefig(_fb, format='png', dpi=200, bbox_inches='tight')
-                        _fb.seek(0)
-                        html_out.write_text(_wm_inject(_build_heatmap_html(
-                            _b64_fb.b64encode(_fb.read()).decode('ascii'), lw_svgs)), encoding='utf-8')
-                except Exception:
-                    html_out = None
-                plt.close(fig)
-                if html_out:
-                    print('Wrote', html_out)
-                continue
-
-            # Save PNG (plot only) and HTML (inline SVG + tables)
-            try:
-                fig.savefig(out_name, dpi=200, bbox_inches='tight')
-            except Exception:
-                fig.savefig(out_name, dpi=200)
-
-            # HTML: inline SVG composite (or fallback PNG) + tables
-            try:
-                html_out = out_name.with_suffix('.html')
-                if _comp_svg:
-                    html_out.write_text(_wm_inject(_build_heatmap_html(None, lw_svgs, _comp_svg)), encoding='utf-8')
-                else:
-                    import base64
-                    b64 = base64.b64encode(out_name.read_bytes()).decode('ascii')
-                    html_out.write_text(_wm_inject(_build_heatmap_html(b64, lw_svgs)), encoding='utf-8')
-            except Exception:
-                html_out = None
-            plt.close(fig)
-            print('Wrote', out_name)
-            if html_out:
-                print('Wrote', html_out)
-
-    # Generate the combined all-IBIN wafer map at the end
-    if render_ibin_wafermap:
-        try:
-            _wm_col = bin_col if bin_col in df.columns else next(
-                (c for c in df.columns if 'INTERFACE_BIN' in c.upper() and 'TOTAL' not in c.upper()), bin_col)
-            generate_all_ibin_wafer_map(csv_path, out_dir=out_dir, bin_col=_wm_col, gui=gui, interactive=interactive, tbl_path=tbl_path)
-        except Exception as _wm_exc:
-            print(f'Warning: all-IBIN wafer map skipped: {_wm_exc}', file=sys.stderr)
-    else:
-        print('  Wafermap (IBIN) skipped (render_ibin_wafermap=False).')
-
-
 def generate_all_ibin_wafer_map(csv_path, out_dir=None, bin_col=None, gui=False, interactive=True, bindef_path=None, tbl_path=None):
     """
     Generate one figure per lot, each showing a grid of per-wafer scatter maps
@@ -7145,7 +6278,7 @@ def generate_all_ibin_wafer_map(csv_path, out_dir=None, bin_col=None, gui=False,
 
         csvp = Path(csv_path)
         outd = Path(out_dir) if out_dir else csvp.parent / 'output'
-        heat_dir = outd / 'heatmap'
+        heat_dir = outd / 'wafermap'
         heat_dir.mkdir(parents=True, exist_ok=True)
 
         df = pd.read_csv(csvp, dtype=object)
@@ -7911,6 +7044,9 @@ html,body{margin:0;padding:8px;background:#fff;font-family:Arial,sans-serif;font
 img{max-width:100%;height:auto;display:block;margin-bottom:10px}
 table{border-collapse:collapse;font-size:11px}
 .wm-sum-tbl{font-size:17px}
+tr.wm-active td{background:#b3d4ff !important;font-weight:bold}
+@keyframes _wmFlash{0%{outline:4px solid #2563eb}50%{outline:4px solid #f59e0b}100%{outline:none}}
+.wm-flash{animation:_wmFlash 0.7s ease-out}
 th,td{padding:3px 10px;border:1px solid #ccc;white-space:nowrap}
 th{background:#2c3e50;color:#ecf0f1;font-weight:bold}
 tr:hover td{background:#f0f4ff}
@@ -7942,27 +7078,139 @@ h2{font-size:14px;color:#2c3e50;margin:16px 0 6px}
 .h-resize-handle:hover,.h-resize-handle.dragging{background:#2980b9}
 .h-resize-handle::after{content:'⋮';color:#aaa;font-size:12px}
 .h-resize-handle:hover::after,.h-resize-handle.dragging::after{color:#fff}
-.comp-corner-resize{position:absolute;bottom:0;right:0;width:20px;height:20px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,#bdc3c7 50%);opacity:.5;z-index:2;border-radius:0 0 4px 0}
-.comp-corner-resize:hover{opacity:1;background:linear-gradient(135deg,transparent 50%,#2980b9 50%)}"""
+.comp-corner-resize{display:none}
+.comp-edge-r{display:none}
+.comp-edge-b{display:none}"""
 
         out_paths = []
 
-        for lot_label in lots:
+        def _wafer_svg(wdf_s, svg_id, W, H, title_text='', gx=None, gy=None,
+                       fontscale=1.0, extra_attrs='', show_dielo=False, subtitle_text=''):
+            """Pure-SVG wafer map; <g data-bin data-fb data-hw data-dielo> per die."""
+            if wdf_s is None or wdf_s.empty:
+                return f'<svg id="{svg_id}" width="{W}" height="{H}" {extra_attrs} xmlns="http://www.w3.org/2000/svg"></svg>'
+            _gx0 = gx[0] if gx else int(wdf_s['x'].min())
+            _gx1 = gx[1] if gx else int(wdf_s['x'].max())
+            _gy0 = gy[0] if gy else int(wdf_s['y'].min())
+            _gy1 = gy[1] if gy else int(wdf_s['y'].max())
+            _nx, _ny = _gx1 - _gx0 + 1, _gy1 - _gy0 + 1
+            # y-scale so wafer outline is circular regardless of nx vs ny
+            _die_dy = _nx / max(_ny, 1)
+            _tfs  = max(7, round(18 * fontscale))   # 2x larger title font
+            _sfs  = max(6, round(13 * fontscale))   # subtitle font
+            _th   = 0
+            if title_text:
+                _th = round(_tfs * 1.5) + (round(_sfs * 1.4) + 2 if subtitle_text else 0) + 2
+            _pad = max(3, W * 0.04)
+            _aw, _ah = W - 2*_pad, H - 2*_pad - _th
+            _cs = max(1.5, min(_aw / max(_nx, 1), _ah / max(_nx, 1)))
+            _cs_y = _cs * _die_dy
+            _ox = _pad + (_aw - _cs * _nx) / 2
+            _oy = _th + _pad + (_ah - _cs_y * _ny) / 2
+            _cx = _ox + _nx * _cs / 2;  _cy = _oy + _ny * _cs_y / 2
+            _r = _nx * _cs / 2 * 1.04   # circular: rx == ry == _r
+            _cid = f'cl_{svg_id}'
+            _gap = 0.88
+            _HPAT = {
+                '///':  ('sl', lambda ec: f'<pattern id="hp_sl_{svg_id}" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="{ec}" stroke-width="1.2" opacity="0.5"/></pattern>'),
+                'xxx':  ('cx', lambda ec: f'<pattern id="hp_cx_{svg_id}" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="{ec}" stroke-width="1.0" opacity="0.5"/><line x1="0" y1="0" x2="4" y2="0" stroke="{ec}" stroke-width="1.0" opacity="0.5"/></pattern>'),
+                '+++':  ('pl', lambda ec: f'<pattern id="hp_pl_{svg_id}" patternUnits="userSpaceOnUse" width="5" height="5"><line x1="0" y1="2.5" x2="5" y2="2.5" stroke="{ec}" stroke-width="1.0" opacity="0.5"/><line x1="2.5" y1="0" x2="2.5" y2="5" stroke="{ec}" stroke-width="1.0" opacity="0.5"/></pattern>'),
+                '---':  ('dh', lambda ec: f'<pattern id="hp_dh_{svg_id}" patternUnits="userSpaceOnUse" width="5" height="5"><line x1="0" y1="2.5" x2="5" y2="2.5" stroke="{ec}" stroke-width="1.2" opacity="0.5"/></pattern>'),
+                '|||':  ('vt', lambda ec: f'<pattern id="hp_vt_{svg_id}" patternUnits="userSpaceOnUse" width="4" height="4"><line x1="2" y1="0" x2="2" y2="4" stroke="{ec}" stroke-width="1.2" opacity="0.5"/></pattern>'),
+            }
+            _defs = [f'<clipPath id="{_cid}"><ellipse cx="{_cx:.1f}" cy="{_cy:.1f}" rx="{_r:.1f}" ry="{_r:.1f}"/></clipPath>']
+            _hpids = {}
+            if 'hatch' in wdf_s.columns and 'edge' in wdf_s.columns:
+                for _hraw, _ec in wdf_s[['hatch','edge']].drop_duplicates().itertuples(index=False):
+                    if not _hraw: continue
+                    _hk = next((k for k in _HPAT if str(_hraw).startswith(k[:3])), None)
+                    if not _hk or _hk in _hpids: continue
+                    _psuf, _pfn = _HPAT[_hk]
+                    _hpids[_hk] = f'hp_{_psuf}_{svg_id}'
+                    _defs.append(_pfn(str(_ec)))
+            _wr  = f'{_cs * _gap:.1f}'
+            _wry = f'{_cs_y * _gap:.1f}'
+            _dlfs = max(4, round(_cs * 0.38))
+            _parts = [
+                f'<svg id="{svg_id}" width="{W}" height="{H}" viewBox="0 0 {W} {H}" {extra_attrs} xmlns="http://www.w3.org/2000/svg"'
+                f' style="display:block" onmousemove="_ibinDieHover(event)" onmouseleave="_ibinDieHoverOut()">',
+                f'<defs>{"".join(_defs)}</defs>',
+                f'<g clip-path="url(#{_cid})">'
+            ]
+            # pre-extract underscore columns as lists — itertuples renames them to positional
+            _fb_col   = wdf_s['_fb'].tolist()     if '_fb'     in wdf_s.columns else None
+            _hw_col   = wdf_s['_hw_idx'].tolist() if '_hw_idx' in wdf_s.columns else None
+            _dl_col   = wdf_s['_dielo'].tolist()  if '_dielo'  in wdf_s.columns else None
+            for _i, _row in enumerate(wdf_s.itertuples(index=False)):
+                _px = f'{_ox + (_row.x - _gx0) * _cs:.1f}'
+                _py = f'{_oy + (_gy1 - _row.y) * _cs_y:.1f}'
+                _fill = getattr(_row, 'color', '#888888')
+                # data-bin must equal the legend item's data-bin (full label string)
+                _ib   = str(getattr(_row, 'label', '')).replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
+                _fb   = str(_fb_col[_i])   if _fb_col   is not None else '0'
+                _hw   = str(_hw_col[_i])   if _hw_col   is not None else '0'
+                _dl   = str(_dl_col[_i])   if _dl_col   is not None else '0'
+                _htch = str(getattr(_row, 'hatch', ''))
+                _hk2  = next((k for k in _HPAT if _htch.startswith(k[:3])), None)
+                _pid  = _hpids.get(_hk2, '') if _hk2 else ''
+                _tip  = f'{_ib} ({int(_row.x)},{int(_row.y)})' + (f' FB{_fb}' if _fb != '0' else '')
+                _parts.append(
+                    f'<g data-bin="{_ib}" data-fb="{_fb}" data-hw="{_hw}" data-dielo="{_dl}">'
+                    f'<rect x="{_px}" y="{_py}" width="{_wr}" height="{_wry}" fill="{_fill}"'
+                    f' data-x="{int(_row.x)}" data-y="{int(_row.y)}" data-ib="{_ib}" data-fb="{_fb}"></rect>'
+                    + (f'<rect x="{_px}" y="{_py}" width="{_wr}" height="{_wry}" fill="url(#{_pid})" pointer-events="none"/>' if _pid else '')
+                    + '</g>'
+                )
+                if _dl not in ('0', '') and (show_dielo or _cs >= 8):
+                    _parts.append(f'<text x="{float(_px)+_cs*_gap:.1f}" y="{float(_py)+_dlfs:.1f}" text-anchor="end" font-size="{_dlfs}" font-family="Arial" fill="#000" font-weight="bold" pointer-events="none">{_dl}</text>')
+            _parts.append('</g>')
+            if _ret_shots_data:
+                for _shb in _ret_shots_data:
+                    _parts.append(
+                        f'<rect x="{_ox+(_shb[0]-_gx0)*_cs:.1f}" y="{_oy+(_gy1-_shb[3])*_cs_y:.1f}"'
+                        f' width="{(_shb[2]-_shb[0]+1)*_cs:.1f}" height="{(_shb[3]-_shb[1]+1)*_cs_y:.1f}"'
+                        f' fill="none" stroke="#2471a3" stroke-width="0.7" opacity="0.5" pointer-events="none"/>')
+            _parts.append(f'<ellipse cx="{_cx:.1f}" cy="{_cy:.1f}" rx="{_r:.1f}" ry="{_r:.1f}" fill="none" stroke="#bdc3c7" stroke-width="1.5" pointer-events="none"/>')
+            if title_text:
+                _ty1 = round(_tfs * 1.2)
+                _parts.append(
+                    f'<text x="{W/2:.1f}" y="{_ty1}" text-anchor="middle" font-size="{_tfs}"'
+                    f' font-family="Arial" font-weight="bold" fill="#1a2940">{title_text}</text>'
+                )
+                if subtitle_text:
+                    _ty2 = _ty1 + round(_sfs * 1.5)
+                    _parts.append(
+                        f'<text x="{W/2:.1f}" y="{_ty2}" text-anchor="middle" font-size="{_sfs}"'
+                        f' font-family="Arial" fill="#4a6080">{subtitle_text}</text>'
+                    )
+            _parts.append('</svg>')
+            return ''.join(_parts)
+
+        def _gen_lot(lot_label):
             lot_work  = work[work['_lot'] == lot_label]
             wafers    = sorted(lot_work['_wafer'].unique())
             n_wafers  = len(wafers)
 
-            # ── build per-wafer summary table rows ─────────────────────────
+            # ── build per-wafer summary table rows + hover tooltip data ─────
+            lot_safe = _sanitize_label(str(lot_label))
             waf_rows_html = ''
+            _waf_tooltip = {}  # wafer -> tooltip string for overlay rect
             for wafer in wafers:
                 wdf   = lot_work[lot_work['_wafer'] == wafer]
                 total = len(wdf)
-                n_pass = wdf['label'].str.contains('Pass').sum()
+                n_pass = int(wdf['label'].str.contains('Pass').sum())
                 n_fail = total - n_pass
                 pass_pct = n_pass / total * 100 if total else 0
                 fail_pct = n_fail / total * 100 if total else 0
                 _wm_mat_val = str(wdf['_material'].iloc[0]) if '_material' in wdf.columns and len(wdf) > 0 else ''
                 _wm_wafer_safe = str(wafer).replace("'", "\\'")
+                _tip_parts = [f'Wafer {wafer}']
+                if _wm_mat_val:
+                    _tip_parts.append(_wm_mat_val)
+                _tip_parts.append(f'Total: {total:,} die')
+                _tip_parts.append(f'Pass:  {n_pass:,} ({pass_pct:.1f}%)')
+                _tip_parts.append(f'Fail:  {n_fail:,} ({fail_pct:.1f}%)')
+                _waf_tooltip[wafer] = '&#10;'.join(_tip_parts)  # &#10; = newline in SVG <title>
                 waf_rows_html += (
                     f'<tr class="wm-row" id="wm-row-{wafer}" onclick="wmSelectWafer(\'{_wm_wafer_safe}\', event)" style="cursor:pointer">'
                     f'<td>{wafer}</td>'
@@ -7978,117 +7226,111 @@ h2{font-size:14px;color:#2c3e50;margin:16px 0 6px}
             cols_grid = max(1, math.ceil(math.sqrt(n_wafers)))
             rows_grid = math.ceil(n_wafers / cols_grid)
 
-            # Each wafer subplot is a square cell.  Reserve space for legend
-            # on the right and title on top.
-            cell_size = 0.90                   # inches per wafer cell (SVG quality baseline)
-            legend_in = 0.81                   # inches reserved for legend
-            title_in  = 0.009                  # inches reserved for suptitle
-            pad       = 0.11                   # inches gap between cells
-            fig_w = cols_grid * cell_size + (cols_grid - 1) * pad + legend_in + 0.4
-            fig_h = rows_grid * cell_size + (rows_grid - 1) * pad + title_in + 0.3
-            # Display size in HTML: constrain the SVG container to the figure's natural
-            # CSS-pixel size so the browser doesn't stretch it to full window width.
-            # matplotlib SVG uses 72pt/inch; browsers render at 96px/inch
-            _comp_max_w = int(fig_w * 96 * 2.25)    # display scale
-            _comp_rendered_h = _comp_max_w * fig_h / fig_w
-            # Legend top: aligned with top-row wafer subplot titles.
-            # Subplot top edge (figure fraction from bottom):
-            #   y_origin + (rows_grid-1)*(ch+ypad) + ch  where ch=cell_size/fig_h, ypad=pad/fig_h
-            _ch_frac = cell_size / fig_h
-            _yp_frac = pad / fig_h
-            _top_axes_top_frac = 0.02 + (rows_grid - 1) * (_ch_frac + _yp_frac) + _ch_frac
-            # In SVG (y=0 at top): px from top = (1 - frac) * rendered_h; +20px for title text
-            _comp_leg_top = int((1.0 - _top_axes_top_frac) * _comp_rendered_h) + 20
-
-            fig_comp = plt.figure(figsize=(fig_w, fig_h))
+            # ── Pure-SVG composite tile grid ───────────────────────────────
             seen_legend: dict = {}
-
-            # Compute normalised position of each cell (left, bottom, w, h)
-            plot_area_w = (cols_grid * cell_size + (cols_grid - 1) * pad) / fig_w
-            plot_area_h = (rows_grid * cell_size + (rows_grid - 1) * pad) / fig_h
-            x_origin = 0.02                    # left margin (fraction)
-            y_origin = 0.02                    # bottom margin (fraction)
-            cw = cell_size / fig_w             # cell width  (fraction)
-            ch = cell_size / fig_h             # cell height (fraction)
-            xpad = pad / fig_w
-            ypad = pad / fig_h
-
-            for idx, wafer in enumerate(wafers):
-                r, c_idx = divmod(idx, cols_grid)
-                # row 0 = top row visually → invert row index
-                row_inv = rows_grid - 1 - r
-                left   = x_origin + c_idx * (cw + xpad)
-                bottom = y_origin + row_inv * (ch + ypad)
-
-                ax = fig_comp.add_axes([left, bottom, cw, ch])
-                wdf = lot_work[lot_work['_wafer'] == wafer]
-                if wdf.empty:
-                    ax.set_visible(False)
-                    continue
-                leg = _draw_wafer_on_ax(ax, wdf,
-                                        f'W{wafer} (n={len(wdf):,})',
-                                        fontscale=0.42,
-                                        ret_shots_data=_ret_shots_data,
-                                        ret_die_num=_ret_die_num)
-                # keep axis tick labels for composite view
-                ax.tick_params(labelsize=2.5)
-                seen_legend.update(leg)
-
-            # shared legend info (used for composite HTML legend below)
+            for _, _slr in lot_work[['label','color','hatch','edge']].drop_duplicates(subset=['label']).iterrows():
+                seen_legend[_slr['label']] = (_slr['color'], _slr['hatch'], _slr['edge'])
             lot_label_counts = lot_work['label'].value_counts().to_dict()
             legend_items = sorted(seen_legend.items(), key=_leg_order)
-            handles = [mpatches.Patch(facecolor=c, hatch=h, edgecolor=e,
-                                      label=f'{l}  (n={lot_label_counts.get(l, 0):,})')
-                       for l, (c, h, e) in legend_items]
-            # Render composite as interactive SVG (matplotlib legend omitted — replaced by HTML legend)
-            fig_comp.suptitle(
-                f'Lot {lot_label}  ({n_wafers} wafer{"s" if n_wafers != 1 else ""})',
-                fontsize=5, fontweight='bold', y=1.005, va='bottom')
-            _comp_svg_id  = f'compsvg_{_sanitize_label(str(lot_label))}'
-            _comp_svg_str = _fig_to_svg_with_tooltips(fig_comp, _comp_svg_id)
 
-            # ══════════════════════════════════════════════════════════════
-            # 2) INDIVIDUAL per-wafer plots — one figure each (SVG only)
-            # ══════════════════════════════════════════════════════════════
-            # Each wafer entry: (wafer, svg_str, svg_id, leg_items, label_counts)
-            # Static PNG view is rasterized browser-side from the same SVG — no
-            # second matplotlib render needed, halving generation time & file size.
+            _TILE = max(100, min(200, 1100 // max(cols_grid, rows_grid, 1)))
+            _COMP_W = cols_grid * _TILE
+            _COMP_H = rows_grid * _TILE
+            _comp_svg_id = f'compsvg_{_sanitize_label(str(lot_label))}'
+            _comp_max_w = _COMP_W
+            _comp_rendered_h = _COMP_H
+            _comp_leg_top = 20
+            _top_axes_top_frac = 1.0  # legend aligns to top of composite SVG
+
+            # ── lot-level summary stats for header ─────────────────────
+            _lot_total  = len(lot_work)
+            _lot_npass  = int(lot_work['label'].str.contains('Pass').sum())
+            _lot_nfail  = _lot_total - _lot_npass
+            _lot_ppass  = _lot_npass / _lot_total * 100 if _lot_total else 0.0
+            _lot_pfail  = _lot_nfail / _lot_total * 100 if _lot_total else 0.0
+            _wafers_s   = 's' if n_wafers != 1 else ''
+            _lot_mats   = []
+            if '_material' in lot_work.columns:
+                _lot_mats = [str(m) for m in lot_work['_material'].dropna().unique() if str(m).strip()]
+            _lot_mat_html = ''
+            if _lot_mats:
+                _lot_mat_html = (
+                    '<div style="text-align:left">'
+                    '<div style="font-size:11px;opacity:0.7;margin-bottom:2px">Material</div>'
+                    + ''.join(f'<div style="font-size:12px;font-weight:bold">{m}</div>' for m in _lot_mats)
+                    + '</div>'
+                )
+
+            # ── CSS-Grid tile layout (auto-reflows when container is resized) ──
+            _tile_divs = []
+            for _idx, _wv in enumerate(wafers):
+                _wdf_t = lot_work[lot_work['_wafer'] == _wv]
+                if _wdf_t.empty: continue
+                _tile_mat = ''
+                if '_material' in _wdf_t.columns and len(_wdf_t):
+                    _tile_mat = str(_wdf_t['_material'].iloc[0]).strip()
+                _tile_svg = _wafer_svg(
+                    _wdf_t, f'ct_{lot_safe}_{_wv}', _TILE, _TILE,
+                    f'W{_wv} (n={len(_wdf_t):,})',
+                    gx=(x_min, x_max), gy=(y_min, y_max), fontscale=0.55,
+                    subtitle_text=_tile_mat,
+                    extra_attrs='style="display:block;width:100%;height:100%"')
+                _wv_safe = str(_wv).replace("'", "\\'")
+                _tip_attr = _waf_tooltip.get(_wv, f'Wafer {_wv}').replace('"', '&quot;')
+                _tile_divs.append(
+                    f'<div onclick="wmSelectWafer(\'{_wv_safe}\',event)" '
+                    f'data-wafer="{_wv_safe}" '
+                    f'title="{_tip_attr}" '
+                    f'style="cursor:pointer;aspect-ratio:1;overflow:hidden;box-sizing:border-box">'
+                    + _tile_svg
+                    + '</div>'
+                )
+            _comp_svg_str = (
+                f'<div id="{_comp_svg_id}" '
+                f'style="display:grid;grid-template-columns:repeat(auto-fill,var(--tile-sz,{_TILE}px));gap:0;width:100%;align-content:start">'
+                + ''.join(_tile_divs)
+                + '</div>'
+            )
+
+            # ── Pure-SVG per-wafer plots ───────────────────────────────────
             per_wafer_imgs = []
-            _sw = min(9, max(3.0, nx * 0.165) + 1.1)
-            _sh = min(7.5, max(3.0, ny * 0.165) + 0.6)
+            _pw = max(600, min(1350, round((nx * 14 + 60) * 1.5)))
+            _ph = max(480, min(1125, round((ny * 14 + 60) * 1.5)))
 
             for wafer in wafers:
                 wdf = lot_work[lot_work['_wafer'] == wafer]
-                if wdf.empty:
-                    continue
+                if wdf.empty: continue
                 total = len(wdf)
                 n_pass = wdf['label'].str.contains('Pass').sum()
                 pass_pct = n_pass / total * 100 if total else 0
                 title_str = f'Lot {lot_label} \u2014 Wafer {wafer}  (n={total:,}, pass={pass_pct:.1f}%)'
-
-                fig_svg, ax_svg = plt.subplots(figsize=(_sw, _sh))
-                leg = _draw_wafer_on_ax(ax_svg, wdf, title_str, fontscale=0.75,
-                                          reticle_fontscale=0.75 * 3.025,
-                                          ret_shots_data=_ret_shots_data,
-                                          ret_die_num=_ret_die_num)
-                fig_svg.tight_layout()
                 _svg_id = f'wsvg_{lot_label}_{wafer}'.replace(' ', '_')
-                _svg_str = _fig_to_svg_with_tooltips(fig_svg, _svg_id)  # closes fig
-
+                _mat_str = str(wdf['_material'].iloc[0]) if '_material' in wdf.columns and len(wdf) > 0 and str(wdf['_material'].iloc[0]).strip() else 'NA'
+                _svg_str = _wafer_svg(wdf, _svg_id, _pw, _ph, title_str,
+                                       gx=(x_min, x_max), gy=(y_min, y_max), fontscale=0.75,
+                                       show_dielo=True, subtitle_text=_mat_str)
                 wafer_label_counts = wdf['label'].value_counts().to_dict()
-                leg_items = sorted(leg.items(), key=_leg_order)
+                _wleg: dict = {}
+                for _, _lr in wdf[['label','color','hatch','edge']].drop_duplicates(subset=['label']).iterrows():
+                    _wleg[_lr['label']] = (_lr['color'], _lr['hatch'], _lr['edge'])
+                leg_items = sorted(_wleg.items(), key=_leg_order)
                 per_wafer_imgs.append((wafer, _svg_str, _svg_id, leg_items, wafer_label_counts))
 
             # ══════════════════════════════════════════════════════════════
             # 3) Assemble single HTML — both views embedded, toggle button
             # ══════════════════════════════════════════════════════════════
-            def _build_leg_html_interactive(leg_items, wlcounts, svg_id, scale=1.0):
+            def _build_leg_html_interactive(leg_items, wlcounts, svg_id, scale=1.0, lot='', wafer='__all__', material=''):
                 _fs1 = round(9 * scale, 1)
                 _fs2 = round(8 * scale, 1)
                 _fs3 = round(10 * scale, 1)
                 _fs4 = round(9 * scale, 1)
                 _sw_sz = round(12 * scale)
-                h = '<div class="ibin-legend" data-svgid="{sid}">'.format(sid=svg_id)
+                import html as _html_mod
+                _lot_attr = _html_mod.escape(str(lot), quote=True)
+                _wav_attr = _html_mod.escape(str(wafer), quote=True)
+                _mat_attr = _html_mod.escape(str(material), quote=True)
+                h = ('<div class="ibin-legend" data-svgid="{sid}" data-lot="{lo}" data-wafer="{wa}" data-material="{ma}">'
+                     .format(sid=svg_id, lo=_lot_attr, wa=_wav_attr, ma=_mat_attr))
                 h += f'<div style="font-weight:bold;margin-bottom:2px;color:#2c3e50;font-size:{_fs1}px">Interface Bin <span style="font-weight:normal;font-size:{_fs2}px">(click to highlight)</span></div>'
                 for _ll, (_lc, _lh, _le) in leg_items:
                     _cnt = wlcounts.get(_ll, 0)
@@ -8126,7 +7368,7 @@ h2{font-size:14px;color:#2c3e50;margin:16px 0 6px}
             per_wafer_html = ''
             for _wi, (_wlabel, _wsvg, _svg_id, _leg_items, _wlcounts) in enumerate(per_wafer_imgs):
                 _canvas_id = f'canvas_{_svg_id}'
-                _leg_interactive = _build_leg_html_interactive(_leg_items, _wlcounts, _svg_id, scale=1.331)
+                _leg_interactive = _build_leg_html_interactive(_leg_items, _wlcounts, _svg_id, scale=1.331, lot=lot_label, wafer=_wlabel, material=_mat_str)
                 _leg_static      = _build_leg_html_static(_leg_items, _wlcounts, scale=1.331)
                 _wlabel_safe = str(_wlabel).replace("'", "\\'")
                 # First wafer: inline SVG (renders immediately).
@@ -8145,9 +7387,13 @@ h2{font-size:14px;color:#2c3e50;margin:16px 0 6px}
                     f'<h2>Wafer {_wlabel}</h2>\n'
                     # interactive view
                     f'<div style="display:flex;align-items:flex-start;gap:8px">'
-                    f'<div style="width:900px;min-width:200px;flex-shrink:0">'
+                    f'<div style="flex-shrink:0">'
+                    f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+                    f'<button onclick="_wmZoom(\'{_svg_id}\',1.25)" style="font-size:16px;line-height:1;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">+</button>'
+                    f'<button onclick="_wmZoom(\'{_svg_id}\',-1)" style="font-size:16px;line-height:1;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8722;</button>'
+                    f'<button onclick="_wmZoomReset(\'{_svg_id}\')" style="font-size:11px;padding:2px 7px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8635; Reset</button>'
+                    f'</div>'
                     + _svg_slot +
-                    f'<div class="h-resize-handle" id="comp-h-resize" onmousedown="startHResize(event,"comp-svg-wrap","comp-svg-w")"></div>'
                     f'</div>'
                     f'<div style="flex-shrink:0;padding-top:32px">{_leg_interactive}</div>'
                     f'</div>\n'
@@ -8156,10 +7402,12 @@ h2{font-size:14px;color:#2c3e50;margin:16px 0 6px}
 
             lot_safe = _sanitize_label(str(lot_label))
             # Build composite legend — uses the same ibinToggle JS targeting _comp_svg_id
+            _lot_mats_str = ', '.join([str(m) for m in lot_work['_material'].dropna().unique() if str(m).strip()]) if '_material' in lot_work.columns else ''
             _comp_leg_html = _build_leg_html_interactive(
                 sorted(seen_legend.items(), key=_leg_order),
                 lot_label_counts,
                 _comp_svg_id,
+                lot=lot_label, wafer='__all__', material=_lot_mats_str,
             )
 
             # ══════════════════════════════════════════════════════════════
@@ -8182,17 +7430,16 @@ h2{font-size:14px;color:#2c3e50;margin:16px 0 6px}
             if '_reticle' in lot_work.columns:
                 _prn = lot_work.groupby(['x','y'])[['_reticle']].first().reset_index()
                 _pat_df = _pat_df.merge(_prn, on=['x','y'], how='left')
-            _psw = min(9.0, max(5.0, nx * 0.15))
-            _psh = min(7.5, max(4.0, ny * 0.15))
-            fig_pat, ax_pat = plt.subplots(figsize=(_psw, _psh))
-            _pat_leg = _draw_wafer_on_ax(
-                ax_pat, _pat_df,
-                f'Lot {lot_label}  \u2014  Wafer Pattern Analysis  ({n_wafers} wafer{"s" if n_wafers!=1 else ""}, mode bin per position)',
-                fontscale=1.2, reticle_fontscale=3.8,
-                ret_shots_data=_ret_shots_data, ret_die_num=_ret_die_num)
-            fig_pat.tight_layout()
+            _psw_px = max(400, min(900, nx * 14 + 60))
+            _psh_px = max(320, min(750, ny * 14 + 60))
             _pat_svg_id  = f'patsvg_{lot_safe}'
-            _pat_svg_str = _fig_to_svg_with_tooltips(fig_pat, _pat_svg_id)
+            _pat_svg_str = _wafer_svg(
+                _pat_df, _pat_svg_id, _psw_px, _psh_px,
+                f'Lot {lot_label} \u2014 Wafer Pattern Analysis  ({n_wafers} wafer{"s" if n_wafers!=1 else ""}, mode bin per position)',
+                gx=(x_min, x_max), gy=(y_min, y_max), fontscale=0.9)
+            _pat_leg: dict = {}
+            for _, _plr2 in _pat_df[['label','color','hatch','edge']].drop_duplicates(subset=['label']).iterrows():
+                _pat_leg[_plr2['label']] = (_plr2['color'], _plr2['hatch'], _plr2['edge'])
             _pat_leg_items    = sorted(_pat_leg.items(), key=_leg_order)
             _pat_label_counts = _pat_df['label'].value_counts().to_dict()
             _pat_leg_html = _build_leg_html_interactive(_pat_leg_items, _pat_label_counts, _pat_svg_id, scale=1.5)
@@ -8225,7 +7472,42 @@ h2{font-size:14px;color:#2c3e50;margin:16px 0 6px}
                         _ret_tbl_html += f'<td style="padding:3px 10px;border-bottom:1px solid #eee;text-align:right">{int(_rrow["die_count"]):,}</td>'
                         _ret_tbl_html += '</tr>'
                     _ret_tbl_html += '</tbody></table>'
-            _IBIN_JS = """<div id="ibin-fb-panel" class="fb-panel">
+            _IBIN_JS = """<script>
+var _ibinDieTt=null;
+function _ibinDieHover(e){
+  var t=e.target;
+  if(!t||t.tagName!=='rect'||!t.dataset.x)return;
+  if(!_ibinDieTt){
+    _ibinDieTt=document.createElement('div');
+    _ibinDieTt.style.cssText='position:fixed;z-index:99998;background:rgba(30,30,30,.92);color:#fff;font-size:11px;font-family:Arial,sans-serif;padding:5px 9px;border-radius:5px;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.4);line-height:1.6';
+    document.body.appendChild(_ibinDieTt);
+  }
+  var ib=t.dataset.ib||'',fb=t.dataset.fb||'0',dx=t.dataset.x,dy=t.dataset.y;
+  _ibinDieTt.innerHTML='<b>X:</b> '+dx+' &nbsp;<b>Y:</b> '+dy+'<br><b>IB:</b> '+ib+(fb&&fb!=='0'?'<br><b>FB:</b> '+fb:'');
+  var m=12,tw=_ibinDieTt.offsetWidth||140,th=_ibinDieTt.offsetHeight||48;
+  var lft=e.clientX+m,top=e.clientY-th-m;
+  if(lft+tw>window.innerWidth)lft=e.clientX-tw-m;
+  if(top<4)top=e.clientY+m;
+  _ibinDieTt.style.left=lft+'px';_ibinDieTt.style.top=top+'px';_ibinDieTt.style.display='';
+}
+function _ibinDieHoverOut(){if(_ibinDieTt)_ibinDieTt.style.display='none';}
+var _wmZoomLevels={};
+function _wmZoom(svgId,factor){
+  var svg=document.getElementById(svgId);if(!svg)return;
+  var cur=_wmZoomLevels[svgId]||1.0;
+  var nxt=factor===-1?Math.max(0.3,cur/1.25):Math.min(6,cur*factor);
+  _wmZoomLevels[svgId]=nxt;
+  svg.style.transform='scale('+nxt+')';svg.style.transformOrigin='top left';
+  svg.parentElement.style.width=Math.round(parseFloat(svg.getAttribute('width'))*nxt)+'px';
+  svg.parentElement.style.height=Math.round(parseFloat(svg.getAttribute('height'))*nxt)+'px';
+}
+function _wmZoomReset(svgId){
+  var svg=document.getElementById(svgId);if(!svg)return;
+  _wmZoomLevels[svgId]=1.0;svg.style.transform='';
+  svg.parentElement.style.width='';svg.parentElement.style.height='';
+}
+</script>
+<div id="ibin-fb-panel" class="fb-panel">
   <div class="fb-resize" id="fb-panel-resize"></div>
   <div class="fb-phdr">
     <span id="ibin-fb-title" class="fb-ptitle">FB Filter</span>
@@ -8275,7 +7557,8 @@ function ibinToggle(el,ev) {
   var svgId=el.getAttribute('data-svgid');
   var hasFb=false;
   var svg=document.getElementById(svgId);
-  if(svg){var testDie=svg.querySelector('g[data-fb]');hasFb=testDie&&testDie.getAttribute('data-fb')!=='0';}
+  if(svg){hasFb=!!svg.querySelector('g[data-fb]:not([data-fb="0"])');}
+  if(!hasFb){var secs2=Array.from(document.querySelectorAll('.wm-wafer-section'));hasFb=secs2.some(function(s){return !!s.querySelector('g[data-fb]:not([data-fb="0"])');});}
   if(!hasFb){
     // No FB data — fall back to toggle
     el.classList.toggle('active');
@@ -8291,14 +7574,33 @@ var _ibinFbCnts={},_ibinFbTotal=0;
 function ibinFbOpen(bin, svgId){
   _ibinFbBin=bin; _ibinFbSvgId=svgId;
   var fbCnts={},ibTotal=0;
-  // Collect dies from wafer-filtered sections (respects _wmSel when available)
   var _sel=typeof _wmSel!=='undefined'?_wmSel:new Set();
-  var secs=Array.from(document.querySelectorAll('.wm-wafer-section'));
-  var toScan=_sel.size>0?secs.filter(function(s){return _sel.has(s.id.replace('wm-section-',''));}):secs;
-  toScan.forEach(function(sec){sec.querySelectorAll('g[data-bin]').forEach(function(g){if(g.getAttribute('data-bin')===bin){ibTotal++;var fb=g.getAttribute('data-fb')||'0';fbCnts[fb]=(fbCnts[fb]||0)+1;}});});
+  var _svgEl=svgId?document.getElementById(svgId):null;
+  var _isComp=_svgEl&&!_svgEl.closest('.wm-wafer-section');
+  if(_isComp){
+    // composite grid: all tile SVGs are in DOM — scan by data-wafer tile divs
+    var _tileDivs=Array.from(_svgEl.querySelectorAll(':scope > div[data-wafer]'));
+    var _toScanT=_sel.size>0?_tileDivs.filter(function(d){return _sel.has(d.dataset.wafer);}):_tileDivs;
+    _toScanT.forEach(function(td){td.querySelectorAll('g[data-bin]').forEach(function(g){if(g.getAttribute('data-bin')===bin){ibTotal++;var fb=g.getAttribute('data-fb')||'0';fbCnts[fb]=(fbCnts[fb]||0)+1;}});});
+  }else{
+    var secs=Array.from(document.querySelectorAll('.wm-wafer-section'));
+    var toScan=_sel.size>0?secs.filter(function(s){return _sel.has(s.id.replace('wm-section-',''));}):secs;
+    toScan.forEach(function(sec){sec.querySelectorAll('g[data-bin]').forEach(function(g){if(g.getAttribute('data-bin')===bin){ibTotal++;var fb=g.getAttribute('data-fb')||'0';fbCnts[fb]=(fbCnts[fb]||0)+1;}});});
+  }
   _ibinFbCnts=fbCnts; _ibinFbTotal=ibTotal;
   var scopeEl=document.getElementById('ibin-fb-scope');
-  if(scopeEl){scopeEl.textContent=_sel.size>0?'Scope: Wafer '+Array.from(_sel).join(', '):'Scope: All wafers';}
+  var _legEl=document.querySelector('.ibin-legend[data-svgid="'+svgId+'"]');
+  var _fbLot=_legEl?(_legEl.getAttribute('data-lot')||''):''; 
+  var _fbWaf=_legEl?(_legEl.getAttribute('data-wafer')||'__all__'):'__all__';
+  var _fbMat=_legEl?(_legEl.getAttribute('data-material')||''):'NA';
+  if(!_fbMat)_fbMat='NA';
+  var _scopeParts=['Lot: '+(_fbLot||'—')];
+  if(_fbWaf==='__all__'&&_sel.size>0){_scopeParts.push('Wafer: '+Array.from(_sel).join(', '));}
+  else if(_fbWaf!=='__all__'){_scopeParts.push('Wafer: '+_fbWaf);}
+  else{_scopeParts.push('Wafer: All');}
+  _scopeParts.push('Material: '+_fbMat);
+  window._ibinFbScopeStr=_scopeParts.join('  |  ');
+  if(scopeEl){scopeEl.textContent=window._ibinFbScopeStr;}
   var fbKeys=Object.keys(fbCnts).filter(function(k){return k!=='0';}).sort(function(a,b){return fbCnts[b]-fbCnts[a];});
   document.getElementById('ibin-fb-title').textContent='IB: '+bin+' \u2014 '+ibTotal.toLocaleString()+' die \u2014 Select FBs to highlight';
   var el=document.getElementById('ibin-fb-cblist');
@@ -8315,7 +7617,8 @@ function ibinFbOpen(bin, svgId){
   el.innerHTML=html;
   // Populate die-loc checkboxes
   var dlocCnts={};
-  toScan.forEach(function(sec){sec.querySelectorAll('g[data-bin]').forEach(function(g){if(g.getAttribute('data-bin')===bin){var dl=g.getAttribute('data-dielo')||'0';if(dl!=='0')dlocCnts[dl]=(dlocCnts[dl]||0)+1;}});});
+  var _dlocScan=_isComp?_toScanT:(typeof toScan!=='undefined'?toScan:[]);
+  _dlocScan.forEach(function(sec){sec.querySelectorAll('g[data-bin]').forEach(function(g){if(g.getAttribute('data-bin')===bin){var dl=g.getAttribute('data-dielo')||'0';if(dl!=='0')dlocCnts[dl]=(dlocCnts[dl]||0)+1;}});});
   var dlocKeys=Object.keys(dlocCnts).filter(function(k){return k!=='0';}).sort(function(a,b){return parseInt(a)-parseInt(b);});
   var dlocEl=document.getElementById('ibin-dloc-cblist'),dlocRow=document.getElementById('ibin-dloc-row');
   if(dlocKeys.length&&dlocEl&&dlocRow){
@@ -8443,7 +7746,7 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                     'var modal=document.getElementById("ibin-hw-modal");'
                     'var title=document.getElementById("ibin-hw-modal-title");'
                     'if(!modal)return;'
-                    'if(title)title.textContent="HW Breakdown \u2014 "+label;'
+                    'if(title)title.textContent="HW Breakdown \u2014 IB "+label+(typeof window._ibinFbScopeStr!=="undefined"&&window._ibinFbScopeStr?"  |  "+window._ibinFbScopeStr:"");'
                     '_ibinHwGroupByCols=null;'  # reset group-by on new bin
                     'ibinHwRenderList();'
                     'modal.classList.add("open");}'
@@ -8461,41 +7764,46 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                     'var cbs=document.querySelectorAll(\'#ibin-fb-cblist input[type=checkbox]\');'
                     'var fbSel=new Set();cbs.forEach(function(cb){if(cb.checked)fbSel.add(cb.dataset.fb);});'
                     'var wmSel=typeof _wmSel!=="undefined"?_wmSel:new Set();'
+                    'var _ibinHwLot=(typeof _ibinLot!=="undefined"&&_ibinLot)?_ibinLot:"?";'
                     'var orderedCols=_ibinHwGetOrderedCols();'
                     # initialise group-by to all columns on first render
                     'if(_ibinHwGroupByCols===null){_ibinHwGroupByCols=new Set(orderedCols);}'
                     'var activeCols=orderedCols.filter(function(c){return _ibinHwGroupByCols.has(c);});'
                     # collect raw die counts per (wafer, hwIdx)
                     'var rawEntries=[],grandTotal=0,_wHw={};'
-                    'var secs=Array.from(document.querySelectorAll(".wm-wafer-section"));'
-                    'var actSecs=wmSel.size>0?secs.filter(function(s){return wmSel.has(s.id.replace("wm-section-",""));}):secs;'
-                    'actSecs.forEach(function(sec){'
-                    '  var w=sec.id.replace("wm-section-","");if(!_wHw[w])_wHw[w]={};'
-                    '  sec.querySelectorAll("g[data-bin]").forEach(function(g){'
-                    '    var db=g.getAttribute("data-bin"),fb=g.getAttribute("data-fb")||"0",hw=g.getAttribute("data-hw")||"0";'
-                    '    if(db===_ibinHwBin&&(fbSel.size===0||fbSel.has(fb))){_wHw[w][hw]=(_wHw[w][hw]||0)+1;grandTotal++;}'
-                    '  });'
-                    '});'
-                    'if(wmSel.size===0&&grandTotal===0&&typeof _ibinFbSvgId!=="undefined"&&_ibinFbSvgId){'
-                    '  var orig=document.getElementById(_ibinFbSvgId);'
-                    '  if(orig&&!orig.closest(".wm-wafer-section")){'
-                    '    if(!_wHw[""])_wHw[""]={};'
-                    '    orig.querySelectorAll("g[data-bin]").forEach(function(g){'
+                    'var _hwCompEl=(typeof _ibinFbSvgId!=="undefined"&&_ibinFbSvgId)?document.getElementById(_ibinFbSvgId):null;'
+                    'var _hwIsComp=_hwCompEl&&!_hwCompEl.closest(".wm-wafer-section");'
+                    'if(_hwIsComp){'
+                    '  var _hwTiles=Array.from(_hwCompEl.querySelectorAll(":scope > div[data-wafer]"));'
+                    '  var _hwToScan=wmSel.size>0?_hwTiles.filter(function(d){return wmSel.has(d.dataset.wafer);}):_hwTiles;'
+                    '  _hwToScan.forEach(function(td){'
+                    '    var w=td.dataset.wafer;if(!_wHw[w])_wHw[w]={};'
+                    '    td.querySelectorAll("g[data-bin]").forEach(function(g){'
                     '      var db=g.getAttribute("data-bin"),fb=g.getAttribute("data-fb")||"0",hw=g.getAttribute("data-hw")||"0";'
-                    '      if(db===_ibinHwBin&&(fbSel.size===0||fbSel.has(fb))){_wHw[""][hw]=(_wHw[""][hw]||0)+1;grandTotal++;}'
+                    '      if(db===_ibinHwBin&&(fbSel.size===0||fbSel.has(fb))){_wHw[w][hw]=(_wHw[w][hw]||0)+1;grandTotal++;}'
                     '    });'
-                    '  }'
+                    '  });'
+                    '}else{'
+                    '  var secs=Array.from(document.querySelectorAll(".wm-wafer-section"));'
+                    '  var actSecs=wmSel.size>0?secs.filter(function(s){return wmSel.has(s.id.replace("wm-section-",""));}):secs;'
+                    '  actSecs.forEach(function(sec){'
+                    '    var w=sec.id.replace("wm-section-","");if(!_wHw[w])_wHw[w]={};'
+                    '    sec.querySelectorAll("g[data-bin]").forEach(function(g){'
+                    '      var db=g.getAttribute("data-bin"),fb=g.getAttribute("data-fb")||"0",hw=g.getAttribute("data-hw")||"0";'
+                    '      if(db===_ibinHwBin&&(fbSel.size===0||fbSel.has(fb))){_wHw[w][hw]=(_wHw[w][hw]||0)+1;grandTotal++;}'
+                    '    });'
+                    '  });'
                     '}'
-                    'Object.keys(_wHw).forEach(function(w){Object.keys(_wHw[w]).forEach(function(hw){rawEntries.push({lot:_ibinLot||"?",wafer:w,hwIdx:hw,cnt:_wHw[w][hw]});});});'
+                    'Object.keys(_wHw).forEach(function(w){Object.keys(_wHw[w]).forEach(function(hw){rawEntries.push({lot:_ibinHwLot,wafer:w,hwIdx:hw,cnt:_wHw[w][hw]});});});'
                     # re-group by activeCols composite key
                     'var groupMap={};'
                     'rawEntries.forEach(function(e){'
                     '  var combo=tbl[parseInt(e.hwIdx)]||{};'
                     '  var key=activeCols.length>0?activeCols.map(function(c){return String(combo[c]||"");}).join("\\x00"):("__hw__"+e.hwIdx);'
-                    '  if(!groupMap[key])groupMap[key]={lot:e.lot,wafer:"(all)",hwIdx:e.hwIdx,cnt:0,combo:combo};'
-                    '  groupMap[key].cnt+=e.cnt;'
+                    '  if(!groupMap[key])groupMap[key]={lot:e.lot,wafers:new Set(),hwIdx:e.hwIdx,cnt:0,combo:combo};'
+                    '  groupMap[key].wafers.add(e.wafer);groupMap[key].cnt+=e.cnt;'
                     '});'
-                    'var entries=Object.values(groupMap).sort(function(a,b){return b.cnt-a.cnt;});'
+                    'var entries=Object.values(groupMap).map(function(e){e.wafer=e.wafers.size===1?Array.from(e.wafers)[0]:"All("+e.wafers.size+"w)";return e;}).sort(function(a,b){return b.cnt-a.cnt;});'
                     'if(!entries.length){container.innerHTML=\'<p style="color:#888">No matching die for current selection.</p>\';return;}'
                     'var filtered=entries.filter(function(e){'
                     '  var pass=true;'
@@ -8523,9 +7831,9 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                     '  +\'<button class="hw-btn" onclick="ibinHwClrColFilters()">Clear Filters</button>\''
                     '  +\'</div>\';'
                     'var displayCols=activeCols.length>0?activeCols:orderedCols;'
-                    'var th=\'<tr><th style="width:30px"></th>\'+["Count","%"].concat(displayCols).map(function(c){return\'<th style="text-align:left;white-space:normal;word-wrap:break-word">\'+c+\'</th>\';}).join("")+\'</tr>\';'
-                    'var filterRow=\'<tr><td></td>\'+["Count","%"].concat(displayCols).map(function(c){'
-                    '  if(c==="Count"||c==="%")return"<td></td>";'
+                    'var th=\'<tr><th style="width:30px"></th>\'+["Lot","Wafer","Count","%"].concat(displayCols).map(function(c){return\'<th style="text-align:left;white-space:normal;word-wrap:break-word">\'+c+\'</th>\';}).join("")+\'</tr>\';'
+                    'var filterRow=\'<tr><td></td>\'+["Lot","Wafer","Count","%"].concat(displayCols).map(function(c){'
+                    '  if(c==="Lot"||c==="Wafer"||c==="Count"||c==="%")return"<td></td>";'
                     '  var val=(_ibinHwColFilter[c]||"").replace(/"/g,"&quot;");'
                     '  return\'<td><input type="text" data-hw-fcol="\'+c+\'" value="\'+val+\'" placeholder="\u2026" style="width:100%;box-sizing:border-box;font-size:11px;padding:2px 4px;border:1px solid #ccc;border-radius:3px" oninput="ibinHwTxtFilter(this)"></td>\';'
                     '}).join("")+\'</tr>\';'
@@ -8535,6 +7843,7 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                     '  var op=sel?"1":"0.4";var chk=sel?"checked":"";'
                     '  return\'<tr style="opacity:\'+op+\'">\''
                     '    +\'<td><input type="checkbox" data-hw-idx="\'+e.hwIdx+\'" \'+chk+\' onclick="event.stopPropagation();ibinHwChkChange(this)"></td>\''
+                    '    +\'<td>\'+String(e.lot||"").replace(/&/g,"&amp;")+\'</td><td>\'+String(e.wafer||"").replace(/&/g,"&amp;")+\'</td>\''
                     '    +\'<td>\'+e.cnt.toLocaleString()+\'</td><td>\'+pct+\'%</td>\''
                     '    +displayCols.map(function(c){return"<td>"+String(e.combo[c]||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")+"</td>";}).join("")'
                     '    +\'</tr>\';'
@@ -8619,13 +7928,17 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                     '});'
                     '});'
                 )
-                _IBIN_JS = (
-                    '<script>\nvar HW_DATA=' + _json_fbdesc_ibin.dumps(_hw_data_wm)
+                # write HW data to a separate file — keeps per-wafer HTML ~300KB smaller
+                _hw_js_name = f'hw_{lot_safe}.js'
+                _hw_js_content = (
+                    'var HW_DATA=' + _json_fbdesc_ibin.dumps(_hw_data_wm)
                     + ';\nvar HW_COMBO_TABLE=' + _json_fbdesc_ibin.dumps(_hw_combo_table_js)
                     + ';\nvar HW_COLS=' + _json_fbdesc_ibin.dumps(_hw_cols_wm)
                     + ';\nvar _ibinLot=' + _json_fbdesc_ibin.dumps(str(lot_label))
-                    + ';\n' + _hw_show_fn + '\n</script>\n'
-                ) + _IBIN_JS
+                    + ';\n' + _hw_show_fn + '\n'
+                )
+                (heat_dir / _hw_js_name).write_text(_hw_js_content, encoding='utf-8')
+                _IBIN_JS = f'<script src="{_hw_js_name}"></script>\n' + _IBIN_JS
                 # Inject HW Breakdown button into the FB filter panel header
                 _IBIN_JS = _IBIN_JS.replace(
                     '<button class="fb-btn" onclick="ibinFbClose()">&times; Close</button>',
@@ -8638,6 +7951,19 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                 'var _wmSel=new Set();\n'
                 'var _wmAllWafers=[];\n'
                 'var _wmLastSel=null;\n'
+                'var _wmNavIdx=-1;\n'
+                'function _wmNavUpdateLbl(){\n'
+                '  var lbl=document.getElementById(\'wm-nav-lbl\');if(!lbl)return;\n'
+                '  if(_wmNavIdx<0||!_wmAllWafers.length){lbl.textContent=\'All wafers\';return;}\n'
+                '  lbl.textContent=\'W\'+_wmAllWafers[_wmNavIdx]+\' (\'+((_wmNavIdx+1)+\'/\'+_wmAllWafers.length)+\')\';}\n'
+                'function _wmNavGo(idx){\n'
+                '  if(!_wmAllWafers.length)return;\n'
+                '  idx=Math.max(0,Math.min(_wmAllWafers.length-1,idx));\n'
+                '  var w=_wmAllWafers[idx];_wmNavIdx=idx;\n'
+                '  _wmSel.clear();_wmSel.add(w);_wmLastSel=w;\n'
+                '  _wmUpdateView();_wmNavUpdateLbl();}\n'
+                'function _wmNavPrev(){_wmNavGo(_wmNavIdx<0?0:_wmNavIdx-1);}\n'
+                'function _wmNavNext(){_wmNavGo(_wmNavIdx<0?0:_wmNavIdx+1);}\n'
                 'function wmSelectWafer(wafer,ev){\n'
                 '  var isCtrl=ev&&(ev.ctrlKey||ev.metaKey);\n'
                 '  var isShift=ev&&ev.shiftKey;\n'
@@ -8653,13 +7979,18 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                 '    else{_wmSel.clear();_wmSel.add(wafer);}\n'
                 '  }\n'
                 '  _wmLastSel=wafer;\n'
+                '  _wmNavIdx=_wmAllWafers.indexOf(wafer);\n'
+                '  _wmNavUpdateLbl();\n'
                 '  _wmUpdateView();\n'
                 '}\n'
                 'function _wmUpdateView(){\n'
                 '  document.querySelectorAll(\'.wm-row\').forEach(function(r){\n'
                 '    var w=r.id.replace(\'wm-row-\',\'\');\n'
-                '    if(_wmSel.has(w)){r.classList.add(\'wm-active\');r.style.background=\'#ddeeff\';}\n'
-                '    else{r.classList.remove(\'wm-active\');r.style.background=\'\';}\n'
+                '    if(_wmSel.has(w)){r.classList.add(\'wm-active\');}\n'
+                '    else{r.classList.remove(\'wm-active\');}\n'
+                '  });\n'
+                '  document.querySelectorAll(\'[data-wafer]\').forEach(function(d){\n'
+                '    d.style.outline=_wmSel.size>0&&_wmSel.has(d.dataset.wafer)?\'3px solid #2563eb\':\'\';\n'
                 '  });\n'
                 '  var secs=document.querySelectorAll(\'.wm-wafer-section\');\n'
                 '  var _hwMvUp=document.getElementById(\'ibin-hw-modal\');if(_hwMvUp&&_hwMvUp.classList.contains(\'open\')&&typeof _ibinHwBin!==\'undefined\'&&_ibinHwBin){ibinHwRenderList();ibinHwApply();}\n'
@@ -8671,12 +8002,13 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                 '  });\n'
                 '  var firstW=null;\n'
                 '  for(var k=0;k<_wmAllWafers.length;k++){if(_wmSel.has(_wmAllWafers[k])){firstW=_wmAllWafers[k];break;}}\n'
-                '  if(firstW){var el=document.getElementById(\'wm-section-\'+firstW);if(el)setTimeout(function(){el.scrollIntoView({behavior:\'smooth\',block:\'start\'});},50);}\n'
+                '  if(firstW){var el=document.getElementById(\'wm-section-\'+firstW);if(el){el.classList.remove(\'wm-flash\');setTimeout(function(){el.scrollIntoView({behavior:\'smooth\',block:\'start\'});void el.offsetWidth;el.classList.add(\'wm-flash\');},50);}}\n'
                 '  if(typeof _ibinFbBin!==\'undefined\'&&_ibinFbBin&&document.getElementById(\'ibin-fb-panel\').classList.contains(\'open\'))ibinFbOpen(_ibinFbBin,_ibinFbSvgId);\n'
                 '  var _hwMv=document.getElementById(\'ibin-hw-modal\');if(_hwMv&&_hwMv.classList.contains(\'open\')&&typeof _ibinHwBin!==\'undefined\'&&_ibinHwBin){ibinHwRenderList();ibinHwApply();}\n'
                 '}\n'
                 'function wmShowAll(){\n'
-                '  _wmSel.clear();_wmLastSel=null;\n'
+                '  _wmSel.clear();_wmLastSel=null;_wmNavIdx=-1;\n'
+                '  _wmNavUpdateLbl();\n'
                 '  document.querySelectorAll(\'.wm-row\').forEach(function(r){r.classList.remove(\'wm-active\');r.style.background=\'\';});\n'
                 '  document.querySelectorAll(\'.wm-wafer-section\').forEach(function(s){s.style.display=\'\';});\n'
                 '  var _hwMvSa=document.getElementById(\'ibin-hw-modal\');if(_hwMvSa&&_hwMvSa.classList.contains(\'open\')&&typeof _ibinHwBin!==\'undefined\'&&_ibinHwBin){ibinHwRenderList();ibinHwApply();}\n'
@@ -8696,11 +8028,19 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                 '  },{rootMargin:\'400px\'});\n'
                 '  document.querySelectorAll(\'.wm-wafer-section[id]\').forEach(function(s){_wio.observe(s);});\n'
                 '})();\n'
-                '// Hash routing: #wafer-W or #wafers-W1,W2,W3\n'
+                '// Hash routing: #wafer-W, #wafers-W1,W2,W3, or #wpa&wafers=W1,W2\n'
                 '(function(){\n'
                 '  function _chk(){\n'
                 '    var h=window.location.hash;\n'
-                '    if(h&&h.indexOf(\'#wafer-\')===0){\n'
+                '    if(h&&h.indexOf(\'#wpa\')===0){\n'
+                '      var _wpaWm=h.match(/wafers=([^&]*)/);\n'
+                '      if(_wpaWm){\n'
+                '        var ws=decodeURIComponent(_wpaWm[1]).split(\',\');\n'
+                '        _wmSel.clear();ws.forEach(function(w){if(w)_wmSel.add(w);});\n'
+                '        _wmLastSel=ws[ws.length-1]||null;_wmUpdateView();\n'
+                '      }\n'
+                '      setTimeout(function(){if(typeof wpaOpen===\'function\')wpaOpen();},200);\n'
+                '    } else if(h&&h.indexOf(\'#wafer-\')===0){\n'
                 '      var w=decodeURIComponent(h.slice(7)); _wmSel.clear();_wmSel.add(w);_wmLastSel=w;_wmUpdateView();\n'
                 '    } else if(h&&h.indexOf(\'#wafers-\')===0){\n'
                 '      var ws=decodeURIComponent(h.slice(8)).split(\',\');\n'
@@ -8717,7 +8057,15 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
                 '</script>\n'
             )
             _wm_mat_th = '<th>Material Type</th>' if mat_col_wm else ''
-            _toggle_bar = ''
+            _nav_btn = 'padding:3px 12px;font-size:14px;cursor:pointer;border:1px solid #bdc3c7;background:#ecf0f1;border-radius:3px;color:#2c3e50;line-height:1.4'
+            _toggle_bar = (
+                f'<div id="wm-nav-bar" style="display:flex;align-items:center;gap:10px;padding:5px 8px;'
+                f'background:#f0f2f5;border-bottom:1px solid #d1d5db;flex-shrink:0;position:sticky;top:0;z-index:5">'
+                f'<button onclick="_wmNavPrev()" style="{_nav_btn}">&#8592; Prev</button>'
+                f'<span id="wm-nav-lbl" style="font-size:12px;color:#555;min-width:130px;text-align:center">All wafers</span>'
+                f'<button onclick="_wmNavNext()" style="{_nav_btn}">Next &#8594;</button>'
+                f'</div>'
+            )
 
             page = f"""<!doctype html>
 <html><head><meta charset="utf-8">
@@ -8735,17 +8083,61 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
 .wpa-pane.on{{display:flex;flex-direction:row;gap:16px;flex-wrap:wrap;align-items:flex-start}}
 .wpa-pane-scroll{{display:none;flex:1;min-height:0;overflow:auto;padding:4px}}
 .wpa-pane-scroll.on{{display:block}}
-.wm-split-bar{{height:8px;background:#d1d5db;cursor:ns-resize;display:flex;align-items:center;justify-content:center;user-select:none;margin:4px 0;border-radius:4px;transition:background .15s}}
-.wm-split-bar:hover,.wm-split-bar.dragging{{background:#94a3b8}}
-.wm-split-grip{{color:#9ca3af;font-size:16px;letter-spacing:3px;line-height:1;pointer-events:none}}
+.wm-split-bar{{height:8px;background:#d1d5db;margin:6px 0;border-radius:4px}}
+.wm-split-grip{{display:none}}
 #wm-top-panel.constrained{{overflow:auto}}
 </style></head><body>
 {_IBIN_JS}
-<div id="wm-top-panel"><div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
-<div id="comp-svg-wrap" style="width:{_comp_max_w}px;flex-shrink:0;position:relative">{_comp_svg_str}<div class="comp-corner-resize" id="comp-corner-resize" onmousedown="startCornerResize(event,&quot;comp-svg-wrap&quot;,&quot;comp-svg-w&quot;)"></div></div>
-<div id="comp-legend" style="flex-shrink:0;padding-top:32px">{_comp_leg_html}</div>
+<div id="wm-top-panel">
+<div style="background:linear-gradient(135deg,#1a2940 0%,#2c4a70 100%);color:#fff;padding:12px 18px;border-radius:6px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+<button id="wm-top-toggle" onclick="_wmTogglePanel('top')" title="Show/hide lot overview" style="align-self:center;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:13px;cursor:pointer;padding:2px 9px;border-radius:4px;line-height:1.6;flex-shrink:0">&#9660;</button>
+  <div>
+    <div style="font-size:20px;font-weight:bold;letter-spacing:0.5px">Lot {lot_label}</div>
+    <div style="font-size:12px;opacity:0.85;margin-top:2px">{n_wafers} wafer{_wafers_s} &nbsp;&bull;&nbsp; {_lot_total:,} die total</div>
+  </div>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+    <div style="text-align:center">
+      <div style="font-size:18px;font-weight:bold;color:#7defa7">{_lot_ppass:.1f}%</div>
+      <div style="font-size:11px;opacity:0.8">Pass &nbsp;({_lot_npass:,})</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:18px;font-weight:bold;color:#ff7070">{_lot_pfail:.1f}%</div>
+      <div style="font-size:11px;opacity:0.8">Fail &nbsp;({_lot_nfail:,})</div>
+    </div>
+    {_lot_mat_html}
+</div>
+</div>
+<div id="wm-top-body">
+<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+  <button onclick="_compZoom('{_comp_svg_id}',1)" style="font-size:16px;line-height:1;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">+</button>
+  <button onclick="_compZoom('{_comp_svg_id}',-1)" style="font-size:16px;line-height:1;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&minus;</button>
+  <button onclick="_compZoomReset('{_comp_svg_id}')" style="font-size:11px;padding:2px 7px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8635; Reset</button>
+</div>
+<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+<div id="comp-svg-wrap" style="display:flex;align-items:flex-start;gap:8px;width:{_comp_max_w + 280}px;height:{_COMP_H + 40}px;flex-shrink:0;position:relative;overflow:auto;resize:both;border:2px solid #d1d5db;border-radius:6px;padding:6px;box-sizing:border-box;background:#fafafa">
+<div id="comp-grid-wrap" style="flex:1;min-width:0;overflow:hidden">{_comp_svg_str}</div>
+<div id="comp-legend" style="flex-shrink:0;overflow-y:auto;height:100%">{_comp_leg_html}</div>
+</div>
 </div>
 <script>
+(function(){{
+  var _COMP_TILE_BASE = {_TILE};
+  window._compZoom = function(elId, dir){{
+    var el = document.getElementById(elId);
+    if(!el) return;
+    var cur = parseInt(el.dataset.tileSize) || _COMP_TILE_BASE;
+    var next = dir > 0 ? Math.round(cur * 1.25) : Math.round(cur / 1.25);
+    next = Math.max(40, Math.min(600, next));
+    el.dataset.tileSize = next;
+    el.style.setProperty('--tile-sz', next + 'px');
+  }};
+  window._compZoomReset = function(elId){{
+    var el = document.getElementById(elId);
+    if(!el) return;
+    el.dataset.tileSize = _COMP_TILE_BASE;
+    el.style.setProperty('--tile-sz', _COMP_TILE_BASE + 'px');
+  }};
+}})();
 (function(){{
   var TOP_FRAC = {_top_axes_top_frac:.4f};
   window.alignLegend = function alignLegend() {{
@@ -8785,10 +8177,27 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
   window.startCornerResize=function(e,wrapperId,storageKey){{
     e.preventDefault();
     var wrap=document.getElementById(wrapperId);if(!wrap)return;
-    var startX=e.clientX,startW=wrap.getBoundingClientRect().width;
+    var startX=e.clientX,startY=e.clientY;
+    var startW=wrap.getBoundingClientRect().width,startH=wrap.getBoundingClientRect().height||wrap.getBoundingClientRect().width;
+    if(!wrap.style.height)wrap.style.height=startH+'px';
     function mm(ev){{
       var w=Math.max(200,startW+(ev.clientX-startX));
-      wrap.style.width=w+'px';
+      var h=Math.max(100,startH+(ev.clientY-startY));
+      wrap.style.width=w+'px';wrap.style.height=h+'px';
+      if(typeof window.alignLegend==='function')window.alignLegend();
+    }}
+    function mu(){{
+      document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);
+      if(storageKey){{sv(storageKey,wrap.getBoundingClientRect().width);sv(storageKey+'_h',wrap.getBoundingClientRect().height);}}
+    }}
+    document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+  }};
+  window.startEdgeResizeH=function(e,wrapperId,storageKey){{
+    e.preventDefault();
+    var wrap=document.getElementById(wrapperId);if(!wrap)return;
+    var startX=e.clientX,startW=wrap.getBoundingClientRect().width;
+    function mm(ev){{
+      wrap.style.width=Math.max(200,startW+(ev.clientX-startX))+'px';
       if(typeof window.alignLegend==='function')window.alignLegend();
     }}
     function mu(){{
@@ -8797,10 +8206,32 @@ function ibinDlocClrAll(){document.querySelectorAll('#ibin-dloc-cblist input').f
     }}
     document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
   }};
+  window.startEdgeResizeV=function(e,wrapperId,storageKey){{
+    e.preventDefault();
+    var wrap=document.getElementById(wrapperId);if(!wrap)return;
+    var startY=e.clientY,startH=wrap.getBoundingClientRect().height||wrap.getBoundingClientRect().width;
+    if(!wrap.style.height)wrap.style.height=startH+'px';
+    function mm(ev){{
+      wrap.style.height=Math.max(100,startH+(ev.clientY-startY))+'px';
+    }}
+    function mu(){{
+      document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);
+      if(storageKey)sv(storageKey+'_h',wrap.getBoundingClientRect().height);
+    }}
+    document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+  }};
   window.addEventListener('load',function(){{
     var cw=gv('comp-svg-w');
+    var ch=gv('comp-svg-w_h');
     var cw_el=document.getElementById('comp-svg-wrap');
-    if(cw&&cw_el)cw_el.style.width=cw+'px';
+    if(cw_el){{if(cw)cw_el.style.width=cw+'px';if(ch)cw_el.style.height=ch+'px';}}
+    // Save size on mouseup after native resize
+    if(cw_el){{
+      cw_el.addEventListener('mouseup',function(){{
+        sv('comp-svg-w',cw_el.getBoundingClientRect().width);
+        sv('comp-svg-w_h',cw_el.getBoundingClientRect().height);
+      }});
+    }}
   }});
 }})();
 function wpaOpen(){{
@@ -8828,43 +8259,41 @@ function wpaTab(t){{
     document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
   }});
 }})();
-window.startPanelSplit=function(e){{
-  e.preventDefault();
-  var bar=e.currentTarget;bar.classList.add('dragging');
-  var top=document.getElementById('wm-top-panel');if(!top)return;
-  top.classList.add('constrained');
-  var sy=e.clientY,sh=top.getBoundingClientRect().height;
-  function mm(ev){{var h=Math.max(80,sh+(ev.clientY-sy));top.style.height=h+'px';}}
-  function mu(){{
-    document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);
-    bar.classList.remove('dragging');
-    try{{localStorage.setItem('ibwm_top_h',String(top.getBoundingClientRect().height));}}catch(ex){{}}
-  }}
-  document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+window._wmToggleTbl=function(){{
+  var wrap=document.getElementById('wm-tbl-wrap');
+  if(!wrap)return;
+  var showing=wrap.style.display==='none';
+  wrap.style.display=showing?'':'none';
+  if(showing)setTimeout(function(){{wrap.scrollIntoView({{behavior:'smooth',block:'nearest'}});}},80);
 }};
-window.addEventListener('load',function(){{
-  try{{
-    var h=localStorage.getItem('ibwm_top_h');
-    var top=document.getElementById('wm-top-panel');
-    if(top&&h){{top.classList.add('constrained');top.style.height=h+'px';}}
-  }}catch(ex){{}}
-}});
+window._wmTogglePanel=function(which){{
+  var body=document.getElementById('wm-'+which+'-body');
+  var btn=document.getElementById('wm-'+which+'-toggle');
+  if(!body)return;
+  var hidden=body.style.display==='none';
+  body.style.display=hidden?'':'none';
+  if(btn)btn.innerHTML=hidden?'&#9660;':'&#9654;';
+}};
 </script>
 <div style="display:flex;align-items:center;gap:8px;margin:4px 0 2px">
-<span style="font-size:20px;font-weight:bold;color:#2c3e50"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg> Wafer Summary</span>
-<button style="padding:3px 10px;font-size:17px;cursor:pointer;border:1px solid #bdc3c7;background:#ecf0f1;border-radius:3px;color:#2c3e50" onclick="wmShowAll()">&#9723; Show All</button>
-
-<span style="font-size:17px;color:#888">(click to select \u2014 Ctrl+click for multi-select \u2014 Shift+click for range)</span>
+<button id="wm-tbl-toggle-btn" style="padding:3px 10px;font-size:12px;cursor:pointer;border:1px solid #bdc3c7;background:#ecf0f1;border-radius:3px;color:#2c3e50" onclick="_wmToggleTbl()">&#9776; Wafer Table</button>
 </div>
+<div id="wm-tbl-wrap" style="display:none">
 <table class="wm-sum-tbl">
 <thead><tr><th>Wafer</th>{_wm_mat_th}<th>Total Dies</th><th>Pass</th><th>Fail</th></tr></thead>
 <tbody>{waf_rows_html}</tbody></table>
 </div>
-<div class="wm-split-bar" id="wm-split-bar" onmousedown="startPanelSplit(event)"><div class="wm-split-grip">&#xB7;&#xB7;&#xB7;&#xB7;&#xB7;&#xB7;&#xB7;&#xB7;</div></div>
+</div>
+</div>
+<div class="wm-split-bar"></div>
 <div id="wm-bot-panel">
-<h2>Individual Wafer Maps</h2>
+<h2 style="display:flex;align-items:center;gap:10px;margin:0 0 6px">Individual Wafer Maps
+<button id="wm-bot-toggle" onclick="_wmTogglePanel('bot')" title="Show/hide individual wafer maps" style="background:#ecf0f1;border:1px solid #bdc3c7;color:#2c3e50;font-size:12px;cursor:pointer;padding:2px 9px;border-radius:4px;line-height:1.6">&#9660;</button>
+</h2>
+<div id="wm-bot-body">
 {_toggle_bar}
 {per_wafer_html}
+</div>
 </div>
 <!-- Wafer Pattern Analysis modal -->
 <div class="wpa-overlay" id="wpa-overlay">
@@ -8944,13 +8373,324 @@ window.addEventListener('load',function(){{
             out_html = heat_dir / f'{csvp.stem}_IBIN_WaferMap_{lot_safe}.html'
             out_html.write_text(_wm_inject(page), encoding='utf-8')
             print(f'Wrote {out_html}')
-            out_paths.append((lot_label, out_html))
+            return (lot_label, out_html)
+
+        import concurrent.futures as _cf
+        _n_workers = min(len(lots), (os.cpu_count() or 4))
+        if _n_workers > 1:
+            with _cf.ThreadPoolExecutor(max_workers=_n_workers) as _pool:
+                for _res in _pool.map(_gen_lot, lots):
+                    if _res is not None:
+                        out_paths.append(_res)
+        else:
+            for _lot in lots:
+                _res = _gen_lot(_lot)
+                if _res is not None:
+                    out_paths.append(_res)
 
         return out_paths
 
     except Exception as exc:
         print(f'generate_all_ibin_wafer_map: {exc}', file=sys.stderr)
         return []
+
+
+_HEATMAP_JS = r"""(function(){
+'use strict';
+var LOT=window.WM_INITIAL_LOT||WM_META.lots[0];
+var xMin=WM_META.x_range[0],xMax=WM_META.x_range[1];
+var yMin=WM_META.y_range[0],yMax=WM_META.y_range[1];
+var NX=xMax-xMin+1,NY=yMax-yMin+1;
+var WAFER_PX=240;  /* pixel size of each wafer subplot */
+var tip=document.getElementById('wm-tip');
+function color(b){return WM_COLORS[String(b)]||'#aaa';}
+
+function drawWafer(canvas,flat){
+  var W=WAFER_PX,H=WAFER_PX;
+  canvas.width=W;canvas.height=H;
+  var ctx=canvas.getContext('2d');
+  /* light background */
+  ctx.fillStyle='#f5f5f5';ctx.fillRect(0,0,W,H);
+  var cellSize=Math.min(W/NX,H/NY);
+  var gridW=NX*cellSize,gridH=NY*cellSize;
+  var offX=(W-gridW)/2,offY=(H-gridH)/2;
+  var cx=W/2,cy=H/2;
+  /* radius spans the actual die coordinate extent so all dies fit inside the circle */
+  var R=Math.max((xMax-xMin)/2,(yMax-yMin)/2)*cellSize*1.04;
+  var gap=Math.max(0.5,cellSize*0.06);
+  /* clip to wafer circle */
+  ctx.save();
+  ctx.beginPath();ctx.arc(cx,cy,R,0,2*Math.PI);ctx.clip();
+  /* fill wafer area white */
+  ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(cx,cy,R,0,2*Math.PI);ctx.fill();
+  /* draw dies */
+  for(var i=0;i<flat.length;i+=3){
+    var dx=flat[i]-xMin,dy=flat[i+1]-yMin;
+    ctx.fillStyle=color(flat[i+2]);
+    ctx.fillRect(offX+dx*cellSize+gap,offY+(NY-1-dy)*cellSize+gap,cellSize-gap*2,cellSize-gap*2);
+  }
+  ctx.restore();
+  /* wafer outline */
+  ctx.beginPath();ctx.arc(cx,cy,R,0,2*Math.PI);
+  ctx.strokeStyle='#555';ctx.lineWidth=1.5;ctx.stroke();
+  /* notch at bottom */
+  ctx.beginPath();ctx.arc(cx,cy+R-1,3.5,0,2*Math.PI);
+  ctx.fillStyle='#555';ctx.fill();
+}
+
+function dieMap(flat){
+  var m={};
+  for(var i=0;i<flat.length;i+=3)m[flat[i]+','+flat[i+1]]=flat[i+2];
+  return m;
+}
+
+function attachTip(cvs,flat,wk){
+  var cellSize=Math.min(WAFER_PX/NX,WAFER_PX/NY);
+  var offX=(WAFER_PX-NX*cellSize)/2,offY=(WAFER_PX-NY*cellSize)/2;
+  var dm=dieMap(flat);
+  cvs.addEventListener('mousemove',function(e){
+    var r=cvs.getBoundingClientRect();
+    var mx=(e.clientX-r.left)*(cvs.width/r.width);
+    var my=(e.clientY-r.top)*(cvs.height/r.height);
+    var dx=Math.floor((mx-offX)/cellSize);
+    var dy=NY-1-Math.floor((my-offY)/cellSize);
+    var gx=dx+xMin,gy=dy+yMin;
+    var b=dm[gx+','+gy];
+    if(b!=null){
+      tip.style.display='block';
+      tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-6)+'px';
+      tip.textContent=wk+'  ('+gx+','+gy+')  '+(WM_LABELS[String(b)]||'Bin '+b);
+    }else{tip.style.display='none';}
+  });
+  cvs.addEventListener('mouseleave',function(){tip.style.display='none';});
+}
+
+function buildLegend(lot){
+  var data=WM_DATA[lot],counts={};
+  for(var wk in data){var f=data[wk];for(var i=2;i<f.length;i+=3){var b=String(f[i]);counts[b]=(counts[b]||0)+1;}}
+  var total=0;for(var b in counts)total+=counts[b];
+  var bins=Object.keys(counts).sort(function(a,b){return parseInt(a)-parseInt(b);});
+  var leg=document.getElementById('wm-legend');
+  leg.innerHTML='<div style="font-size:10px;font-weight:bold;color:#333;padding-bottom:5px;border-bottom:1px solid #ccc;margin-bottom:6px">BIN LEGEND</div>';
+  bins.forEach(function(b){
+    var d=document.createElement('div');
+    d.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:4px';
+    var sw=document.createElement('div');
+    sw.style.cssText='width:14px;height:14px;border-radius:2px;border:1px solid rgba(0,0,0,.2);flex-shrink:0;background:'+color(b);
+    var lbl=document.createElement('div');
+    lbl.style.cssText='font-size:11px;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    var pct=total>0?(counts[b]/total*100).toFixed(1):'0.0';
+    var txt=(WM_LABELS[b]||'Bin '+b)+'  ('+counts[b].toLocaleString()+', '+pct+'%)';
+    lbl.textContent=txt;lbl.title=txt;
+    d.appendChild(sw);d.appendChild(lbl);leg.appendChild(d);
+  });
+}
+
+function render(lot){
+  LOT=lot;
+  var data=WM_DATA[lot];
+  var wkeys=Object.keys(data).sort(function(a,b){
+    return(parseInt(a.split('|')[1])||0)-(parseInt(b.split('|')[1])||0);
+  });
+  var cont=document.getElementById('wm-grid');
+  cont.innerHTML='';
+  wkeys.forEach(function(wk){
+    var waferNum=wk.split('|')[1]||wk;
+    var cell=document.createElement('div');
+    cell.style.cssText='display:flex;flex-direction:column;align-items:center;background:#fff;border:1px solid #ddd;border-radius:4px;padding:4px 4px 3px;box-shadow:0 1px 3px rgba(0,0,0,.1)';
+    var lbl=document.createElement('div');
+    lbl.style.cssText='font-size:10px;font-weight:bold;color:#2c3e50;margin-bottom:3px';
+    lbl.textContent='Wafer '+waferNum;
+    var cvs=document.createElement('canvas');
+    cvs.style.cssText='display:block;cursor:crosshair';
+    cell.appendChild(lbl);cell.appendChild(cvs);
+    cont.appendChild(cell);
+    drawWafer(cvs,data[wk]);
+    attachTip(cvs,data[wk],wk);
+  });
+  buildLegend(lot);
+  document.querySelectorAll('.wm-tab').forEach(function(t){
+    var active=t.dataset.lot===lot;
+    t.style.background=active?'#2980b9':'#ecf0f1';
+    t.style.color=active?'#fff':'#2c3e50';
+    t.style.fontWeight=active?'bold':'normal';
+    t.style.borderColor=active?'#2471a3':'#bdc3c7';
+  });
+}
+
+var tabsEl=document.getElementById('wm-tabs');
+WM_META.lots.forEach(function(lot){
+  var btn=document.createElement('button');
+  btn.className='wm-tab';btn.textContent=lot;btn.dataset.lot=lot;
+  btn.style.cssText='padding:4px 14px;border:1px solid #bdc3c7;border-radius:4px;cursor:pointer;font-size:12px;background:#ecf0f1;color:#2c3e50;transition:background .15s';
+  btn.onclick=function(){render(lot);};
+  tabsEl.appendChild(btn);
+});
+render(window.WM_INITIAL_LOT&&WM_DATA[window.WM_INITIAL_LOT]?window.WM_INITIAL_LOT:WM_META.lots[0]);
+})();
+"""
+
+_HEATMAP_SHELL_HTML = """\
+<!doctype html><html><head><meta charset="utf-8"><title>{{TITLE}}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#eaecee;color:#222;font-family:Arial,sans-serif;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+#wm-header{background:#2c3e50;padding:7px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+#wm-header h2{font-size:13px;color:#ecf0f1;font-weight:bold;white-space:nowrap}
+#wm-tabs{display:flex;flex-wrap:wrap;gap:4px}
+#wm-body{display:flex;flex:1;overflow:hidden;min-height:0}
+#wm-grid{flex:1;overflow:auto;display:flex;flex-wrap:wrap;align-content:flex-start;padding:10px;gap:10px;background:#eaecee}
+#wm-legend{width:240px;overflow-y:auto;background:#fff;padding:10px;flex-shrink:0;border-left:1px solid #ccc}
+#wm-tip{position:fixed;background:rgba(30,30,30,.92);color:#fff;font-size:11px;padding:5px 9px;border-radius:4px;pointer-events:none;display:none;z-index:999;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+</style>
+</head>
+<body>
+<div id="wm-header">
+  <h2>&#9635; IBIN Wafer Map</h2>
+  <div id="wm-tabs"></div>
+</div>
+<div id="wm-body">
+  <div id="wm-grid"></div>
+  <div id="wm-legend"></div>
+</div>
+<div id="wm-tip"></div>
+<script>window.WM_INITIAL_LOT={{LOT_JSON}};</script>
+<script src="heatmap_data.js"></script>
+<script src="heatmap.js"></script>
+</body></html>"""
+
+
+def generate_ibin_wafer_map_dynamic(csv_path, out_dir=None, bin_col=None, bindef_path=None, tbl_path=None, **_):
+    """
+    Fast on-the-fly wafer map: extracts die data to heatmap_data.js,
+    writes a shared canvas renderer (heatmap.js), and tiny per-lot HTML shells.
+    Replaces matplotlib SVG (~15s, 8-9MB/lot) with ~300KB data + instant canvas render.
+    Returns list of (lot_label, html_path) — same contract as generate_all_ibin_wafer_map.
+    """
+    import json as _json
+    import hashlib as _hs
+
+    _PASS_COLORS = {'1':'#00ff44','2':'#00cc44','3':'#3d3d3d','4':'#b0b0b0'}
+    _PASS_LABELS = {
+        '1':'Bin 1  Pass (FF NoRepair)',    '2':'Bin 2  Pass (MBIST Repair)',
+        '3':'Bin 3  Pass (Atom Defeatured)','4':'Bin 4  Pass (Core Defeatured)',
+    }
+    _PAL = [  # same order as generate_all_ibin_wafer_map for color consistency
+        '#ff0000','#ff6600','#ff8800','#ffcc00','#0055ff','#00aaff','#aa00ff','#cc00ff',
+        '#ff0066','#ff33aa','#00bbee','#ff3333','#6699ff','#cc0099','#ffaa00','#336bff',
+        '#cc0000','#cc4400','#cc9900','#0033cc','#6600cc','#dd4499','#dd2288','#0099cc',
+        '#ff6666','#ffdd55','#5500cc','#ff5500','#990000','#994400','#cc7700','#003399',
+        '#660099','#005580','#990066','#003d5c','#660000','#cc3300','#e6b800','#000099',
+        '#330066','#7700aa','#550000','#1a0066',
+    ]
+    _PN = len(_PAL)
+
+    def _mdf(n, salt):
+        h = _hs.md5(f'{salt}:{n}'.encode()).hexdigest()
+        return int(h[:8], 16) / 0xFFFFFFFF
+
+    csvp = Path(csv_path)
+    outd = Path(out_dir) if out_dir else csvp.parent / 'output'
+    heat_dir = outd / 'wafermap'
+    heat_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        df = pd.read_csv(csvp, dtype=object, low_memory=False)
+    except Exception as e:
+        print(f'[heatmap] CSV read failed: {e}', file=sys.stderr); return []
+
+    if not bin_col or bin_col not in df.columns:
+        bin_col = next((c for c in df.columns if 'INTERFACE_BIN' in c.upper() and 'TOTAL' not in c.upper()), None)
+    if not bin_col:
+        print('[heatmap] No INTERFACE_BIN column', file=sys.stderr); return []
+
+    x_col = next((c for c in df.columns if re.search(r'sort.?x$', c, re.I)), None)
+    y_col = next((c for c in df.columns if re.search(r'sort.?y$', c, re.I)), None)
+    lot_col = next((c for c in df.columns if c.lower() == 'sort_lot'), None) or \
+              next((c for c in df.columns if 'lot' in c.lower() and 'slot' not in c.lower()), None)
+    wafer_col = next((c for c in df.columns if 'sort_wafer' in c.lower()), None) or \
+                next((c for c in df.columns if 'wafer' in c.lower()), None)
+
+    if not all([x_col, y_col, lot_col, wafer_col]):
+        print(f'[heatmap] Missing columns (x={x_col} y={y_col} lot={lot_col} wafer={wafer_col})', file=sys.stderr)
+        return []
+
+    df['_x'] = pd.to_numeric(df[x_col], errors='coerce')
+    df['_y'] = pd.to_numeric(df[y_col], errors='coerce')
+    df = df.dropna(subset=['_x', '_y'])
+    df['_x'] = df['_x'].astype(int)
+    df['_y'] = df['_y'].astype(int)
+    df['_bin'] = df[bin_col].astype(str).str.strip()
+    df['_lot'] = df[lot_col].astype(str).str.strip()
+    df['_wafer'] = df[wafer_col].astype(str).str.strip()
+    _null = {'nan', 'none', 'na', ''}
+    df = df[~df['_lot'].str.lower().isin(_null) & ~df['_wafer'].str.lower().isin(_null)]
+    if df.empty:
+        print('[heatmap] No valid rows after filtering', file=sys.stderr); return []
+
+    x_min, x_max = int(df['_x'].min()), int(df['_x'].max())
+    y_min, y_max = int(df['_y'].min()), int(df['_y'].max())
+
+    fail_bins = sorted(set(df['_bin'].unique()) - set(_PASS_COLORS), key=lambda s: int(s) if s.isdigit() else hash(s) & 0xFFFF)
+    assigned: set = set()
+    fail_colors: dict = {}
+    for s in fail_bins:
+        ni = int(s) if s.isdigit() else hash(s) & 0xFFFF
+        idx = int(_mdf(ni, 'color') * _PN) % _PN
+        while idx in assigned:
+            idx = (idx + 1) % _PN
+        assigned.add(idx)
+        fail_colors[s] = _PAL[idx]
+
+    all_colors = {**_PASS_COLORS, **fail_colors}
+
+    bin_labels = dict(_PASS_LABELS)
+    if bindef_path and Path(bindef_path).exists():
+        try:
+            bdf = pd.read_csv(bindef_path, header=0, on_bad_lines='skip')
+            if bdf.shape[1] >= 2:
+                for _, brow in bdf.iterrows():
+                    m = re.match(r'^FB(\d+)$', str(brow.iloc[0]).strip(), re.I)
+                    if m:
+                        bin_labels[m.group(1)] = f'Bin {m.group(1)}  {str(brow.iloc[1]).strip()}'
+        except Exception:
+            pass
+
+    wm_data: dict = {}
+    lot_order: list = []
+    for lot_v, lot_df in df.groupby('_lot', sort=False):
+        ls = str(lot_v)
+        wm_data[ls] = {}
+        lot_order.append(ls)
+        for w_v, w_df in lot_df.groupby('_wafer', sort=False):
+            flat: list = []
+            for rx, ry, rb in zip(w_df['_x'], w_df['_y'], w_df['_bin']):
+                flat += [int(rx), int(ry), int(rb) if str(rb).isdigit() else 0]
+            wm_data[ls][f'{ls}|{w_v}'] = flat
+
+    meta = {'x_range': [x_min, x_max], 'y_range': [y_min, y_max], 'lots': lot_order}
+    sep = (',', ':')
+    data_js = (
+        f'window.WM_DATA={_json.dumps(wm_data, separators=sep)};\n'
+        f'window.WM_META={_json.dumps(meta, separators=sep)};\n'
+        f'window.WM_COLORS={_json.dumps(all_colors, separators=sep)};\n'
+        f'window.WM_LABELS={_json.dumps(bin_labels, separators=sep)};\n'
+    )
+    (heat_dir / 'heatmap_data.js').write_text(data_js, encoding='utf-8')
+    (heat_dir / 'heatmap.js').write_text(_HEATMAP_JS, encoding='utf-8')
+
+    out_paths = []
+    for ls in lot_order:
+        lot_safe = _sanitize_label(ls)
+        html = (_HEATMAP_SHELL_HTML
+                .replace('{{TITLE}}', f'IBIN Wafer Map \u2014 {ls}')
+                .replace('{{LOT_JSON}}', _json.dumps(ls)))
+        html_path = heat_dir / f'{csvp.stem}_IBIN_WaferMap_{lot_safe}.html'
+        html_path.write_text(html, encoding='utf-8')
+        print(f'Wrote {html_path}')
+        out_paths.append((ls, html_path))
+
+    return out_paths
 
 
 def main():
@@ -8974,9 +8714,9 @@ def main():
     outd = args[1] if len(args) > 1 else None
     tbl = args[2] if len(args) > 2 else None
     if wafermap_only:
-        generate_all_ibin_wafer_map(csvp, out_dir=outd, gui=gui, interactive=interactive, bindef_path=bindef, tbl_path=tbl)
+        generate_ibin_wafer_map_dynamic(csvp, out_dir=outd, bindef_path=bindef, tbl_path=tbl)
     else:
-        generate_heatmaps(csvp, out_dir=outd, tbl_path=tbl, gui=gui, html_only=html_only, interactive=interactive)
+        generate_all_ibin_wafer_map(csvp, out_dir=outd, bindef_path=bindef, tbl_path=tbl)
 
 
 if __name__ == '__main__':

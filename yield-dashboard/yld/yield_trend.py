@@ -188,16 +188,20 @@ def find_xlsx(dash_dir: Path, index_href: str):
 # ---------------------------------------------------------------------------
 
 def find_bin_html(output_dir: Path):
-    """Return Path to *_BinDistribution.html in output_dir, or None."""
-    candidates = sorted(output_dir.glob('*_BinDistribution.html'),
-                        key=lambda p: p.stat().st_mtime, reverse=True)
+    """Return Path to *_BinDistribution.html in output_dir or bin_dist/, or None."""
+    candidates = sorted(
+        list(output_dir.glob('*_BinDistribution.html')) +
+        list((output_dir / 'bin_dist').glob('*_BinDistribution.html')),
+        key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
 def find_group_medians(output_dir: Path):
-    """Return Path to Group_Medians.csv in output_dir, or None."""
-    candidates = sorted(output_dir.glob('Group_Medians.csv'),
-                        key=lambda p: p.stat().st_mtime, reverse=True)
+    """Return Path to Group_Medians.csv in output_dir or sicc/, or None."""
+    candidates = sorted(
+        list(output_dir.glob('Group_Medians.csv')) +
+        list((output_dir / 'sicc').glob('Group_Medians.csv')),
+        key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
@@ -338,9 +342,11 @@ def parse_group_medians(csv_path: Path) -> list[dict]:
 
 
 def find_cdyn_medians(output_dir: Path):
-    """Return Path to cdyn_medians.csv in output_dir, or None."""
-    candidates = sorted(output_dir.glob('cdyn_medians.csv'),
-                        key=lambda p: p.stat().st_mtime, reverse=True)
+    """Return Path to cdyn_medians.csv in output_dir or sicc/, or None."""
+    candidates = sorted(
+        list(output_dir.glob('cdyn_medians.csv')) +
+        list((output_dir / 'sicc').glob('cdyn_medians.csv')),
+        key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
@@ -486,10 +492,24 @@ def parse_bin_html(bin_html_path: Path):
                     return []
 
             if not yield_rows:
-                m_data = re.search(r'var\s+DATA\s*=\s*({[\s\S]*?});', content, re.DOTALL)
+                _data_pat_pb = r'(?:var\s+DATA|window\.DATA)\s*=\s*'
+                _ds_js_pb = bin_html_path.parent / 'data_summary.js'
+                m_data = None
+                _data_txt = ''
+                for _src_pb in [_ds_js_pb, None]:
+                    _txt_pb = ''
+                    try:
+                        _txt_pb = (_src_pb.read_text(encoding='utf-8', errors='replace')
+                                   if _src_pb and _src_pb.exists() else content)
+                    except Exception:
+                        _txt_pb = content
+                    _m = re.search(_data_pat_pb, _txt_pb)
+                    if _m:
+                        m_data, _data_txt = _m, _txt_pb
+                        break
                 if m_data:
                     try:
-                        data_obj = _json.loads(m_data.group(1))
+                        data_obj, _ = _json.JSONDecoder().raw_decode(_data_txt, m_data.end())
                     except Exception:
                         data_obj = {}
                     rows = data_obj.get('rows', []) if isinstance(data_obj, dict) else []
@@ -1626,14 +1646,23 @@ def parse_index_meta(dash_dir: Path, index_href: str) -> dict:
                 break
         if not bin_html:
             return result
-        content = bin_html.read_text(encoding='utf-8', errors='replace')
-        # Extract var DATA = {...}; — ends before the next var declaration
-        m = re.search(r'var\s+DATA\s*=\s*(\{[\s\S]*?\});\s*(?:var\s|\Z)', content)
-        if not m:
-            m = re.search(r'var\s+DATA\s*=\s*(\{[\s\S]*?\});', content)
+        # Try data_summary.js (new: window.DATA=) then bin_html inline (old: var DATA=)
+        _ds_js = bin_html.parent / 'data_summary.js'
+        _data_pat = r'(?:var\s+DATA|window\.DATA)\s*=\s*'
+        content = None
+        m = None
+        for _src in [_ds_js, bin_html]:
+            try:
+                _txt = _src.read_text(encoding='utf-8', errors='replace')
+            except Exception:
+                continue
+            _m = re.search(_data_pat, _txt)
+            if _m:
+                content, m = _txt, _m
+                break
         if m:
             try:
-                data = _json_idx.loads(m.group(1))
+                data, _ = _json_idx.JSONDecoder().raw_decode(content, m.end())
                 rows = data.get('rows', [])
                 programs, lots, wafers, mats = set(), set(), set(), set()
                 for row in rows:
@@ -4298,7 +4327,17 @@ def build_trend_chart(groups: OrderedDict,
         (sum(r['fail_ibins'].get(ib, 0) for ib in top_ibins) for _, r in all_runs_ordered),
         default=0.0,
     )
-    fail_ylim = min(100.0, max(max_stack * 1.25, 5.0))
+    fail_ylim = min(100.0, max(max_stack * 2.5, 5.0))
+
+    # Yield (%) label placed as inside annotation so it doesn't collide with the legend
+    annots.append(dict(
+        x=1.02, y=0.5, xref='paper', yref='paper',
+        text='Yield (%)', showarrow=False,
+        xanchor='left', yanchor='middle',
+        textangle=-90,
+        font=dict(size=12, color='#2c3e50'),
+        bgcolor='rgba(255,255,255,0.7)',
+    ))
 
     fig.update_layout(
         barmode='stack',
@@ -4320,27 +4359,30 @@ def build_trend_chart(groups: OrderedDict,
             title='SORT LOT',
         ),
         yaxis=dict(
-            title='Interface Bin Fail (%)',
+            title=dict(text='Fail (%)', standoff=10, font=dict(size=13)),
             range=[0, fail_ylim],
+            autorange=False,
             gridcolor='#e8e8e8',
             zeroline=True, zerolinecolor='#ccc',
         ),
         yaxis2=dict(
-            title='Yield (%)',
+            title='',
             range=[0, 105],
+            autorange=False,
             overlaying='y', side='right',
             showgrid=False,
         ),
         legend=dict(
             orientation='v',
-            x=1.09, y=1.0,
+            x=1.09, y=0.95,
+            xanchor='left', yanchor='top',
             bgcolor='rgba(255,255,255,0.85)',
             bordercolor='#ddd', borderwidth=1,
             font=dict(size=11),
         ),
         shapes=shapes,
         annotations=annots,
-        margin=dict(l=60, r=200, t=110, b=80),
+        margin=dict(l=70, r=200, t=110, b=80),
         hovermode='closest',
         hoverlabel=dict(bgcolor='white', font_size=12, bordercolor='#ccc'),
         autosize=True,
@@ -5256,7 +5298,12 @@ th.resizable .col-resizer:hover{{background:rgba(255,255,255,0.3)}}
       <div class="chart-card">
         <h2 style="margin-bottom:8px">&#128204; iBin Fail Trend
           <button onclick="exportTrendCsv()" style="font-size:11px;margin-left:10px;padding:2px 8px;cursor:pointer;border:1px solid #aaa;border-radius:3px;background:#f5f5f5">&#8681; CSV</button></h2>
-        <div id="trend-totals" style="font-size:12px;color:#555;margin:6px 0">{pareto_v_totals_html}</div>
+        <div style="display:flex;align-items:center;gap:16px;margin:6px 0">
+          <div id="trend-totals" style="font-size:12px;color:#555">{pareto_v_totals_html}</div>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#555;cursor:pointer;white-space:nowrap" title="Show or hide the UPM Median line">
+            <input type="checkbox" id="show-upm-chk" checked onchange="_onShowUpmChange()"> Show UPM
+          </label>
+        </div>
         <div id="trend-chart" class="chart-wrap">{trend_div}</div>
       </div>
       <div class="chart-card" id="trend-fb-drilldown" style="display:none">
@@ -5982,7 +6029,8 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
     hoverinfo:'text', legendgroup:'yield_lines', yaxis:'y2' }});
 
   const upmY = flat.map(({{ stats }}) => stats.upmMed);
-  if (upmY.some(v => v != null)) {{
+  const _showUpm = (document.getElementById('show-upm-chk') || {{checked:true}}).checked;
+  if (_showUpm && upmY.some(v => v != null)) {{
     traces.push({{ type:'scatter', x:xPos, y:upmY,
       mode:'lines+markers+text', name:'UPM Median (%)', connectgaps:true,
       line:{{color:'#ff0000',width:2.8,dash:'dot'}}, marker:{{size:7,symbol:'diamond',color:'#ff0000'}},
@@ -6030,10 +6078,10 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
   }}
 
   const maxStack = flat.reduce((mx, {{ stats }}) => {{
-    const s = topIbins.reduce((t, ib) => t + (stats.failIbins[ib]||0), 0);
+    const s = topIbins.reduce((t, {{ib}}) => t + (stats.failIbins[ib]||0), 0);
     return Math.max(mx, s);
   }}, 0);
-  const failYlim = Math.min(100, Math.max(maxStack * 1.25, 5));
+  const failYlim = Math.min(100, Math.max(maxStack * 2.5, 5));
 
   const layout = {{
     barmode:'stack', plot_bgcolor:'#f9f9fb', paper_bgcolor:'white',
@@ -6041,14 +6089,17 @@ function buildTrendTraces(groups, topN, thresh, groupMode, skipTraces) {{
     xaxis: {{ tickvals:xPos, ticktext:xLabels, tickfont:{{size:11}},
       tickangle:-45, showgrid:false, title:'SORT LOT',
       automargin:true }},
-    yaxis: {{ title:'Interface Bin Fail (%)', range:[0,failYlim],
-      gridcolor:'#e8e8e8', zeroline:true, zerolinecolor:'#ccc' }},
-    yaxis2: {{ title:'Yield (%)', range:[0,105], overlaying:'y', side:'right',
-      showgrid:false }},
-    legend: {{ orientation:'v', x:1.01, y:0.0, xanchor:'left', yanchor:'bottom',
+    yaxis: {{ title:{{text:'Fail (%)',standoff:10}}, titlefont:{{size:13}}, range:[0,failYlim],
+      autorange:false, gridcolor:'#e8e8e8', zeroline:true, zerolinecolor:'#ccc' }},
+    yaxis2: {{ title:'', range:[0,105], autorange:false, overlaying:'y', side:'right', showgrid:false }},
+    legend: {{ orientation:'v', x:1.09, y:0.95, xanchor:'left', yanchor:'top',
       bgcolor:'rgba(255,255,255,0.85)', bordercolor:'#ddd', borderwidth:1 }},
-    shapes: [...shapes, ...hlines], annotations: [...annots, ...tgtAnnots],
-    margin: {{ l:60, r:180, t:100, b:220 }},
+    shapes: [...shapes, ...hlines],
+    annotations: [...annots, ...tgtAnnots,
+      {{x:1.02,y:0.5,xref:'paper',yref:'paper',text:'Yield (%)',showarrow:false,
+        xanchor:'left',yanchor:'middle',textangle:-90,font:{{size:12,color:'#2c3e50'}},
+        bgcolor:'rgba(255,255,255,0.7)'}}],
+    margin: {{ l:70, r:200, t:100, b:220 }},
     hovermode:'closest', autosize:true,
   }};
 
@@ -6957,6 +7008,8 @@ function _drawWafermap(container, run, width, selIb, selFb) {{
 
 // Toggle between fast canvas rendering (default) and SVG rendering for wafer maps.
 window._wmFastMode = true;
+function _onShowUpmChange() {{ rebuildCharts(); }}
+
 function toggleWmRenderMode(cb) {{
   window._wmFastMode = !!cb.checked;
   document.querySelectorAll('.fbdd-tabs input[type="checkbox"]').forEach(other => {{ other.checked = cb.checked; }});
